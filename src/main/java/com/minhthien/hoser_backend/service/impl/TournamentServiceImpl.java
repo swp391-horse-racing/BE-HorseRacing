@@ -210,7 +210,6 @@ public class TournamentServiceImpl implements TournamentService {
         tournament.setEndAt(request.getEndAt());
         tournament.setCheckInDeadlineAt(request.getCheckInDeadlineAt());
         tournament.setEntryFee(BigDecimal.ZERO);
-        tournament.setDepositAmount(BigDecimal.ZERO);
         tournament.setMinTeams(request.getMinTeams());
         tournament.setMaxTeams(request.getMaxTeams());
         tournament.setJockeyChallengeEnabled(Boolean.TRUE.equals(request.getJockeyChallengeEnabled()));
@@ -297,7 +296,6 @@ public class TournamentServiceImpl implements TournamentService {
                 .minParticipants(request.getMinParticipants())
                 .maxParticipants(request.getMaxParticipants())
                 .entryFee(defaultZero(request.getEntryFee()))
-                .depositAmount(defaultZero(request.getDepositAmount()))
                 .referee(request.getRefereeId() == null ? null : requireReferee(request.getRefereeId()))
                 .status(RaceStatus.SCHEDULED)
                 .note(request.getNote())
@@ -359,7 +357,6 @@ public class TournamentServiceImpl implements TournamentService {
                 tournament.getStartAt(), tournament.getEndAt(), tournament.getCheckInDeadlineAt());
         validateTeamLimits(tournament.getMinTeams(), tournament.getMaxTeams());
         tournament.setEntryFee(BigDecimal.ZERO);
-        tournament.setDepositAmount(BigDecimal.ZERO);
     }
 
     private void validateReadyForPublish(Tournament tournament) {
@@ -411,7 +408,6 @@ public class TournamentServiceImpl implements TournamentService {
             throw new BadRequestException("Race minimum participants must not exceed maximum participants");
         }
         requireNonNegative(defaultZero(race.getEntryFee()), "Race entry fee must not be negative");
-        requireNonNegative(defaultZero(race.getDepositAmount()), "Race deposit amount must not be negative");
     }
 
     private void validateRacePrizes(Race race) {
@@ -587,7 +583,6 @@ public class TournamentServiceImpl implements TournamentService {
                 .minParticipants(race.getMinParticipants())
                 .maxParticipants(race.getMaxParticipants())
                 .entryFee(race.getEntryFee())
-                .depositAmount(race.getDepositAmount())
                 .refereeId(referee == null ? null : referee.getId())
                 .refereeUsername(referee == null ? null : referee.getUsername())
                 .status(race.getStatus())

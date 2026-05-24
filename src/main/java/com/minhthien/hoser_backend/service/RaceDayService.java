@@ -3,6 +3,7 @@ package com.minhthien.hoser_backend.service;
 import com.minhthien.hoser_backend.dto.request.RaceFinalizeResultRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationReviewRequest;
+import com.minhthien.hoser_backend.dto.request.RaceRegistrationWithdrawRequest;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengeStandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceRegistrationResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
@@ -22,6 +23,9 @@ public interface RaceDayService {
 
     RaceRegistrationResponse rejectRaceRegistration(Long adminId, Long registrationId,
                                                     RaceRegistrationReviewRequest request);
+
+    RaceRegistrationResponse withdrawRaceRegistration(Long ownerId, Long registrationId,
+                                                      RaceRegistrationWithdrawRequest request);
 
     List<RaceResponse> getRefereeRaces(Long refereeId);
 

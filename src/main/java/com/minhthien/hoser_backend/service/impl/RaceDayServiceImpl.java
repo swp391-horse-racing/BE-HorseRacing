@@ -3,6 +3,7 @@ package com.minhthien.hoser_backend.service.impl;
 import com.minhthien.hoser_backend.dto.request.RaceFinalizeResultRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationReviewRequest;
+import com.minhthien.hoser_backend.dto.request.RaceRegistrationWithdrawRequest;
 import com.minhthien.hoser_backend.dto.request.RaceResultEntryRequest;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengeStandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceRegistrationResponse;
@@ -85,11 +86,10 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .jockey(invitation.getJockey())
                 .jockeyInvitation(invitation)
                 .entryFeeAmount(race.getEntryFee())
-                .depositAmount(race.getDepositAmount())
                 .ownerNote(request.getNote())
                 .build();
         RaceRegistration saved = raceRegistrationRepository.save(registration);
-        holdRegistrationFunds(saved);
+        debitRegistrationFee(saved);
         return mapRegistration(saved);
     }
 
@@ -138,7 +138,6 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (raceParticipantRepository.existsByRaceIdAndGateNumber(race.getId(), gateNumber)) {
             throw new BadRequestException("Gate number already exists in this race");
         }
-        captureRegistrationFunds(registration);
         registration.setStatus(RaceRegistrationStatus.APPROVED);
         registration.setReviewedBy(adminId);
         registration.setReviewedAt(LocalDateTime.now());
@@ -167,11 +166,30 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (registration.getStatus() != RaceRegistrationStatus.PENDING) {
             throw new BadRequestException("Only pending race registrations can be rejected");
         }
-        releaseRegistrationFunds(registration);
+        refundRegistrationFee(registration, "Race entry fee refunded after rejection");
         registration.setStatus(RaceRegistrationStatus.REJECTED);
         registration.setReviewedBy(adminId);
         registration.setReviewedAt(LocalDateTime.now());
         registration.setReviewNote(request == null ? null : request.getNote());
+        return mapRegistration(raceRegistrationRepository.save(registration));
+    }
+
+    @Override
+    @Transactional
+    public RaceRegistrationResponse withdrawRaceRegistration(Long ownerId, Long registrationId,
+                                                             RaceRegistrationWithdrawRequest request) {
+        User owner = requireUser(ownerId);
+        requireRole(owner, UserRole.OWNER, "Only owners can withdraw race registrations");
+        RaceRegistration registration = requireRegistration(registrationId);
+        if (!registration.getOwner().getId().equals(ownerId)) {
+            throw new UnauthorizedException("Cannot withdraw another owner's race registration");
+        }
+        if (registration.getStatus() != RaceRegistrationStatus.PENDING) {
+            throw new BadRequestException("Only pending race registrations can be withdrawn");
+        }
+        refundRegistrationFee(registration, "Race entry fee refunded after owner withdrawal");
+        registration.setStatus(RaceRegistrationStatus.WITHDRAWN);
+        registration.setWithdrawNote(request == null ? null : request.getNote());
         return mapRegistration(raceRegistrationRepository.save(registration));
     }
 
@@ -334,53 +352,32 @@ public class RaceDayServiceImpl implements RaceDayService {
         }
     }
 
-    private void holdRegistrationFunds(RaceRegistration registration) {
+    private void debitRegistrationFee(RaceRegistration registration) {
         BigDecimal entryFee = defaultZero(registration.getEntryFeeAmount());
-        BigDecimal deposit = defaultZero(registration.getDepositAmount());
         if (entryFee.compareTo(BigDecimal.ZERO) > 0) {
-            String key = "race-registration:%d:entry-hold".formatted(registration.getId());
-            walletService.hold(registration.getOwner().getId(), entryFee, WalletTransactionType.ENTRY_FEE,
-                    RACE_REGISTRATION_REF, String.valueOf(registration.getId()), key, null, "Race entry fee hold");
-            registration.setEntryFeeHoldKey(key);
-        }
-        if (deposit.compareTo(BigDecimal.ZERO) > 0) {
-            String key = "race-registration:%d:deposit-hold".formatted(registration.getId());
-            walletService.hold(registration.getOwner().getId(), deposit, WalletTransactionType.ENTRY_FEE,
-                    RACE_REGISTRATION_REF, String.valueOf(registration.getId()), key, null, "Race deposit hold");
-            registration.setDepositHoldKey(key);
+            String key = "race-registration:%d:entry-debit".formatted(registration.getId());
+            walletService.debit(registration.getOwner().getId(), entryFee, WalletTransactionType.ENTRY_FEE,
+                    RACE_REGISTRATION_REF, String.valueOf(registration.getId()), key, null, "Race entry fee paid");
+            walletService.creditAdmin(entryFee, WalletTransactionType.ENTRY_FEE,
+                    RACE_REGISTRATION_REF, String.valueOf(registration.getId()),
+                    "race-registration:%d:entry-admin-credit".formatted(registration.getId()),
+                    null, "Race entry fee received");
+            registration.setEntryFeeDebitKey(key);
         }
         raceRegistrationRepository.save(registration);
     }
 
-    private void captureRegistrationFunds(RaceRegistration registration) {
-        if (defaultZero(registration.getEntryFeeAmount()).compareTo(BigDecimal.ZERO) > 0) {
-            String key = "race-registration:%d:entry-capture".formatted(registration.getId());
-            walletService.capture(registration.getOwner().getId(), registration.getEntryFeeAmount(),
-                    WalletTransactionType.ENTRY_FEE, RACE_REGISTRATION_REF, String.valueOf(registration.getId()),
-                    key, null, "Race entry fee captured");
-            registration.setEntryFeeCaptureKey(key);
-        }
-        if (defaultZero(registration.getDepositAmount()).compareTo(BigDecimal.ZERO) > 0) {
-            String key = "race-registration:%d:deposit-capture".formatted(registration.getId());
-            walletService.capture(registration.getOwner().getId(), registration.getDepositAmount(),
-                    WalletTransactionType.ENTRY_FEE, RACE_REGISTRATION_REF, String.valueOf(registration.getId()),
-                    key, null, "Race deposit captured");
-            registration.setDepositCaptureKey(key);
-        }
-    }
-
-    private void releaseRegistrationFunds(RaceRegistration registration) {
-        if (defaultZero(registration.getEntryFeeAmount()).compareTo(BigDecimal.ZERO) > 0) {
-            walletService.release(registration.getOwner().getId(), registration.getEntryFeeAmount(),
-                    WalletTransactionType.REFUND, RACE_REGISTRATION_REF, String.valueOf(registration.getId()),
-                    "race-registration:%d:entry-release".formatted(registration.getId()),
-                    null, "Race entry fee released");
-        }
-        if (defaultZero(registration.getDepositAmount()).compareTo(BigDecimal.ZERO) > 0) {
-            walletService.release(registration.getOwner().getId(), registration.getDepositAmount(),
-                    WalletTransactionType.REFUND, RACE_REGISTRATION_REF, String.valueOf(registration.getId()),
-                    "race-registration:%d:deposit-release".formatted(registration.getId()),
-                    null, "Race deposit released");
+    private void refundRegistrationFee(RaceRegistration registration, String note) {
+        BigDecimal entryFee = defaultZero(registration.getEntryFeeAmount());
+        if (entryFee.compareTo(BigDecimal.ZERO) > 0) {
+            String key = "race-registration:%d:entry-refund".formatted(registration.getId());
+            walletService.debitAdmin(entryFee, WalletTransactionType.REFUND,
+                    RACE_REGISTRATION_REF, String.valueOf(registration.getId()),
+                    "race-registration:%d:entry-admin-refund".formatted(registration.getId()),
+                    null, note);
+            walletService.refund(registration.getOwner().getId(), entryFee,
+                    RACE_REGISTRATION_REF, String.valueOf(registration.getId()), key, null, note);
+            registration.setEntryFeeRefundKey(key);
         }
     }
 
@@ -635,9 +632,9 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .jockeyInvitationId(registration.getJockeyInvitation().getId())
                 .status(registration.getStatus())
                 .entryFeeAmount(registration.getEntryFeeAmount())
-                .depositAmount(registration.getDepositAmount())
                 .ownerNote(registration.getOwnerNote())
                 .reviewNote(registration.getReviewNote())
+                .withdrawNote(registration.getWithdrawNote())
                 .reviewedBy(registration.getReviewedBy())
                 .reviewedAt(registration.getReviewedAt())
                 .createdAt(registration.getCreatedAt())

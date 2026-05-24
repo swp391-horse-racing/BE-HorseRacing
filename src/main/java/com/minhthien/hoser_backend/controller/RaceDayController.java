@@ -3,6 +3,7 @@ package com.minhthien.hoser_backend.controller;
 import com.minhthien.hoser_backend.dto.request.RaceFinalizeResultRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationReviewRequest;
+import com.minhthien.hoser_backend.dto.request.RaceRegistrationWithdrawRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengeStandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceRegistrationResponse;
@@ -40,6 +41,15 @@ public class RaceDayController {
             @AuthenticationPrincipal User currentUser) {
         return ResponseEntity.ok(ApiResponse.success(
                 raceDayService.getOwnerRaceRegistrations(currentUser.getId())));
+    }
+
+    @PutMapping("/owner/race-registrations/{id}/withdraw")
+    public ResponseEntity<ApiResponse<RaceRegistrationResponse>> withdrawRaceRegistration(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @Valid @RequestBody(required = false) RaceRegistrationWithdrawRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Race registration withdrawn",
+                raceDayService.withdrawRaceRegistration(currentUser.getId(), id, request)));
     }
 
     @GetMapping("/admin/tournaments/{id}/race-registrations")

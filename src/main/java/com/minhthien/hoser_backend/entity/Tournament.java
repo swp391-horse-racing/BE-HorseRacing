@@ -57,10 +57,6 @@ public class Tournament {
     @Builder.Default
     private BigDecimal entryFee = BigDecimal.ZERO;
 
-    @Column(nullable = false, precision = 19, scale = 2)
-    @Builder.Default
-    private BigDecimal depositAmount = BigDecimal.ZERO;
-
     @Column(nullable = false)
     private Integer minTeams;
 
@@ -134,9 +130,6 @@ public class Tournament {
         }
         if (entryFee == null) {
             entryFee = BigDecimal.ZERO;
-        }
-        if (depositAmount == null) {
-            depositAmount = BigDecimal.ZERO;
         }
         if (jockeyChallengeEnabled == null) {
             jockeyChallengeEnabled = false;

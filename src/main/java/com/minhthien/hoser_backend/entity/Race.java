@@ -56,10 +56,6 @@ public class Race {
     @Builder.Default
     private BigDecimal entryFee = BigDecimal.ZERO;
 
-    @Column(nullable = false, precision = 19, scale = 2)
-    @Builder.Default
-    private BigDecimal depositAmount = BigDecimal.ZERO;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "referee_id")
     private User referee;
@@ -107,9 +103,6 @@ public class Race {
         updatedAt = now;
         if (entryFee == null) {
             entryFee = BigDecimal.ZERO;
-        }
-        if (depositAmount == null) {
-            depositAmount = BigDecimal.ZERO;
         }
         if (status == null) {
             status = RaceStatus.DRAFT;

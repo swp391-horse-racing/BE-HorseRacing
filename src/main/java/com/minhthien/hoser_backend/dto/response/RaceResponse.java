@@ -20,7 +20,6 @@ public class RaceResponse {
     private Integer minParticipants;
     private Integer maxParticipants;
     private BigDecimal entryFee;
-    private BigDecimal depositAmount;
     private Long refereeId;
     private String refereeUsername;
     private RaceStatus status;

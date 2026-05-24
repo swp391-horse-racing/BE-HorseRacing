@@ -59,27 +59,20 @@ public class RaceRegistration {
     @Builder.Default
     private BigDecimal entryFeeAmount = BigDecimal.ZERO;
 
-    @Column(nullable = false, precision = 19, scale = 2)
-    @Builder.Default
-    private BigDecimal depositAmount = BigDecimal.ZERO;
+    @Column(length = 150)
+    private String entryFeeDebitKey;
 
     @Column(length = 150)
-    private String entryFeeHoldKey;
-
-    @Column(length = 150)
-    private String depositHoldKey;
-
-    @Column(length = 150)
-    private String entryFeeCaptureKey;
-
-    @Column(length = 150)
-    private String depositCaptureKey;
+    private String entryFeeRefundKey;
 
     @Column(length = 1000)
     private String ownerNote;
 
     @Column(length = 1000)
     private String reviewNote;
+
+    @Column(length = 1000)
+    private String withdrawNote;
 
     private Long reviewedBy;
 
@@ -105,9 +98,6 @@ public class RaceRegistration {
         }
         if (entryFeeAmount == null) {
             entryFeeAmount = BigDecimal.ZERO;
-        }
-        if (depositAmount == null) {
-            depositAmount = BigDecimal.ZERO;
         }
     }
 

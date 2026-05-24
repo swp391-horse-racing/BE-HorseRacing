@@ -138,6 +138,7 @@ class AllApiSmokeTest {
         exerciseHorseAndJockeyProfileApis();
         Long horseId = latestHorseId();
         exerciseJockeyInvitationApis(horseId);
+        exerciseRaceRegistrationApis();
         exerciseWalletPaymentAndWithdrawalApis();
         exercisePublicWebhookApis();
     }
@@ -342,6 +343,14 @@ class AllApiSmokeTest {
                 }
                 """));
         assertOk(get("/api/v1/owners/me/jockeys").header("Authorization", bearer(ownerToken)));
+    }
+
+    private void exerciseRaceRegistrationApis() throws Exception {
+        assertNonServerError(putJson("/api/v1/owner/race-registrations/999999/withdraw", ownerToken, """
+                {
+                  "note": "Smoke withdraw"
+                }
+                """));
     }
 
     private void exerciseWalletPaymentAndWithdrawalApis() throws Exception {

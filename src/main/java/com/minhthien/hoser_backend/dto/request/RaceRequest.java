@@ -42,10 +42,6 @@ public class RaceRequest {
     @Schema(description = "Fee charged for this specific race only", example = "0", defaultValue = "0")
     private BigDecimal entryFee = BigDecimal.ZERO;
 
-    @PositiveOrZero(message = "Deposit amount must not be negative")
-    @Schema(description = "Deposit held for this specific race only", example = "0", defaultValue = "0")
-    private BigDecimal depositAmount = BigDecimal.ZERO;
-
     private Long refereeId;
 
     @Size(max = 1000, message = "Race note must be at most 1000 characters")

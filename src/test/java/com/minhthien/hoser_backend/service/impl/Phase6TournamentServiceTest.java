@@ -260,7 +260,6 @@ class Phase6TournamentServiceTest {
         request.setMinParticipants(2);
         request.setMaxParticipants(8);
         request.setEntryFee(new BigDecimal("10000.00"));
-        request.setDepositAmount(BigDecimal.ZERO);
         RacePrizeRequest first = new RacePrizeRequest();
         first.setRank(1);
         first.setAmount(new BigDecimal("1000000.00"));
@@ -281,7 +280,6 @@ class Phase6TournamentServiceTest {
                 .startAt(LocalDateTime.of(2026, 6, 16, 9, 0))
                 .endAt(LocalDateTime.of(2026, 6, 17, 9, 0))
                 .entryFee(new BigDecimal("100000.00"))
-                .depositAmount(BigDecimal.ZERO)
                 .minTeams(4)
                 .maxTeams(16)
                 .jockeyChallengeEnabled(true)
@@ -312,7 +310,6 @@ class Phase6TournamentServiceTest {
                 .minParticipants(2)
                 .maxParticipants(8)
                 .entryFee(new BigDecimal("10000.00"))
-                .depositAmount(BigDecimal.ZERO)
                 .build();
         race.replacePrizes(List.of(
                 RacePrize.builder().rank(1).amount(new BigDecimal("1000000.00")).build(),

@@ -23,9 +23,9 @@ public class RaceRegistrationResponse {
     private Long jockeyInvitationId;
     private RaceRegistrationStatus status;
     private BigDecimal entryFeeAmount;
-    private BigDecimal depositAmount;
     private String ownerNote;
     private String reviewNote;
+    private String withdrawNote;
     private Long reviewedBy;
     private LocalDateTime reviewedAt;
     private LocalDateTime createdAt;
