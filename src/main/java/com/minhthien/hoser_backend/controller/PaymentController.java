@@ -1,5 +1,7 @@
 package com.minhthien.hoser_backend.controller;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.minhthien.hoser_backend.dto.request.CreateDepositOrderRequest;
 import com.minhthien.hoser_backend.dto.request.DepositCallbackRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
@@ -28,6 +30,7 @@ import java.util.List;
 public class PaymentController {
 
     private final PaymentService paymentService;
+    private final ObjectMapper objectMapper;
 
     @SecurityRequirement(name = "bearerAuth")
     @PostMapping("/wallets/me/deposit-orders")
@@ -60,10 +63,38 @@ public class PaymentController {
                 paymentService.handleDepositCallback(request)));
     }
 
+    @GetMapping("/wallets/top-up/payos/webhook")
+    public ResponseEntity<ApiResponse<?>> checkPayOsWebhook() {
+        return ResponseEntity.ok(ApiResponse.success("payOS webhook endpoint active", null));
+    }
+
     @PostMapping("/wallets/top-up/payos/webhook")
-    public ResponseEntity<ApiResponse<PaymentOrderResponse>> handlePayOsWebhook(@RequestBody Webhook webhook) {
+    public ResponseEntity<ApiResponse<?>> handlePayOsWebhook(@RequestBody(required = false) String body) {
+        Webhook webhook = parsePayOsWebhook(body);
+        if (isPayOsWebhookProbe(webhook)) {
+            return ResponseEntity.ok(ApiResponse.success("payOS webhook endpoint active", null));
+        }
         return ResponseEntity.ok(ApiResponse.success("payOS webhook processed",
                 paymentService.handlePayOsWebhook(webhook)));
+    }
+
+    private Webhook parsePayOsWebhook(String body) {
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(body, Webhook.class);
+        } catch (JsonProcessingException ex) {
+            return null;
+        }
+    }
+
+    private boolean isPayOsWebhookProbe(Webhook webhook) {
+        if (webhook == null || webhook.getData() == null) {
+            return true;
+        }
+        return webhook.getData().getOrderCode() == null
+                && (webhook.getData().getPaymentLinkId() == null || webhook.getData().getPaymentLinkId().isBlank());
     }
 
     @SecurityRequirement(name = "bearerAuth")

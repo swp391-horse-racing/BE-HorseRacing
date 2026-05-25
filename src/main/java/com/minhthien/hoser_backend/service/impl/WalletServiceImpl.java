@@ -94,6 +94,15 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     @Transactional
+    public WalletTransaction debitAllowNegative(Long userId, BigDecimal amount, WalletTransactionType type,
+                                                String referenceType, String referenceId, String idempotencyKey,
+                                                String metadata, String note) {
+        return mutateUserWalletAllowNegative(userId, amount, type, WalletTransactionDirection.DEBIT,
+                referenceType, referenceId, idempotencyKey, metadata, note);
+    }
+
+    @Override
+    @Transactional
     public WalletTransaction hold(Long userId, BigDecimal amount, WalletTransactionType type,
                                   String referenceType, String referenceId, String idempotencyKey,
                                   String metadata, String note) {
@@ -222,6 +231,27 @@ public class WalletServiceImpl implements WalletService {
                 idempotencyKey, metadata, note);
     }
 
+    private WalletTransaction mutateUserWalletAllowNegative(Long userId,
+                                                            BigDecimal amount,
+                                                            WalletTransactionType type,
+                                                            WalletTransactionDirection direction,
+                                                            String referenceType,
+                                                            String referenceId,
+                                                            String idempotencyKey,
+                                                            String metadata,
+                                                            String note) {
+        WalletTransaction existingTransaction = findExistingIdempotentTransaction(idempotencyKey);
+        if (existingTransaction != null) {
+            return existingTransaction;
+        }
+
+        validateAmount(amount);
+        Wallet wallet = walletRepository.findByUserIdForUpdate(userId)
+                .orElseGet(() -> createUserWallet(userId));
+        return mutateLockedWallet(wallet, amount, type, direction, referenceType, referenceId,
+                idempotencyKey, metadata, note, true);
+    }
+
     private WalletTransaction mutateLockedWallet(Wallet wallet,
                                                  BigDecimal amount,
                                                  WalletTransactionType type,
@@ -231,6 +261,20 @@ public class WalletServiceImpl implements WalletService {
                                                  String idempotencyKey,
                                                  String metadata,
                                                  String note) {
+        return mutateLockedWallet(wallet, amount, type, direction, referenceType, referenceId,
+                idempotencyKey, metadata, note, false);
+    }
+
+    private WalletTransaction mutateLockedWallet(Wallet wallet,
+                                                 BigDecimal amount,
+                                                 WalletTransactionType type,
+                                                 WalletTransactionDirection direction,
+                                                 String referenceType,
+                                                 String referenceId,
+                                                 String idempotencyKey,
+                                                 String metadata,
+                                                 String note,
+                                                 boolean allowNegativeAvailable) {
         validateWalletMutable(wallet);
 
         BigDecimal availableBefore = wallet.getAvailableBalance();
@@ -240,7 +284,9 @@ public class WalletServiceImpl implements WalletService {
 
         switch (direction) {
             case CREDIT -> availableAfter = availableBefore.add(amount);
-            case DEBIT -> availableAfter = subtractAvailable(availableBefore, amount);
+            case DEBIT -> availableAfter = allowNegativeAvailable
+                    ? availableBefore.subtract(amount)
+                    : subtractAvailable(availableBefore, amount);
             case HOLD -> {
                 availableAfter = subtractAvailable(availableBefore, amount);
                 holdAfter = holdBefore.add(amount);

@@ -21,6 +21,7 @@ import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.JockeyChallengeResultRepository;
 import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
+import com.minhthien.hoser_backend.repository.RaceComplaintRepository;
 import com.minhthien.hoser_backend.repository.RaceParticipantRepository;
 import com.minhthien.hoser_backend.repository.RaceRegistrationRepository;
 import com.minhthien.hoser_backend.repository.RaceRepository;
@@ -28,6 +29,7 @@ import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
+import com.minhthien.hoser_backend.service.MailService;
 import com.minhthien.hoser_backend.service.WalletService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -60,6 +62,8 @@ class Phase7RaceRegistrationServiceTest {
     @Mock
     private RaceResultRepository raceResultRepository;
     @Mock
+    private RaceComplaintRepository raceComplaintRepository;
+    @Mock
     private JockeyChallengeResultRepository jockeyChallengeResultRepository;
     @Mock
     private JockeyInvitationRepository jockeyInvitationRepository;
@@ -73,6 +77,8 @@ class Phase7RaceRegistrationServiceTest {
     private TournamentServiceImpl tournamentService;
     @Mock
     private FinanceSettingsService financeSettingsService;
+    @Mock
+    private MailService mailService;
 
     @Test
     void registerForRaceDebitsOwnerAndCreditsAdminImmediately() {
@@ -279,13 +285,15 @@ class Phase7RaceRegistrationServiceTest {
                 raceRegistrationRepository,
                 raceParticipantRepository,
                 raceResultRepository,
+                raceComplaintRepository,
                 jockeyChallengeResultRepository,
                 jockeyInvitationRepository,
                 tournamentRepository,
                 userRepository,
                 walletService,
                 tournamentService,
-                financeSettingsService
+                financeSettingsService,
+                mailService
         );
     }
 

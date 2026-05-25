@@ -16,4 +16,8 @@ public interface RaceParticipantRepository extends JpaRepository<RaceParticipant
     Optional<RaceParticipant> findByRegistrationId(Long registrationId);
 
     boolean existsByRaceIdAndGateNumber(Long raceId, Integer gateNumber);
+
+    boolean existsByRaceIdAndGateNumberAndIdNot(Long raceId, Integer gateNumber, Long id);
+
+    long countByRaceTournamentId(Long tournamentId);
 }

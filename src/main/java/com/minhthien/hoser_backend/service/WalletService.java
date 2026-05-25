@@ -30,6 +30,10 @@ public interface WalletService {
                             String referenceType, String referenceId, String idempotencyKey,
                             String metadata, String note);
 
+    WalletTransaction debitAllowNegative(Long userId, BigDecimal amount, WalletTransactionType type,
+                                          String referenceType, String referenceId, String idempotencyKey,
+                                          String metadata, String note);
+
     WalletTransaction hold(Long userId, BigDecimal amount, WalletTransactionType type,
                            String referenceType, String referenceId, String idempotencyKey,
                            String metadata, String note);

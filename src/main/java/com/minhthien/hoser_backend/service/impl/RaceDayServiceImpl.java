@@ -1,14 +1,22 @@
 package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.dto.request.RaceFinalizeResultRequest;
+import com.minhthien.hoser_backend.dto.request.RaceComplaintRequest;
+import com.minhthien.hoser_backend.dto.request.RaceComplaintResolveRequest;
+import com.minhthien.hoser_backend.dto.request.RaceGateUpdateRequest;
+import com.minhthien.hoser_backend.dto.request.RaceParticipantCheckInRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationReviewRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationWithdrawRequest;
+import com.minhthien.hoser_backend.dto.request.RaceRefereeAssignmentRequest;
 import com.minhthien.hoser_backend.dto.request.RaceResultEntryRequest;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengeStandingResponse;
+import com.minhthien.hoser_backend.dto.response.RaceComplaintResponse;
+import com.minhthien.hoser_backend.dto.response.RaceParticipantResponse;
 import com.minhthien.hoser_backend.dto.response.RaceRegistrationResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResultResponse;
+import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import com.minhthien.hoser_backend.entity.*;
 import com.minhthien.hoser_backend.enums.*;
 import com.minhthien.hoser_backend.exception.BadRequestException;
@@ -16,6 +24,7 @@ import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.*;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
+import com.minhthien.hoser_backend.service.MailService;
 import com.minhthien.hoser_backend.service.RaceDayService;
 import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
@@ -35,11 +44,13 @@ public class RaceDayServiceImpl implements RaceDayService {
     private static final String RACE_REGISTRATION_REF = "RACE_REGISTRATION";
     private static final String RACE_RESULT_REF = "RACE_RESULT";
     private static final String JOCKEY_CHALLENGE_REF = "JOCKEY_CHALLENGE";
+    private static final String RACE_COMPLAINT_REF = "RACE_COMPLAINT";
 
     private final RaceRepository raceRepository;
     private final RaceRegistrationRepository raceRegistrationRepository;
     private final RaceParticipantRepository raceParticipantRepository;
     private final RaceResultRepository raceResultRepository;
+    private final RaceComplaintRepository raceComplaintRepository;
     private final JockeyChallengeResultRepository jockeyChallengeResultRepository;
     private final JockeyInvitationRepository jockeyInvitationRepository;
     private final TournamentRepository tournamentRepository;
@@ -47,6 +58,7 @@ public class RaceDayServiceImpl implements RaceDayService {
     private final WalletService walletService;
     private final TournamentServiceImpl tournamentService;
     private final FinanceSettingsService financeSettingsService;
+    private final MailService mailService;
 
     @Override
     @Transactional
@@ -60,6 +72,9 @@ public class RaceDayServiceImpl implements RaceDayService {
         Tournament tournament = race.getTournament();
         if (tournament.getStatus() != TournamentStatus.OPEN_REGISTRATION) {
             throw new BadRequestException("Tournament registration is not open");
+        }
+        if (owner.getOwnerBanUntil() != null && owner.getOwnerBanUntil().isAfter(LocalDateTime.now())) {
+            throw new BadRequestException("Owner is banned from race registration until " + owner.getOwnerBanUntil());
         }
         JockeyInvitation invitation = jockeyInvitationRepository.findById(request.getJockeyInvitationId())
                 .orElseThrow(() -> new ResourceNotFoundException("JockeyInvitation", "id",
@@ -194,6 +209,98 @@ public class RaceDayServiceImpl implements RaceDayService {
     }
 
     @Override
+    @Transactional
+    public TournamentResponse scheduleTournament(Long adminId, Long tournamentId) {
+        requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can schedule tournaments");
+        Tournament tournament = tournamentRepository.findById(tournamentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tournament", "id", tournamentId));
+        if (tournament.getStatus() != TournamentStatus.OPEN_REGISTRATION
+                && tournament.getStatus() != TournamentStatus.REGISTRATION_CLOSED) {
+            throw new BadRequestException("Only open or registration-closed tournaments can be scheduled");
+        }
+        List<Race> races = raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(tournamentId);
+        if (races.isEmpty()) {
+            throw new BadRequestException("Tournament must have races before scheduling");
+        }
+        long participantCount = raceParticipantRepository.countByRaceTournamentId(tournamentId);
+        if (participantCount < tournament.getMinTeams()) {
+            throw new BadRequestException("Tournament does not have enough approved participants");
+        }
+        if (participantCount > tournament.getMaxTeams()) {
+            throw new BadRequestException("Tournament exceeds maximum team limit");
+        }
+        races.forEach(this::validateRaceReadyForSchedule);
+        validateJockeyScheduleAcrossTournament(races);
+        tournament.setStatus(TournamentStatus.SCHEDULED);
+        races.forEach(race -> race.setStatus(RaceStatus.SCHEDULED));
+        Tournament saved = tournamentRepository.save(tournament);
+        races.forEach(this::sendRaceScheduledEmails);
+        return tournamentService.mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<RaceParticipantResponse> getRaceParticipants(Long adminId, Long raceId) {
+        requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can view race participants");
+        if (!raceRepository.existsById(raceId)) {
+            throw new ResourceNotFoundException("Race", "id", raceId);
+        }
+        return raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(raceId).stream()
+                .map(this::mapParticipant)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public RaceParticipantResponse updateParticipantGate(Long adminId, Long raceId, Long participantId,
+                                                         RaceGateUpdateRequest request) {
+        requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can update participant gates");
+        if (request == null || request.getGateNumber() == null) {
+            throw new BadRequestException("Gate number is required");
+        }
+        if (request.getGateNumber() <= 0) {
+            throw new BadRequestException("Gate number must be greater than zero");
+        }
+        RaceParticipant participant = raceParticipantRepository.findById(participantId)
+                .orElseThrow(() -> new ResourceNotFoundException("RaceParticipant", "id", participantId));
+        if (!participant.getRace().getId().equals(raceId)) {
+            throw new BadRequestException("Participant does not belong to this race");
+        }
+        Race race = participant.getRace();
+        if (race.getStatus() == RaceStatus.RESULT_CONFIRMED || raceResultRepository.existsByRaceId(raceId)) {
+            throw new BadRequestException("Cannot update gate after race result is finalized");
+        }
+        if (raceParticipantRepository.existsByRaceIdAndGateNumberAndIdNot(
+                raceId, request.getGateNumber(), participantId)) {
+            throw new BadRequestException("Gate number already exists in this race");
+        }
+        participant.setGateNumber(request.getGateNumber());
+        return mapParticipant(raceParticipantRepository.save(participant));
+    }
+
+    @Override
+    @Transactional
+    public RaceResponse assignRaceReferee(Long adminId, Long raceId, RaceRefereeAssignmentRequest request) {
+        requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can assign race referees");
+        if (request == null || request.getRefereeId() == null) {
+            throw new BadRequestException("Referee id is required");
+        }
+        Race race = requireRace(raceId);
+        if (race.getStatus() == RaceStatus.RESULT_CONFIRMED || raceResultRepository.existsByRaceId(raceId)) {
+            throw new BadRequestException("Cannot update referee after race result is finalized");
+        }
+        User referee = requireUser(request.getRefereeId());
+        requireRole(referee, UserRole.REFEREE, "Race referee must have REFEREE role");
+        validateRefereeAvailability(race, referee.getId());
+        race.setReferee(referee);
+        Race saved = raceRepository.save(race);
+        if (saved.getTournament().getStatus() == TournamentStatus.SCHEDULED) {
+            mailService.sendRaceScheduled(saved, referee);
+        }
+        return tournamentService.mapRace(saved);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<RaceResponse> getRefereeRaces(Long refereeId) {
         User referee = requireUser(refereeId);
@@ -205,12 +312,54 @@ public class RaceDayServiceImpl implements RaceDayService {
 
     @Override
     @Transactional
+    public RaceParticipantResponse checkInRaceParticipant(Long refereeId, Long raceId, Long participantId,
+                                                          RaceParticipantCheckInRequest request) {
+        Race race = requireAssignedRefereeRace(refereeId, raceId);
+        if (race.getStatus() != RaceStatus.SCHEDULED) {
+            throw new BadRequestException("Only scheduled races can be checked in");
+        }
+        if (request == null || request.getStatus() == null) {
+            throw new BadRequestException("Check-in status is required");
+        }
+        if (!List.of(RaceParticipantStatus.CHECKED_IN, RaceParticipantStatus.ABSENT,
+                RaceParticipantStatus.DISQUALIFIED).contains(request.getStatus())) {
+            throw new BadRequestException("Invalid check-in status");
+        }
+        RaceParticipant participant = raceParticipantRepository.findById(participantId)
+                .orElseThrow(() -> new ResourceNotFoundException("RaceParticipant", "id", participantId));
+        if (!participant.getRace().getId().equals(raceId)) {
+            throw new BadRequestException("Participant does not belong to this race");
+        }
+        participant.setStatus(request.getStatus());
+        participant.setCheckInNote(request.getNote());
+        participant.setCheckedInAt(LocalDateTime.now());
+        participant.setCheckedInBy(refereeId);
+        return mapParticipant(raceParticipantRepository.save(participant));
+    }
+
+    @Override
+    @Transactional
+    public RaceResponse startRace(Long refereeId, Long raceId) {
+        Race race = requireAssignedRefereeRace(refereeId, raceId);
+        if (race.getStatus() != RaceStatus.SCHEDULED) {
+            throw new BadRequestException("Only scheduled races can be started");
+        }
+        long checkedInCount = raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(raceId).stream()
+                .filter(participant -> participant.getStatus() == RaceParticipantStatus.CHECKED_IN)
+                .count();
+        if (checkedInCount < race.getMinParticipants()) {
+            throw new BadRequestException("Race does not have enough checked-in participants");
+        }
+        race.setStatus(RaceStatus.ONGOING);
+        return tournamentService.mapRace(raceRepository.save(race));
+    }
+
+    @Override
+    @Transactional
     public List<RaceResultResponse> finalizeRaceResult(Long refereeId, Long raceId, RaceFinalizeResultRequest request) {
-        User referee = requireUser(refereeId);
-        requireRole(referee, UserRole.REFEREE, "Only referees can finalize race results");
-        Race race = requireRace(raceId);
-        if (race.getReferee() == null || !race.getReferee().getId().equals(refereeId)) {
-            throw new UnauthorizedException("Referee is not assigned to this race");
+        Race race = requireAssignedRefereeRace(refereeId, raceId);
+        if (race.getStatus() != RaceStatus.ONGOING) {
+            throw new BadRequestException("Only ongoing races can be finalized");
         }
         if (race.getStatus() == RaceStatus.RESULT_CONFIRMED || raceResultRepository.existsByRaceId(raceId)) {
             throw new BadRequestException("Race result has already been finalized");
@@ -250,6 +399,101 @@ public class RaceDayServiceImpl implements RaceDayService {
         return raceResultRepository.findByRaceIdOrderByRankAsc(raceId).stream()
                 .map(this::mapResult)
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public RaceComplaintResponse createRaceComplaint(Long ownerId, Long raceId, RaceComplaintRequest request) {
+        User owner = requireUser(ownerId);
+        requireRole(owner, UserRole.OWNER, "Only owners can create race complaints");
+        if (request == null || request.getAccusedParticipantId() == null) {
+            throw new BadRequestException("Accused participant id is required");
+        }
+        if (request.getReason() == null || request.getReason().isBlank()) {
+            throw new BadRequestException("Complaint reason is required");
+        }
+        Race race = requireRace(raceId);
+        if (race.getStatus() != RaceStatus.RESULT_CONFIRMED || race.getResultFinalizedAt() == null) {
+            throw new BadRequestException("Complaints can only be created after race result is confirmed");
+        }
+        if (race.getResultFinalizedAt().plusHours(24).isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Race complaint window has expired");
+        }
+        RaceParticipant accusedParticipant = raceParticipantRepository.findById(request.getAccusedParticipantId())
+                .orElseThrow(() -> new ResourceNotFoundException("RaceParticipant", "id",
+                        request.getAccusedParticipantId()));
+        if (!accusedParticipant.getRace().getId().equals(raceId)) {
+            throw new BadRequestException("Accused participant does not belong to this race");
+        }
+        boolean ownerInRace = raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(raceId).stream()
+                .anyMatch(participant -> participant.getOwner().getId().equals(ownerId));
+        if (!ownerInRace) {
+            throw new UnauthorizedException("Only owners in this race can create complaints");
+        }
+        if (accusedParticipant.getOwner().getId().equals(ownerId)) {
+            throw new BadRequestException("Owner cannot complain about their own participant");
+        }
+        RaceComplaint complaint = RaceComplaint.builder()
+                .race(race)
+                .complainantOwner(owner)
+                .accusedOwner(accusedParticipant.getOwner())
+                .accusedParticipant(accusedParticipant)
+                .reason(request.getReason())
+                .evidenceUrl(request.getEvidenceUrl())
+                .build();
+        RaceComplaint saved = raceComplaintRepository.save(complaint);
+        mailService.sendRaceComplaintCreated(saved);
+        return mapComplaint(saved, false);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<RaceComplaintResponse> getOwnerRaceComplaints(Long ownerId) {
+        User owner = requireUser(ownerId);
+        requireRole(owner, UserRole.OWNER, "Only owners can view race complaints");
+        return raceComplaintRepository.findByComplainantOwnerIdOrAccusedOwnerIdOrderByCreatedAtDesc(ownerId, ownerId)
+                .stream()
+                .map(complaint -> mapComplaint(complaint, complaint.getComplainantOwner().getId().equals(ownerId)))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<RaceComplaintResponse> getAdminRaceComplaints(Long adminId, RaceComplaintStatus status) {
+        requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can view race complaints");
+        List<RaceComplaint> complaints = status == null
+                ? raceComplaintRepository.findAllByOrderByCreatedAtDesc()
+                : raceComplaintRepository.findByStatusOrderByCreatedAtDesc(status);
+        return complaints.stream()
+                .map(complaint -> mapComplaint(complaint, true))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public RaceComplaintResponse resolveRaceComplaint(Long adminId, Long complaintId,
+                                                      RaceComplaintResolveRequest request) {
+        requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can resolve race complaints");
+        if (request == null || request.getStatus() == null) {
+            throw new BadRequestException("Complaint resolution status is required");
+        }
+        RaceComplaint complaint = raceComplaintRepository.findById(complaintId)
+                .orElseThrow(() -> new ResourceNotFoundException("RaceComplaint", "id", complaintId));
+        if (complaint.getStatus() != RaceComplaintStatus.PENDING) {
+            throw new BadRequestException("Only pending complaints can be resolved");
+        }
+        if (request.getStatus() == RaceComplaintStatus.REJECTED) {
+            complaint.setStatus(RaceComplaintStatus.REJECTED);
+            complaint.setAdminNote(request.getAdminNote());
+            complaint.setResolvedAt(LocalDateTime.now());
+            complaint.setResolvedBy(adminId);
+            return mapComplaint(raceComplaintRepository.save(complaint), true);
+        }
+        if (request.getStatus() != RaceComplaintStatus.APPROVED) {
+            throw new BadRequestException("Complaint can only be approved or rejected");
+        }
+        approveComplaint(adminId, complaint, request);
+        return mapComplaint(raceComplaintRepository.save(complaint), true);
     }
 
     @Override
@@ -352,6 +596,127 @@ public class RaceDayServiceImpl implements RaceDayService {
         }
     }
 
+    private void approveComplaint(Long adminId, RaceComplaint complaint, RaceComplaintResolveRequest request) {
+        BigDecimal fineAmount = defaultZero(request.getFineAmount());
+        BigDecimal ownerPrizeReturnAmount = raceResultRepository.findByParticipantId(
+                        complaint.getAccusedParticipant().getId())
+                .map(this::ownerRacePrizeAmount)
+                .orElse(BigDecimal.ZERO);
+        BigDecimal totalPenalty = ownerPrizeReturnAmount.add(fineAmount);
+
+        complaint.setStatus(RaceComplaintStatus.APPROVED);
+        complaint.setAdminNote(request.getAdminNote());
+        complaint.setOwnerPrizeReturnAmount(ownerPrizeReturnAmount);
+        complaint.setFineAmount(fineAmount);
+        complaint.setTotalPenaltyAmount(totalPenalty);
+        complaint.setBanUntil(request.getBanUntil());
+        complaint.setResolvedAt(LocalDateTime.now());
+        complaint.setResolvedBy(adminId);
+
+        User accusedOwner = complaint.getAccusedOwner();
+        accusedOwner.setOwnerBanUntil(request.getBanUntil());
+        accusedOwner.setOwnerBanReason("Race complaint approved: " + complaint.getId());
+        userRepository.save(accusedOwner);
+
+        if (ownerPrizeReturnAmount.compareTo(BigDecimal.ZERO) > 0) {
+            String key = "race-complaint:%d:owner-prize-return".formatted(complaint.getId());
+            walletService.debitAllowNegative(accusedOwner.getId(), ownerPrizeReturnAmount,
+                    WalletTransactionType.ADJUSTMENT, RACE_COMPLAINT_REF, String.valueOf(complaint.getId()),
+                    key, "participantId=" + complaint.getAccusedParticipant().getId(),
+                    "Race complaint owner prize return");
+            walletService.creditAdmin(ownerPrizeReturnAmount, WalletTransactionType.ADJUSTMENT,
+                    RACE_COMPLAINT_REF, String.valueOf(complaint.getId()),
+                    "race-complaint:%d:admin-owner-prize-return".formatted(complaint.getId()),
+                    "participantId=" + complaint.getAccusedParticipant().getId(),
+                    "Race complaint owner prize returned");
+            complaint.setOwnerPrizeReturnDebitKey(key);
+        }
+        if (fineAmount.compareTo(BigDecimal.ZERO) > 0) {
+            String key = "race-complaint:%d:fine".formatted(complaint.getId());
+            walletService.debitAllowNegative(accusedOwner.getId(), fineAmount,
+                    WalletTransactionType.ADJUSTMENT, RACE_COMPLAINT_REF, String.valueOf(complaint.getId()),
+                    key, "participantId=" + complaint.getAccusedParticipant().getId(),
+                    "Race complaint fine");
+            walletService.creditAdmin(fineAmount, WalletTransactionType.ADJUSTMENT,
+                    RACE_COMPLAINT_REF, String.valueOf(complaint.getId()),
+                    "race-complaint:%d:admin-fine".formatted(complaint.getId()),
+                    "participantId=" + complaint.getAccusedParticipant().getId(),
+                    "Race complaint fine received");
+            complaint.setFineDebitKey(key);
+        }
+    }
+
+    private Race requireAssignedRefereeRace(Long refereeId, Long raceId) {
+        User referee = requireUser(refereeId);
+        requireRole(referee, UserRole.REFEREE, "Only referees can operate assigned races");
+        Race race = requireRace(raceId);
+        if (race.getReferee() == null || !race.getReferee().getId().equals(refereeId)) {
+            throw new UnauthorizedException("Referee is not assigned to this race");
+        }
+        return race;
+    }
+
+    private void validateRaceReadyForSchedule(Race race) {
+        if (race.getStatus() == RaceStatus.RESULT_CONFIRMED || race.getStatus() == RaceStatus.CANCELLED) {
+            throw new BadRequestException("Completed or cancelled races cannot be scheduled");
+        }
+        List<RaceParticipant> participants = raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(race.getId());
+        if (participants.size() > race.getMaxParticipants()) {
+            throw new BadRequestException("Race exceeds maximum participant capacity");
+        }
+        Set<Integer> gates = new HashSet<>();
+        for (RaceParticipant participant : participants) {
+            Integer gateNumber = participant.getGateNumber();
+            if (gateNumber == null || gateNumber <= 0) {
+                throw new BadRequestException("Gate number must be greater than zero");
+            }
+            if (!gates.add(gateNumber)) {
+                throw new BadRequestException("Gate number already exists in this race");
+            }
+        }
+        if (race.getReferee() != null) {
+            validateRefereeAvailability(race, race.getReferee().getId());
+        }
+    }
+
+    private void validateRefereeAvailability(Race race, Long refereeId) {
+        if (raceRepository.existsRefereeOverlapExcludingRace(refereeId, race.getId(),
+                race.getScheduledStartAt(), race.getScheduledEndAt())) {
+            throw new BadRequestException("Referee cannot be assigned to overlapping races");
+        }
+    }
+
+    private void validateJockeyScheduleAcrossTournament(List<Race> races) {
+        Map<Long, List<Race>> racesByJockey = new HashMap<>();
+        for (Race race : races) {
+            for (RaceParticipant participant : raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(race.getId())) {
+                Long jockeyId = participant.getJockey().getId();
+                for (Race existingRace : racesByJockey.getOrDefault(jockeyId, List.of())) {
+                    if (overlaps(existingRace, race)) {
+                        throw new BadRequestException("Jockey cannot join overlapping races");
+                    }
+                }
+                racesByJockey.computeIfAbsent(jockeyId, ignored -> new ArrayList<>()).add(race);
+            }
+        }
+    }
+
+    private boolean overlaps(Race first, Race second) {
+        return first.getScheduledStartAt().isBefore(second.getScheduledEndAt())
+                && first.getScheduledEndAt().isAfter(second.getScheduledStartAt());
+    }
+
+    private void sendRaceScheduledEmails(Race race) {
+        Set<User> recipients = new LinkedHashSet<>();
+        raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(race.getId()).forEach(participant -> {
+            recipients.add(participant.getOwner());
+            recipients.add(participant.getJockey());
+        });
+        recipients.add(race.getReferee());
+        recipients.remove(null);
+        recipients.forEach(recipient -> mailService.sendRaceScheduled(race, recipient));
+    }
+
     private void debitRegistrationFee(RaceRegistration registration) {
         BigDecimal entryFee = defaultZero(registration.getEntryFeeAmount());
         if (entryFee.compareTo(BigDecimal.ZERO) > 0) {
@@ -385,13 +750,17 @@ public class RaceDayServiceImpl implements RaceDayService {
         Set<Long> participantIds = new HashSet<>();
         Set<Integer> ranks = new HashSet<>();
         for (RaceResultEntryRequest entry : entries) {
-            if (!participantById.containsKey(entry.getParticipantId())) {
+            RaceParticipant participant = participantById.get(entry.getParticipantId());
+            if (participant == null) {
                 throw new BadRequestException("Result participant does not belong to this race");
             }
             if (!participantIds.add(entry.getParticipantId())) {
                 throw new BadRequestException("Duplicate participant in race result");
             }
             if (entry.getStatus() == RaceParticipantStatus.FINISHED) {
+                if (participant.getStatus() != RaceParticipantStatus.CHECKED_IN) {
+                    throw new BadRequestException("Only checked-in participants can finish a race");
+                }
                 if (entry.getRank() == null || entry.getRank() <= 0) {
                     throw new BadRequestException("Finished participants must have a positive rank");
                 }
@@ -639,6 +1008,52 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .reviewedAt(registration.getReviewedAt())
                 .createdAt(registration.getCreatedAt())
                 .updatedAt(registration.getUpdatedAt())
+                .build();
+    }
+
+    private RaceParticipantResponse mapParticipant(RaceParticipant participant) {
+        return RaceParticipantResponse.builder()
+                .id(participant.getId())
+                .raceId(participant.getRace().getId())
+                .registrationId(participant.getRegistration().getId())
+                .ownerId(participant.getOwner().getId())
+                .ownerUsername(participant.getOwner().getUsername())
+                .horseId(participant.getHorse().getId())
+                .horseName(participant.getHorse().getName())
+                .jockeyId(participant.getJockey().getId())
+                .jockeyUsername(participant.getJockey().getUsername())
+                .gateNumber(participant.getGateNumber())
+                .status(participant.getStatus())
+                .checkInNote(participant.getCheckInNote())
+                .checkedInAt(participant.getCheckedInAt())
+                .checkedInBy(participant.getCheckedInBy())
+                .createdAt(participant.getCreatedAt())
+                .build();
+    }
+
+    private RaceComplaintResponse mapComplaint(RaceComplaint complaint, boolean revealComplainant) {
+        RaceParticipant accused = complaint.getAccusedParticipant();
+        return RaceComplaintResponse.builder()
+                .id(complaint.getId())
+                .raceId(complaint.getRace().getId())
+                .raceName(complaint.getRace().getName())
+                .complainantOwnerId(revealComplainant ? complaint.getComplainantOwner().getId() : null)
+                .accusedOwnerId(complaint.getAccusedOwner().getId())
+                .accusedOwnerUsername(complaint.getAccusedOwner().getUsername())
+                .accusedParticipantId(accused.getId())
+                .accusedHorseId(accused.getHorse().getId())
+                .accusedHorseName(accused.getHorse().getName())
+                .status(complaint.getStatus())
+                .reason(complaint.getReason())
+                .evidenceUrl(complaint.getEvidenceUrl())
+                .adminNote(complaint.getAdminNote())
+                .ownerPrizeReturnAmount(defaultZero(complaint.getOwnerPrizeReturnAmount()))
+                .fineAmount(defaultZero(complaint.getFineAmount()))
+                .totalPenaltyAmount(defaultZero(complaint.getTotalPenaltyAmount()))
+                .banUntil(complaint.getBanUntil())
+                .createdAt(complaint.getCreatedAt())
+                .resolvedAt(complaint.getResolvedAt())
+                .resolvedBy(complaint.getResolvedBy())
                 .build();
     }
 

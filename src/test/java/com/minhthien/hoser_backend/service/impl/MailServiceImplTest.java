@@ -1,5 +1,7 @@
 package com.minhthien.hoser_backend.service.impl;
 
+import com.minhthien.hoser_backend.entity.Race;
+import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.UserRole;
 import jakarta.mail.Multipart;
@@ -14,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mail.javamail.JavaMailSender;
 
 import java.util.Properties;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
@@ -51,6 +54,20 @@ class MailServiceImplTest {
         assertThat(message.getSubject()).isEqualTo("HORSE - Hồ sơ đăng ký vai trò cần bổ sung");
         assertThat(html).contains("A &lt;b&gt;bad&lt;/b&gt; reason");
         assertThat(html).doesNotContain("A <b>bad</b> reason");
+    }
+
+    @Test
+    void sendRaceReminderBuildsRaceScheduleEmail() throws Exception {
+        MailServiceImpl service = service();
+
+        service.sendRaceReminder(race(), user());
+
+        MimeMessage message = sentMessage();
+        String html = htmlContent(message);
+        assertThat(message.getSubject()).isEqualTo("HORSE - Race reminder");
+        assertThat(html).contains("Sprint Heat");
+        assertThat(html).contains("Summer Race Day");
+        assertThat(html).contains("2026-06-16 09:00");
     }
 
     private MailServiceImpl service() {
@@ -98,6 +115,21 @@ class MailServiceImplTest {
                 .email("alice@example.com")
                 .role(UserRole.USER)
                 .active(true)
+                .build();
+    }
+
+    private Race race() {
+        Tournament tournament = Tournament.builder()
+                .id(10L)
+                .name("Summer Race Day")
+                .location("Ho Chi Minh City")
+                .build();
+        return Race.builder()
+                .id(20L)
+                .tournament(tournament)
+                .name("Sprint Heat")
+                .scheduledStartAt(LocalDateTime.of(2026, 6, 16, 9, 0))
+                .scheduledEndAt(LocalDateTime.of(2026, 6, 16, 9, 30))
                 .build();
     }
 }

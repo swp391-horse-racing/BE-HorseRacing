@@ -65,6 +65,11 @@ public class User implements UserDetails
     @Builder.Default
     private Boolean active = true;
 
+    private LocalDateTime ownerBanUntil;
+
+    @Column(length = 1000)
+    private String ownerBanReason;
+
     @Column(length = 255)
     private String avatarUrl;
 

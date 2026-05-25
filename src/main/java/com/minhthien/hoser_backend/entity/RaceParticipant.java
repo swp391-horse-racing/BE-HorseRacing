@@ -57,6 +57,13 @@ public class RaceParticipant {
     @Builder.Default
     private RaceParticipantStatus status = RaceParticipantStatus.REGISTERED;
 
+    @Column(length = 1000)
+    private String checkInNote;
+
+    private LocalDateTime checkedInAt;
+
+    private Long checkedInBy;
+
     @Column(nullable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();

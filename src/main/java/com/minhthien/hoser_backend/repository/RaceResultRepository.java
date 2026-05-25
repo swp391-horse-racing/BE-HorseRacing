@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface RaceResultRepository extends JpaRepository<RaceResult, Long> {
@@ -18,6 +19,9 @@ public interface RaceResultRepository extends JpaRepository<RaceResult, Long> {
 
     @EntityGraph(attributePaths = {"race", "participant", "owner", "horse", "jockey"})
     List<RaceResult> findByPayoutStatusOrderByFinalizedAtAscIdAsc(RacePayoutStatus payoutStatus);
+
+    @EntityGraph(attributePaths = {"race", "participant", "owner", "horse", "jockey"})
+    Optional<RaceResult> findByParticipantId(Long participantId);
 
     boolean existsByRaceId(Long raceId);
 }

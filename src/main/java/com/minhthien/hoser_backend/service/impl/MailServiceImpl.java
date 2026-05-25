@@ -1,5 +1,7 @@
 package com.minhthien.hoser_backend.service.impl;
 
+import com.minhthien.hoser_backend.entity.Race;
+import com.minhthien.hoser_backend.entity.RaceComplaint;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.service.MailService;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.time.format.DateTimeFormatter;
 
 @Service
 public class MailServiceImpl implements MailService {
@@ -20,6 +23,10 @@ public class MailServiceImpl implements MailService {
     private static final String ROLE_APPROVED_SUBJECT = "HORSE - Hồ sơ đăng ký vai trò đã được duyệt";
     private static final String ROLE_REJECTED_SUBJECT = "HORSE - Hồ sơ đăng ký vai trò cần bổ sung";
     private static final int OTP_EXPIRES_IN_MINUTES = 10;
+    private static final String RACE_SCHEDULED_SUBJECT = "HORSE - Race schedule published";
+    private static final String RACE_REMINDER_SUBJECT = "HORSE - Race reminder";
+    private static final String RACE_COMPLAINT_SUBJECT = "HORSE - Race complaint received";
+    private static final DateTimeFormatter RACE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final JavaMailSender mailSender;
 
@@ -55,6 +62,39 @@ public class MailServiceImpl implements MailService {
                 ROLE_REJECTED_SUBJECT,
                 buildRejectedPlainText(user, role, reason),
                 buildRejectedHtml(user, role, reason)
+        );
+    }
+
+    @Override
+    public void sendRaceScheduled(Race race, User recipient) {
+        sendHtmlEmail(
+                recipient.getEmail(),
+                RACE_SCHEDULED_SUBJECT,
+                buildRacePlainText(race, recipient, "Race schedule has been published."),
+                buildRaceHtml(race, recipient, "Race schedule has been published.",
+                        "Please review your race time and assignment.")
+        );
+    }
+
+    @Override
+    public void sendRaceReminder(Race race, User recipient) {
+        sendHtmlEmail(
+                recipient.getEmail(),
+                RACE_REMINDER_SUBJECT,
+                buildRacePlainText(race, recipient, "Your race is coming soon."),
+                buildRaceHtml(race, recipient, "Your race is coming soon.",
+                        "This is the 3-day reminder for the scheduled race.")
+        );
+    }
+
+    @Override
+    public void sendRaceComplaintCreated(RaceComplaint complaint) {
+        User recipient = complaint.getAccusedOwner();
+        sendHtmlEmail(
+                recipient.getEmail(),
+                RACE_COMPLAINT_SUBJECT,
+                buildComplaintPlainText(complaint),
+                buildComplaintHtml(complaint)
         );
     }
 
@@ -191,6 +231,109 @@ public class MailServiceImpl implements MailService {
         );
     }
 
+    private String buildRacePlainText(Race race, User recipient, String heading) {
+        return """
+                HORSE
+
+                Xin chao %s,
+
+                %s
+
+                Race: %s
+                Tournament: %s
+                Location: %s
+                Start: %s
+                End: %s
+
+                Email nay duoc gui tu dong tu HORSE.
+                """.formatted(
+                displayName(recipient),
+                heading,
+                race.getName(),
+                race.getTournament().getName(),
+                race.getTournament().getLocation(),
+                formatRaceTime(race.getScheduledStartAt()),
+                formatRaceTime(race.getScheduledEndAt())
+        );
+    }
+
+    private String buildRaceHtml(Race race, User recipient, String heading, String intro) {
+        String safeName = HtmlUtils.htmlEscape(displayName(recipient));
+        String safeRace = HtmlUtils.htmlEscape(race.getName());
+        String safeTournament = HtmlUtils.htmlEscape(race.getTournament().getName());
+        String safeLocation = HtmlUtils.htmlEscape(race.getTournament().getLocation());
+
+        return layoutHtml(
+                heading,
+                "Race schedule",
+                heading,
+                "Xin chao " + safeName + ", " + HtmlUtils.htmlEscape(intro),
+                """
+                        <div style="background:#eef6ff;border:1px solid #bfdbfe;border-radius:8px;padding:18px 20px;text-align:left;">
+                            <div style="font-size:13px;line-height:18px;color:#1d4ed8;font-weight:700;text-transform:uppercase;">%s</div>
+                            <div style="margin-top:8px;font-size:15px;line-height:24px;color:#172033;">Tournament: %s</div>
+                            <div style="font-size:15px;line-height:24px;color:#172033;">Location: %s</div>
+                            <div style="font-size:15px;line-height:24px;color:#172033;">Start: %s</div>
+                            <div style="font-size:15px;line-height:24px;color:#172033;">End: %s</div>
+                        </div>
+                        """.formatted(
+                        safeRace,
+                        safeTournament,
+                        safeLocation,
+                        HtmlUtils.htmlEscape(formatRaceTime(race.getScheduledStartAt())),
+                        HtmlUtils.htmlEscape(formatRaceTime(race.getScheduledEndAt()))
+                ),
+                "",
+                "#1d4ed8",
+                "#dbeafe"
+        );
+    }
+
+    private String buildComplaintPlainText(RaceComplaint complaint) {
+        return """
+                HORSE
+
+                Xin chao %s,
+
+                Race cua ban vua nhan duoc mot khieu nai. Thong tin nguoi khieu nai duoc an theo quy trinh xu ly.
+
+                Race: %s
+                Horse: %s
+                Reason: %s
+
+                Admin se xem xet va phan hoi ket qua xu ly.
+                """.formatted(
+                displayName(complaint.getAccusedOwner()),
+                complaint.getRace().getName(),
+                complaint.getAccusedParticipant().getHorse().getName(),
+                complaint.getReason()
+        );
+    }
+
+    private String buildComplaintHtml(RaceComplaint complaint) {
+        String safeName = HtmlUtils.htmlEscape(displayName(complaint.getAccusedOwner()));
+        String safeRace = HtmlUtils.htmlEscape(complaint.getRace().getName());
+        String safeHorse = HtmlUtils.htmlEscape(complaint.getAccusedParticipant().getHorse().getName());
+        String safeReason = HtmlUtils.htmlEscape(complaint.getReason());
+
+        return layoutHtml(
+                RACE_COMPLAINT_SUBJECT,
+                "Race complaint",
+                "Race cua ban co khieu nai",
+                "Xin chao " + safeName + ", thong tin nguoi khieu nai duoc an trong email nay.",
+                """
+                        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:18px 20px;text-align:left;">
+                            <div style="font-size:13px;line-height:18px;color:#9a3412;font-weight:700;text-transform:uppercase;">%s</div>
+                            <div style="margin-top:8px;font-size:15px;line-height:24px;color:#172033;">Horse: %s</div>
+                            <div style="font-size:15px;line-height:24px;color:#172033;">Reason: %s</div>
+                        </div>
+                        """.formatted(safeRace, safeHorse, safeReason),
+                "",
+                "#b45309",
+                "#ffedd5"
+        );
+    }
+
     private String layoutHtml(String title, String subtitle, String heading, String intro, String mainContent,
                               String noticeContent, String headerColor, String subtitleColor) {
         String safeTitle = HtmlUtils.htmlEscape(title);
@@ -277,5 +420,9 @@ public class MailServiceImpl implements MailService {
             case ADMIN -> "Quản trị viên";
             case USER -> "Người dùng";
         };
+    }
+
+    private String formatRaceTime(java.time.LocalDateTime value) {
+        return value == null ? "" : value.format(RACE_TIME_FORMAT);
     }
 }

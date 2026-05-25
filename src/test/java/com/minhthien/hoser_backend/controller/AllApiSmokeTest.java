@@ -1,6 +1,8 @@
 package com.minhthien.hoser_backend.controller;
 
 import com.minhthien.hoser_backend.entity.PaymentOrder;
+import com.minhthien.hoser_backend.entity.Race;
+import com.minhthien.hoser_backend.entity.RaceComplaint;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.JockeyStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
@@ -139,6 +141,8 @@ class AllApiSmokeTest {
         Long horseId = latestHorseId();
         exerciseJockeyInvitationApis(horseId);
         exerciseRaceRegistrationApis();
+        exerciseRaceSchedulingApis();
+        exercisePhase9RaceOperationApis();
         exerciseWalletPaymentAndWithdrawalApis();
         exercisePublicWebhookApis();
     }
@@ -353,6 +357,49 @@ class AllApiSmokeTest {
                 """));
     }
 
+    private void exerciseRaceSchedulingApis() throws Exception {
+        assertNonServerError(put("/api/v1/admin/tournaments/999999/schedule")
+                .header("Authorization", bearer(adminToken)));
+        assertNonServerError(get("/api/v1/admin/races/999999/participants")
+                .header("Authorization", bearer(adminToken)));
+        assertNonServerError(putJson("/api/v1/admin/races/999999/participants/999999/gate", adminToken, """
+                {
+                  "gateNumber": 1
+                }
+                """));
+        assertNonServerError(putJson("/api/v1/admin/races/999999/referee", adminToken, """
+                {
+                  "refereeId": %d
+                }
+                """.formatted(admin.getId())));
+    }
+
+    private void exercisePhase9RaceOperationApis() throws Exception {
+        assertNonServerError(putJson("/api/v1/referee/races/999999/participants/999999/check-in", jockeyToken, """
+                {
+                  "status": "CHECKED_IN",
+                  "note": "Smoke check-in"
+                }
+                """));
+        assertNonServerError(put("/api/v1/referee/races/999999/start")
+                .header("Authorization", bearer(jockeyToken)));
+        assertNonServerError(postJson("/api/v1/races/999999/complaints", ownerToken, """
+                {
+                  "accusedParticipantId": 999999,
+                  "reason": "Smoke complaint",
+                  "evidenceUrl": "https://example.com/evidence"
+                }
+                """));
+        assertOk(get("/api/v1/owner/race-complaints").header("Authorization", bearer(ownerToken)));
+        assertOk(get("/api/v1/admin/race-complaints").header("Authorization", bearer(adminToken)));
+        assertNonServerError(putJson("/api/v1/admin/race-complaints/999999/resolve", adminToken, """
+                {
+                  "status": "REJECTED",
+                  "adminNote": "Smoke resolve"
+                }
+                """));
+    }
+
     private void exerciseWalletPaymentAndWithdrawalApis() throws Exception {
         assertOk(get("/api/v1/wallets/me").header("Authorization", bearer(userToken)));
         assertOk(get("/api/v1/wallets/me/transactions").header("Authorization", bearer(userToken)));
@@ -437,6 +484,9 @@ class AllApiSmokeTest {
     }
 
     private void exercisePublicWebhookApis() throws Exception {
+        assertOk(get("/api/v1/wallets/top-up/payos/webhook"));
+        assertOk(get("/api/payos/webhook"));
+
         assertOk(postJson("/api/v1/wallets/me/deposit-orders", userToken, """
                 {
                   "amount": 10000
@@ -615,6 +665,18 @@ class AllApiSmokeTest {
 
                 @Override
                 public void sendRoleApplicationRejected(User user, UserRole role, String reason) {
+                }
+
+                @Override
+                public void sendRaceScheduled(Race race, User recipient) {
+                }
+
+                @Override
+                public void sendRaceReminder(Race race, User recipient) {
+                }
+
+                @Override
+                public void sendRaceComplaintCreated(RaceComplaint complaint) {
                 }
             };
         }

@@ -1,15 +1,24 @@
 package com.minhthien.hoser_backend.controller;
 
 import com.minhthien.hoser_backend.dto.request.RaceFinalizeResultRequest;
+import com.minhthien.hoser_backend.dto.request.RaceComplaintRequest;
+import com.minhthien.hoser_backend.dto.request.RaceComplaintResolveRequest;
+import com.minhthien.hoser_backend.dto.request.RaceGateUpdateRequest;
+import com.minhthien.hoser_backend.dto.request.RaceParticipantCheckInRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationReviewRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationWithdrawRequest;
+import com.minhthien.hoser_backend.dto.request.RaceRefereeAssignmentRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengeStandingResponse;
+import com.minhthien.hoser_backend.dto.response.RaceComplaintResponse;
+import com.minhthien.hoser_backend.dto.response.RaceParticipantResponse;
 import com.minhthien.hoser_backend.dto.response.RaceRegistrationResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResultResponse;
+import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.enums.RaceComplaintStatus;
 import com.minhthien.hoser_backend.service.RaceDayService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
@@ -78,11 +87,64 @@ public class RaceDayController {
                 raceDayService.rejectRaceRegistration(currentUser.getId(), id, request)));
     }
 
+    @PutMapping("/admin/tournaments/{id}/schedule")
+    public ResponseEntity<ApiResponse<TournamentResponse>> scheduleTournament(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Tournament scheduled",
+                raceDayService.scheduleTournament(currentUser.getId(), id)));
+    }
+
+    @GetMapping("/admin/races/{id}/participants")
+    public ResponseEntity<ApiResponse<List<RaceParticipantResponse>>> getRaceParticipants(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                raceDayService.getRaceParticipants(currentUser.getId(), id)));
+    }
+
+    @PutMapping("/admin/races/{raceId}/participants/{participantId}/gate")
+    public ResponseEntity<ApiResponse<RaceParticipantResponse>> updateParticipantGate(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long raceId,
+            @PathVariable Long participantId,
+            @Valid @RequestBody RaceGateUpdateRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Participant gate updated",
+                raceDayService.updateParticipantGate(currentUser.getId(), raceId, participantId, request)));
+    }
+
+    @PutMapping("/admin/races/{id}/referee")
+    public ResponseEntity<ApiResponse<RaceResponse>> assignRaceReferee(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @Valid @RequestBody RaceRefereeAssignmentRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Race referee assigned",
+                raceDayService.assignRaceReferee(currentUser.getId(), id, request)));
+    }
+
     @GetMapping("/referee/races")
     public ResponseEntity<ApiResponse<List<RaceResponse>>> getRefereeRaces(
             @AuthenticationPrincipal User currentUser) {
         return ResponseEntity.ok(ApiResponse.success(
                 raceDayService.getRefereeRaces(currentUser.getId())));
+    }
+
+    @PutMapping("/referee/races/{id}/participants/{participantId}/check-in")
+    public ResponseEntity<ApiResponse<RaceParticipantResponse>> checkInRaceParticipant(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @PathVariable Long participantId,
+            @Valid @RequestBody RaceParticipantCheckInRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Race participant checked in",
+                raceDayService.checkInRaceParticipant(currentUser.getId(), id, participantId, request)));
+    }
+
+    @PutMapping("/referee/races/{id}/start")
+    public ResponseEntity<ApiResponse<RaceResponse>> startRace(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Race started",
+                raceDayService.startRace(currentUser.getId(), id)));
     }
 
     @PostMapping("/referee/races/{id}/results/finalize")
@@ -97,6 +159,39 @@ public class RaceDayController {
     @GetMapping("/races/{id}/results")
     public ResponseEntity<ApiResponse<List<RaceResultResponse>>> getRaceResults(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(raceDayService.getRaceResults(id)));
+    }
+
+    @PostMapping("/races/{id}/complaints")
+    public ResponseEntity<ApiResponse<RaceComplaintResponse>> createRaceComplaint(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @Valid @RequestBody RaceComplaintRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Race complaint created",
+                raceDayService.createRaceComplaint(currentUser.getId(), id, request)));
+    }
+
+    @GetMapping("/owner/race-complaints")
+    public ResponseEntity<ApiResponse<List<RaceComplaintResponse>>> getOwnerRaceComplaints(
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(
+                raceDayService.getOwnerRaceComplaints(currentUser.getId())));
+    }
+
+    @GetMapping("/admin/race-complaints")
+    public ResponseEntity<ApiResponse<List<RaceComplaintResponse>>> getAdminRaceComplaints(
+            @AuthenticationPrincipal User currentUser,
+            @RequestParam(required = false) RaceComplaintStatus status) {
+        return ResponseEntity.ok(ApiResponse.success(
+                raceDayService.getAdminRaceComplaints(currentUser.getId(), status)));
+    }
+
+    @PutMapping("/admin/race-complaints/{id}/resolve")
+    public ResponseEntity<ApiResponse<RaceComplaintResponse>> resolveRaceComplaint(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @Valid @RequestBody RaceComplaintResolveRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Race complaint resolved",
+                raceDayService.resolveRaceComplaint(currentUser.getId(), id, request)));
     }
 
     @PutMapping("/admin/tournaments/{id}/jockey-challenge/finalize")
