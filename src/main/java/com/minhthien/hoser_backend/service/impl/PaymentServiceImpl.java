@@ -1,6 +1,7 @@
 package com.minhthien.hoser_backend.service.impl;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.minhthien.hoser_backend.dto.request.CreateDepositOrderRequest;
 import com.minhthien.hoser_backend.dto.request.DepositCallbackRequest;
@@ -15,24 +16,31 @@ import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.repository.PaymentOrderRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
-import com.minhthien.hoser_backend.service.PayOsGateway;
 import com.minhthien.hoser_backend.service.PaymentCallbackLogService;
 import com.minhthien.hoser_backend.service.PaymentService;
 import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import vn.payos.exception.PayOSException;
-import vn.payos.model.v2.paymentRequests.CreatePaymentLinkRequest;
-import vn.payos.model.v2.paymentRequests.CreatePaymentLinkResponse;
-import vn.payos.model.webhooks.Webhook;
-import vn.payos.model.webhooks.WebhookData;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestOperations;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -40,22 +48,40 @@ import java.util.UUID;
 public class PaymentServiceImpl implements PaymentService {
 
     private static final String REFERENCE_TYPE = "DEPOSIT_ORDER";
+    private static final DateTimeFormatter ZALOPAY_TRANS_DATE = DateTimeFormatter.ofPattern("yyMMdd");
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
 
     private final PaymentOrderRepository paymentOrderRepository;
     private final UserRepository userRepository;
     private final WalletService walletService;
     private final PaymentCallbackLogService paymentCallbackLogService;
-    private final PayOsGateway payOsGateway;
     private final ObjectMapper objectMapper;
+    private final RestOperations paymentRestOperations;
 
     @Value("${app.payment.callback-token:dev-callback-token}")
     private String callbackToken;
 
-    @Value("${payos.return-url}")
-    private String payOsReturnUrl;
+    @Value("${zalopay.app-id}")
+    private String zaloPayAppId;
 
-    @Value("${payos.cancel-url}")
-    private String payOsCancelUrl;
+    @Value("${zalopay.key1}")
+    private String zaloPayKey1;
+
+    @Value("${zalopay.key2}")
+    private String zaloPayKey2;
+
+    @Value("${zalopay.create-url}")
+    private String zaloPayCreateUrl;
+
+    @Value("${zalopay.query-url}")
+    private String zaloPayQueryUrl;
+
+    @Value("${zalopay.redirect-url}")
+    private String zaloPayRedirectUrl;
+
+    @Value("${zalopay.callback-url}")
+    private String zaloPayCallbackUrl;
 
     @Override
     @Transactional
@@ -82,19 +108,20 @@ public class PaymentServiceImpl implements PaymentService {
         PaymentOrder savedOrder = paymentOrderRepository.save(order);
 
         Long orderCode = savedOrder.getId();
-        String description = buildPayOsDescription(orderCode);
-        CreatePaymentLinkResponse payOsResponse = createPayOsPaymentLink(savedOrder, orderCode, description);
+        String appTransId = buildZaloPayAppTransId(orderCode);
+        String description = buildZaloPayDescription(orderCode);
+        Map<String, Object> zaloPayResponse = createZaloPayOrder(savedOrder, user, appTransId, description);
+        String checkoutUrl = asString(zaloPayResponse.get("order_url"));
+        if (checkoutUrl == null || checkoutUrl.isBlank()) {
+            throw new BadRequestException("ZaloPay did not return an order URL");
+        }
 
         savedOrder.setOrderCode(orderCode);
-        savedOrder.setPaymentLinkId(payOsResponse.getPaymentLinkId());
-        savedOrder.setCheckoutUrl(payOsResponse.getCheckoutUrl());
-        savedOrder.setQrCode(payOsResponse.getQrCode());
+        savedOrder.setPaymentLinkId(appTransId);
+        savedOrder.setCheckoutUrl(checkoutUrl);
+        savedOrder.setQrCode(asString(zaloPayResponse.get("qr_code")));
         savedOrder.setTransferContent(description);
-        savedOrder.setMetadata(toMetadata(payOsResponse));
-        if (payOsResponse.getExpiredAt() != null) {
-            savedOrder.setExpiredAt(LocalDateTime.ofInstant(
-                    java.time.Instant.ofEpochSecond(payOsResponse.getExpiredAt()), ZoneId.systemDefault()));
-        }
+        savedOrder.setMetadata(toMetadata(zaloPayResponse));
         return mapToResponse(paymentOrderRepository.save(savedOrder));
     }
 
@@ -155,21 +182,39 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    public PaymentOrderResponse handlePayOsWebhook(Webhook webhook) {
-        DepositCallbackRequest logRequest = toCallbackRequest(webhook, PaymentOrderStatus.FAILED, null);
+    public Map<String, Object> handleZaloPayReturn(Map<String, String> params) {
+        String appTransId = params.get("apptransid");
+        DepositCallbackRequest logRequest = toZaloPayLogRequest(appTransId, null, PaymentOrderStatus.FAILED, params);
+        if (!isValidZaloPayRedirect(params)) {
+            paymentCallbackLogService.record(logRequest, false, false, "Invalid ZaloPay redirect checksum");
+            return response("return_code", 2, "return_message", "Invalid checksum");
+        }
+        Map<String, Object> queryResponse = queryZaloPayOrder(appTransId);
+        return processZaloPayQueryResponse(appTransId, queryResponse);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> handleZaloPayCallback(Map<String, Object> payload) {
+        String data = asString(payload.get("data"));
+        String mac = asString(payload.get("mac"));
+        if (data == null || mac == null || !hmacSha256(zaloPayKey2, data).equalsIgnoreCase(mac)) {
+            paymentCallbackLogService.record(toZaloPayLogRequest(null, null, PaymentOrderStatus.FAILED, payload),
+                    false, false, "Invalid ZaloPay callback mac");
+            return response("return_code", 2, "return_message", "Invalid");
+        }
+
         try {
-            WebhookData data = payOsGateway.verifyWebhook(webhook);
-            PaymentOrderStatus status = isPayOsPaid(data) ? PaymentOrderStatus.PAID : PaymentOrderStatus.FAILED;
-            logRequest = toCallbackRequest(data, status);
-            PaymentOrderResponse response = processPayOsWebhook(data, status);
-            paymentCallbackLogService.record(logRequest, true, true, null);
-            return response;
-        } catch (PayOSException | IllegalArgumentException ex) {
-            paymentCallbackLogService.record(logRequest, false, false, ex.getMessage());
-            throw new BadRequestException("Invalid payOS webhook");
-        } catch (RuntimeException ex) {
-            paymentCallbackLogService.record(logRequest, true, false, ex.getMessage());
-            throw ex;
+            Map<String, Object> dataMap = objectMapper.readValue(data, MAP_TYPE);
+            String appTransId = asString(dataMap.get("app_trans_id"));
+            String providerTransactionId = asString(dataMap.get("zp_trans_id"));
+            BigDecimal amount = toBigDecimal(dataMap.get("amount"));
+            processZaloPayPaid(appTransId, providerTransactionId, amount, dataMap, "ZaloPay callback paid");
+            return response("return_code", 1, "return_message", "success");
+        } catch (RuntimeException | JsonProcessingException ex) {
+            paymentCallbackLogService.record(toZaloPayLogRequest(null, null, PaymentOrderStatus.FAILED, payload),
+                    true, false, ex.getMessage());
+            return response("return_code", 0, "return_message", ex.getMessage());
         }
     }
 
@@ -206,36 +251,155 @@ public class PaymentServiceImpl implements PaymentService {
         return mapToResponse(paymentOrderRepository.save(order));
     }
 
-    private PaymentOrderResponse processPayOsWebhook(WebhookData data, PaymentOrderStatus status) {
-        PaymentOrder order = findPayOsOrder(data);
+    private Map<String, Object> createZaloPayOrder(PaymentOrder order, User user, String appTransId, String description) {
+        String appUser = user.getUsername() == null || user.getUsername().isBlank() ? "hoser" : user.getUsername();
+        long amount = order.getAmount().longValueExact();
+        long appTime = System.currentTimeMillis();
+        String item = "[]";
+        String embedData = "{}";
+        String macData = String.join("|",
+                zaloPayAppId,
+                appTransId,
+                appUser,
+                String.valueOf(amount),
+                String.valueOf(appTime),
+                embedData,
+                item);
 
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("app_id", zaloPayAppId);
+        body.add("app_trans_id", appTransId);
+        body.add("app_user", appUser);
+        body.add("app_time", String.valueOf(appTime));
+        body.add("amount", String.valueOf(amount));
+        body.add("item", item);
+        body.add("embed_data", embedData);
+        body.add("description", description);
+        body.add("callback_url", zaloPayCallbackUrl);
+        body.add("redirect_url", zaloPayRedirectUrl);
+        body.add("mac", hmacSha256(zaloPayKey1, macData));
+
+        Map<String, Object> response = postForm(zaloPayCreateUrl, body);
+        if (toInt(response.get("return_code")) != 1) {
+            throw new BadRequestException("Could not create ZaloPay order: "
+                    + response.getOrDefault("return_message", response));
+        }
+        return response;
+    }
+
+    private Map<String, Object> queryZaloPayOrder(String appTransId) {
+        if (appTransId == null || appTransId.isBlank()) {
+            throw new BadRequestException("ZaloPay transaction reference is required");
+        }
+        String macData = zaloPayAppId + "|" + appTransId + "|" + zaloPayKey1;
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("app_id", zaloPayAppId);
+        body.add("app_trans_id", appTransId);
+        body.add("mac", hmacSha256(zaloPayKey1, macData));
+        return postForm(zaloPayQueryUrl, body);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> postForm(String url, MultiValueMap<String, String> body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        ResponseEntity<Map> response = paymentRestOperations.postForEntity(url, new HttpEntity<>(body, headers), Map.class);
+        if (response.getBody() == null) {
+            throw new BadRequestException("Empty ZaloPay response");
+        }
+        return new LinkedHashMap<>((Map<String, Object>) response.getBody());
+    }
+
+    private Map<String, Object> processZaloPayQueryResponse(String appTransId, Map<String, Object> queryResponse) {
+        int returnCode = toInt(queryResponse.get("return_code"));
+        if (returnCode == 1) {
+            String providerTransactionId = asString(queryResponse.get("zp_trans_id"));
+            BigDecimal amount = toBigDecimal(queryResponse.get("amount"));
+            processZaloPayPaid(appTransId, providerTransactionId, amount, queryResponse, "ZaloPay query paid");
+        } else if (returnCode == 2) {
+            processZaloPayFailed(appTransId, queryResponse);
+        }
+        return queryResponse;
+    }
+
+    private void processZaloPayPaid(String appTransId,
+                                    String providerTransactionId,
+                                    BigDecimal amount,
+                                    Object metadata,
+                                    String note) {
+        PaymentOrder order = findZaloPayOrder(appTransId);
+        DepositCallbackRequest logRequest = toZaloPayLogRequest(appTransId, providerTransactionId, PaymentOrderStatus.PAID, metadata);
+        if (amount != null && order.getAmount().compareTo(amount) != 0) {
+            paymentCallbackLogService.record(logRequest, true, false, "Invalid amount");
+            throw new BadRequestException("Invalid amount");
+        }
         if (order.getStatus() == PaymentOrderStatus.PAID) {
-            return mapToResponse(order);
+            paymentCallbackLogService.record(logRequest, true, true, null);
+            return;
         }
         if (order.getStatus() == PaymentOrderStatus.CANCELLED || order.getStatus() == PaymentOrderStatus.EXPIRED) {
-            throw new BadRequestException("Payment order cannot be paid from status " + order.getStatus());
+            paymentCallbackLogService.record(logRequest, true, false, "Order cannot be updated from status " + order.getStatus());
+            return;
         }
 
-        String metadata = toMetadata(data);
-        if (status != PaymentOrderStatus.PAID) {
-            order.setStatus(status);
-            order.setProviderTransactionId(resolvePayOsTransactionId(data));
-            order.setMetadata(metadata);
-            return mapToResponse(paymentOrderRepository.save(order));
-        }
-
-        validatePayOsPaidData(order, data);
+        String metadataJson = toMetadata(metadata);
         String referenceId = order.getReferenceCode();
         walletService.credit(order.getUser().getId(), order.getAmount(), WalletTransactionType.DEPOSIT,
-                REFERENCE_TYPE, referenceId, "deposit:user:" + referenceId, metadata, "payOS deposit paid");
+                REFERENCE_TYPE, referenceId, "deposit:user:" + referenceId, metadataJson, note);
         walletService.creditAdmin(order.getAmount(), WalletTransactionType.DEPOSIT,
-                REFERENCE_TYPE, referenceId, "deposit:admin:" + referenceId, metadata, "payOS deposit paid");
+                REFERENCE_TYPE, referenceId, "deposit:admin:" + referenceId, metadataJson, note);
 
         order.setStatus(PaymentOrderStatus.PAID);
-        order.setProviderTransactionId(resolvePayOsTransactionId(data));
-        order.setMetadata(metadata);
+        order.setProviderTransactionId(providerTransactionId);
+        order.setMetadata(metadataJson);
         order.setPaidAt(LocalDateTime.now());
-        return mapToResponse(paymentOrderRepository.save(order));
+        paymentOrderRepository.save(order);
+        paymentCallbackLogService.record(logRequest, true, true, null);
+    }
+
+    private void processZaloPayFailed(String appTransId, Object metadata) {
+        PaymentOrder order = findZaloPayOrder(appTransId);
+        DepositCallbackRequest logRequest = toZaloPayLogRequest(appTransId, null, PaymentOrderStatus.FAILED, metadata);
+        if (order.getStatus() == PaymentOrderStatus.PENDING) {
+            order.setStatus(PaymentOrderStatus.FAILED);
+            order.setMetadata(toMetadata(metadata));
+            paymentOrderRepository.save(order);
+        }
+        paymentCallbackLogService.record(logRequest, true, true, null);
+    }
+
+    private PaymentOrder findZaloPayOrder(String appTransId) {
+        return paymentOrderRepository.findByPaymentLinkId(appTransId)
+                .orElseThrow(() -> new ResourceNotFoundException("PaymentOrder", "appTransId", appTransId));
+    }
+
+    private boolean isValidZaloPayRedirect(Map<String, String> params) {
+        String checksum = params.get("checksum");
+        if (checksum == null || checksum.isBlank()) {
+            return false;
+        }
+        String checksumData = String.join("|",
+                nullToEmpty(params.get("appid")),
+                nullToEmpty(params.get("apptransid")),
+                nullToEmpty(params.get("pmcid")),
+                nullToEmpty(params.get("bankcode")),
+                nullToEmpty(params.get("amount")),
+                nullToEmpty(params.get("discountamount")),
+                nullToEmpty(params.get("status")));
+        return hmacSha256(zaloPayKey2, checksumData).equalsIgnoreCase(checksum);
+    }
+
+    private DepositCallbackRequest toZaloPayLogRequest(String appTransId,
+                                                       String providerTransactionId,
+                                                       PaymentOrderStatus status,
+                                                       Object metadata) {
+        DepositCallbackRequest request = new DepositCallbackRequest();
+        request.setReferenceCode(appTransId == null || appTransId.isBlank() ? "ZALOPAY_UNKNOWN" : appTransId);
+        request.setStatus(status);
+        request.setCallbackToken("ZALOPAY_SIGNATURE");
+        request.setProviderTransactionId(providerTransactionId);
+        request.setMetadata(toMetadata(metadata));
+        return request;
     }
 
     private void validateAmount(BigDecimal amount) {
@@ -258,10 +422,10 @@ public class PaymentServiceImpl implements PaymentService {
 
     private PaymentProvider resolveProvider(PaymentProvider provider) {
         if (provider == null) {
-            return PaymentProvider.PAYOS;
+            return PaymentProvider.ZALOPAY;
         }
-        if (provider != PaymentProvider.PAYOS) {
-            throw new BadRequestException("Only PAYOS provider is supported");
+        if (provider != PaymentProvider.ZALOPAY) {
+            throw new BadRequestException("Only ZALOPAY provider is supported");
         }
         return provider;
     }
@@ -270,99 +434,59 @@ public class PaymentServiceImpl implements PaymentService {
         return callbackToken != null && !callbackToken.isBlank() && callbackToken.equals(token);
     }
 
-    private CreatePaymentLinkResponse createPayOsPaymentLink(PaymentOrder order, Long orderCode, String description) {
-        CreatePaymentLinkRequest paymentLinkRequest = CreatePaymentLinkRequest.builder()
-                .orderCode(orderCode)
-                .amount(order.getAmount().longValueExact())
-                .description(description)
-                .returnUrl(payOsReturnUrl)
-                .cancelUrl(payOsCancelUrl)
-                .expiredAt(toEpochSecond(order.getExpiredAt()))
-                .build();
+    private String buildZaloPayAppTransId(Long orderCode) {
+        return LocalDate.now().format(ZALOPAY_TRANS_DATE) + "_" + orderCode;
+    }
+
+    private String buildZaloPayDescription(Long orderCode) {
+        return "HOSER deposit order " + orderCode;
+    }
+
+    private String hmacSha256(String key, String data) {
         try {
-            return payOsGateway.createPaymentLink(paymentLinkRequest);
-        } catch (PayOSException ex) {
-            throw new BadRequestException("Could not create payOS payment link: " + ex.getMessage());
+            Mac hmac = Mac.getInstance("HmacSHA256");
+            hmac.init(new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] bytes = hmac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder(bytes.length * 2);
+            for (byte item : bytes) {
+                result.append(String.format("%02x", item));
+            }
+            return result.toString();
+        } catch (Exception ex) {
+            throw new BadRequestException("Could not sign ZaloPay request");
         }
     }
 
-    private PaymentOrder findPayOsOrder(WebhookData data) {
-        if (data.getOrderCode() != null) {
-            return paymentOrderRepository.findByOrderCode(data.getOrderCode())
-                    .orElseThrow(() -> new ResourceNotFoundException("PaymentOrder", "orderCode", data.getOrderCode()));
-        }
-        if (data.getPaymentLinkId() != null && !data.getPaymentLinkId().isBlank()) {
-            return paymentOrderRepository.findByPaymentLinkId(data.getPaymentLinkId())
-                    .orElseThrow(() -> new ResourceNotFoundException("PaymentOrder", "paymentLinkId", data.getPaymentLinkId()));
-        }
-        throw new BadRequestException("payOS webhook missing order code and payment link id");
+    private Map<String, Object> response(String key1, Object value1, String key2, Object value2) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put(key1, value1);
+        response.put(key2, value2);
+        return response;
     }
 
-    private void validatePayOsPaidData(PaymentOrder order, WebhookData data) {
-        if (data.getAmount() == null || order.getAmount().compareTo(BigDecimal.valueOf(data.getAmount())) != 0) {
-            throw new BadRequestException("payOS webhook amount does not match payment order");
+    private int toInt(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
         }
-        if (data.getPaymentLinkId() != null && order.getPaymentLinkId() != null
-                && !order.getPaymentLinkId().equals(data.getPaymentLinkId())) {
-            throw new BadRequestException("payOS webhook payment link id does not match payment order");
+        if (value == null) {
+            return 0;
         }
+        return Integer.parseInt(value.toString());
     }
 
-    private boolean isPayOsPaid(WebhookData data) {
-        return "00".equals(data.getCode());
-    }
-
-    private DepositCallbackRequest toCallbackRequest(Webhook webhook, PaymentOrderStatus status, String metadata) {
-        DepositCallbackRequest request = new DepositCallbackRequest();
-        WebhookData data = webhook == null ? null : webhook.getData();
-        request.setReferenceCode(resolveLogReference(data));
-        request.setStatus(status);
-        request.setCallbackToken("PAYOS_SIGNATURE");
-        request.setProviderTransactionId(data == null ? null : resolvePayOsTransactionId(data));
-        request.setMetadata(metadata == null ? toMetadata(webhook) : metadata);
-        return request;
-    }
-
-    private DepositCallbackRequest toCallbackRequest(WebhookData data, PaymentOrderStatus status) {
-        DepositCallbackRequest request = new DepositCallbackRequest();
-        request.setReferenceCode(resolveLogReference(data));
-        request.setStatus(status);
-        request.setCallbackToken("PAYOS_SIGNATURE");
-        request.setProviderTransactionId(resolvePayOsTransactionId(data));
-        request.setMetadata(toMetadata(data));
-        return request;
-    }
-
-    private String resolveLogReference(WebhookData data) {
-        if (data == null) {
-            return "PAYOS_UNKNOWN";
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null || value.toString().isBlank()) {
+            return null;
         }
-        if (data.getOrderCode() != null) {
-            return String.valueOf(data.getOrderCode());
-        }
-        if (data.getPaymentLinkId() != null && !data.getPaymentLinkId().isBlank()) {
-            return data.getPaymentLinkId();
-        }
-        return "PAYOS_UNKNOWN";
+        return new BigDecimal(value.toString());
     }
 
-    private String resolvePayOsTransactionId(WebhookData data) {
-        if (data.getReference() != null && !data.getReference().isBlank()) {
-            return data.getReference();
-        }
-        return data.getPaymentLinkId();
+    private String asString(Object value) {
+        return value == null ? null : value.toString();
     }
 
-    private Long toEpochSecond(LocalDateTime value) {
-        return value == null ? null : value.atZone(ZoneId.systemDefault()).toEpochSecond();
-    }
-
-    private String buildPayOsDescription(Long orderCode) {
-        String suffix = String.valueOf(orderCode);
-        if (suffix.length() > 7) {
-            suffix = suffix.substring(suffix.length() - 7);
-        }
-        return "HS" + suffix;
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private String toMetadata(Object value) {

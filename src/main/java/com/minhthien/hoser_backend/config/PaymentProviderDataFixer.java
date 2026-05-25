@@ -25,8 +25,8 @@ public class PaymentProviderDataFixer implements CommandLineRunner {
         }
         entityManager.createNativeQuery("""
                 update payment_orders
-                set provider = 'PAYOS'
-                where provider in ('MANUAL', 'BANK_TRANSFER')
+                set provider = 'ZALOPAY'
+                where provider is null or provider <> 'ZALOPAY'
                 """).executeUpdate();
     }
 

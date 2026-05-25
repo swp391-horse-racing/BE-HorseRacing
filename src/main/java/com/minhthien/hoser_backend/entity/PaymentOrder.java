@@ -53,7 +53,7 @@ public class PaymentOrder {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     @Builder.Default
-    private PaymentProvider provider = PaymentProvider.PAYOS;
+    private PaymentProvider provider = PaymentProvider.ZALOPAY;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -118,7 +118,7 @@ public class PaymentOrder {
             currency = DEFAULT_CURRENCY;
         }
         if (provider == null) {
-            provider = PaymentProvider.PAYOS;
+            provider = PaymentProvider.ZALOPAY;
         }
         if (status == null) {
             status = PaymentOrderStatus.PENDING;

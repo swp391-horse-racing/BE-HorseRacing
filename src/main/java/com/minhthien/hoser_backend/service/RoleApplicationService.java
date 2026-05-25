@@ -30,5 +30,9 @@ public interface RoleApplicationService {
 
     RoleApplicationResponse approveApplication(Long profileId, Long adminId);
 
+    RoleApplicationResponse approveApplication(Long profileId, Long adminId, UserRole role);
+
     RoleApplicationResponse rejectApplication(Long profileId, Long adminId, AdminReviewRequest request);
+
+    RoleApplicationResponse rejectApplication(Long profileId, Long adminId, UserRole role, AdminReviewRequest request);
 }

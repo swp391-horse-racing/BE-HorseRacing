@@ -51,17 +51,19 @@ public class AdminRoleApplicationController {
     @PutMapping("/{profileId}/approve")
     public ResponseEntity<ApiResponse<RoleApplicationResponse>> approveRoleApplication(
             @AuthenticationPrincipal User currentUser,
-            @PathVariable Long profileId) {
+            @PathVariable Long profileId,
+            @RequestParam(required = false) UserRole role) {
         return ResponseEntity.ok(ApiResponse.success("Role application approved",
-                roleApplicationService.approveApplication(profileId, currentUser.getId())));
+                roleApplicationService.approveApplication(profileId, currentUser.getId(), role)));
     }
 
     @PutMapping("/{profileId}/reject")
     public ResponseEntity<ApiResponse<RoleApplicationResponse>> rejectRoleApplication(
             @AuthenticationPrincipal User currentUser,
             @PathVariable Long profileId,
+            @RequestParam(required = false) UserRole role,
             @Valid @RequestBody AdminReviewRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Role application rejected",
-                roleApplicationService.rejectApplication(profileId, currentUser.getId(), request)));
+                roleApplicationService.rejectApplication(profileId, currentUser.getId(), role, request)));
     }
 }

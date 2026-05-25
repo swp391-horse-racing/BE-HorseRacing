@@ -1,184 +1,158 @@
 # Full API Test Guide
 
-Huong dan nay dung de test tu DB trang sau khi ban recreate database.
-
-Base URL mac dinh:
+Base URL:
 
 ```text
 http://localhost:8080
 ```
 
-Header chung cho API can login:
+Common headers for JSON APIs:
 
 ```http
-Authorization: Bearer {{token}}
 Content-Type: application/json
+Authorization: Bearer {{token}}
 ```
 
-Voi API upload file, dung Postman `form-data`, khong set tay `Content-Type`; Postman se tu set multipart boundary.
-
-Admin seed mac dinh khi app start:
-
-```json
-{
-  "email": "admin@example.local",
-  "password": "Admin12345!"
-}
-```
-
-## 1. Cach chay va test nhanh
-
-1. Start backend.
-2. Login admin bang API `POST /api/v1/auth/login`, luu `accessToken` vao `{{adminToken}}`.
-3. Register cac account test: owner, jockey, referee, spectator.
-4. Dung admin doi role nhanh bang `PUT /api/v1/admin/users/{userId}/role`, hoac test dung flow application approve.
-5. Owner tao horse, admin approve horse.
-6. Jockey tao profile, admin approve profile neu can.
-7. Owner moi jockey, jockey accept.
-8. Admin tao tournament + race, open registration.
-9. Owner dang ky race, admin approve tao participant.
-10. Admin schedule tournament, doi gate/referee neu can.
-11. Referee check-in, start race, finalize result.
-12. Owner tao complaint trong 24 gio sau result, admin resolve.
-
-Goi test unit/smoke:
-
-```powershell
-.\mvnw.cmd test
-```
-
-Swagger/OpenAPI neu app dang bat springdoc:
+Suggested Postman variables:
 
 ```text
-http://localhost:8080/swagger-ui/index.html
-http://localhost:8080/v3/api-docs
+baseUrl=http://localhost:8080
+userToken=
+ownerToken=
+jockeyToken=
+refereeToken=
+adminToken=
+userId=1
+ownerId=2
+jockeyId=3
+refereeId=4
+horseId=1
+jockeyInvitationId=1
+tournamentId=1
+raceId=1
+registrationId=1
+participantId=1
+complaintId=1
+paymentOrderId=1
+withdrawalId=1
+roleApplicationId=1
 ```
 
-## 2. Bien Postman nen tao
-
-```text
-baseUrl = http://localhost:8080
-adminToken =
-ownerToken =
-jockeyToken =
-refereeToken =
-spectatorToken =
-
-ownerUserId =
-jockeyUserId =
-refereeUserId =
-horseId =
-jockeyId =
-jockeyInvitationId =
-tournamentId =
-raceId =
-raceRegistrationId =
-participantId1 =
-participantId2 =
-complaintId =
-paymentOrderId =
-withdrawalId =
-```
-
-## 3. Auth APIs
-
-### Register user
-
-`POST /api/v1/auth/register`
+All response bodies normally follow:
 
 ```json
 {
-  "username": "owner01",
-  "fullName": "Owner One",
-  "email": "owner01@example.com",
-  "phone": "0900000001",
-  "password": "Password123!"
+  "success": true,
+  "message": "OK",
+  "data": {}
 }
 ```
 
-Tao them user mau:
+The only exception is the ZaloPay callback endpoint, which returns:
 
 ```json
 {
-  "username": "jockey01",
-  "fullName": "Jockey One",
-  "email": "jockey01@example.com",
-  "phone": "0900000002",
-  "password": "Password123!"
+  "return_code": 1,
+  "return_message": "success"
 }
+```
+
+## Auth
+
+### Register
+
+```http
+POST {{baseUrl}}/api/v1/auth/register
 ```
 
 ```json
 {
-  "username": "referee01",
-  "fullName": "Referee One",
-  "email": "referee01@example.com",
-  "phone": "0900000003",
+  "username": "testuser",
+  "fullName": "Test User",
+  "email": "testuser@example.com",
+  "phone": "0900000000",
   "password": "Password123!"
 }
 ```
+
+Save `data.token` as `userToken`.
 
 ### Login
 
-`POST /api/v1/auth/login`
+```http
+POST {{baseUrl}}/api/v1/auth/login
+```
 
 ```json
 {
-  "email": "owner01@example.com",
+  "email": "testuser@example.com",
   "password": "Password123!"
 }
 ```
 
-Response tra token. Luu token theo role.
+### Current User
 
-### Current user
+```http
+GET {{baseUrl}}/api/v1/auth/me
+Authorization: Bearer {{userToken}}
+```
 
-`GET /api/v1/auth/me`
+No body.
 
-Body: none.
+### Update Password
 
-### Update password
-
-`PUT /api/v1/auth/password`
+```http
+PUT {{baseUrl}}/api/v1/auth/password
+Authorization: Bearer {{userToken}}
+```
 
 ```json
 {
   "currentPassword": "Password123!",
-  "newPassword": "NewPassword123!"
+  "newPassword": "Password456!"
 }
 ```
 
 ### Logout
 
-`POST /api/v1/auth/logout`
+```http
+POST {{baseUrl}}/api/v1/auth/logout
+Authorization: Bearer {{userToken}}
+```
 
-Body: none.
+No body.
 
-### Forgot password
+### Forgot Password
 
-`POST /api/v1/auth/forgot-password`
+```http
+POST {{baseUrl}}/api/v1/auth/forgot-password
+```
 
 ```json
 {
-  "email": "owner01@example.com"
+  "email": "testuser@example.com"
 }
 ```
 
-### Reset password
+### Reset Password
 
-`POST /api/v1/auth/reset-password`
+```http
+POST {{baseUrl}}/api/v1/auth/reset-password
+```
 
 ```json
 {
-  "email": "owner01@example.com",
+  "email": "testuser@example.com",
   "otp": "123456",
-  "newPassword": "Password123!"
+  "newPassword": "Password789!"
 }
 ```
 
-### Google login
+### Google Login
 
-`POST /api/v1/auth/google`
+```http
+POST {{baseUrl}}/api/v1/auth/google
+```
 
 ```json
 {
@@ -186,9 +160,11 @@ Body: none.
 }
 ```
 
-### Facebook login
+### Facebook Login
 
-`POST /api/v1/auth/facebook`
+```http
+POST {{baseUrl}}/api/v1/auth/facebook
+```
 
 ```json
 {
@@ -196,310 +172,455 @@ Body: none.
 }
 ```
 
-## 4. User/Admin APIs
+## User Profile
 
-### Get/update my profile
+### Get My Profile
 
-`GET /api/v1/users/me/profile`
+```http
+GET {{baseUrl}}/api/v1/users/me/profile
+Authorization: Bearer {{userToken}}
+```
 
-Body: none.
+No body.
 
-`PUT /api/v1/users/me/profile` with JSON:
+### Update My Profile JSON
+
+```http
+PUT {{baseUrl}}/api/v1/users/me/profile
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+```
 
 ```json
 {
-  "fullName": "Owner One Updated",
-  "phone": "0900000099",
+  "fullName": "Test User Updated",
+  "phone": "0900000001",
   "location": "Ho Chi Minh City"
 }
 ```
 
-`PUT /api/v1/users/me/profile` with multipart form-data:
+### Update My Profile With Avatar
 
-```text
-fullName = Owner One Updated
-phone = 0900000099
-location = Ho Chi Minh City
-avatar = file
+```http
+PUT {{baseUrl}}/api/v1/users/me/profile
+Authorization: Bearer {{userToken}}
+Content-Type: multipart/form-data
 ```
 
-### Admin user list/detail/status/role
+Form-data:
 
-`GET /api/v1/admin/users`
+```text
+fullName=Test User Updated
+phone=0900000001
+location=Ho Chi Minh City
+avatar=@avatar.png
+```
 
-`GET /api/v1/admin/users/active`
+## Role Applications
 
-`GET /api/v1/admin/users/deactivated`
+### Submit Owner Application
 
-`GET /api/v1/admin/users/{id}`
+```http
+POST {{baseUrl}}/api/v1/role-applications/owner
+Authorization: Bearer {{userToken}}
+Content-Type: multipart/form-data
+```
 
-`PUT /api/v1/admin/users/{userId}/deactivate`
+Form-data:
 
-`PUT /api/v1/admin/users/{userId}/activate`
+```text
+stableName=Victory Stable
+experienceYears=5
+address=District 1, Ho Chi Minh City
+bio=Owner bio
+verificationDocument=@owner-document.pdf
+```
 
-`PUT /api/v1/admin/users/{userId}/role`
+### Submit Jockey Application
+
+```http
+POST {{baseUrl}}/api/v1/role-applications/jockey
+Authorization: Bearer {{userToken}}
+Content-Type: multipart/form-data
+```
+
+Form-data:
+
+```text
+licenseNumber=JOCKEY-001
+experienceYears=3
+heightCm=170
+weightKg=58
+hirePrice=50000
+bio=Jockey bio
+awards=Local champion
+specialties=Sprint
+avatar=@avatar.png
+achievements=@achievement.png
+licenseDocument=@license.pdf
+```
+
+### Submit Spectator Application
+
+```http
+POST {{baseUrl}}/api/v1/role-applications/spectator
+Authorization: Bearer {{userToken}}
+```
 
 ```json
 {
-  "role": "OWNER"
+  "displayName": "Horse Fan",
+  "phone": "0900000002",
+  "location": "Ho Chi Minh City",
+  "favoriteHorseBreed": "Thoroughbred",
+  "bio": "I love horse racing"
 }
 ```
 
-Role hop le:
+### Submit Referee Application
 
-```text
-USER, OWNER, ADMIN, JOCKEY, SPECTATOR, REFEREE
+```http
+POST {{baseUrl}}/api/v1/role-applications/referee
+Authorization: Bearer {{userToken}}
+Content-Type: multipart/form-data
 ```
 
-`GET /api/v1/admin/payout-debts`
-
-## 5. Role Application APIs
-
-Neu muon test day du flow approve role, dung cac API nay thay vi admin set role truc tiep.
-
-### Owner application
-
-`POST /api/v1/role-applications/owner` multipart form-data:
+Form-data:
 
 ```text
-stableName = Star Stable
-experienceYears = 5
-address = 123 Nguyen Trai, HCMC
-bio = Owner bio
-verificationDocument = file
+licenseNumber=REF-001
+experienceYears=4
+specialty=Race referee
+bio=Referee bio
+certificationDocument=@certificate.pdf
 ```
 
-### Jockey application
+### Get My Role Application
 
-`POST /api/v1/role-applications/jockey` multipart form-data:
-
-```text
-licenseNumber = JOCKEY-LIC-001
-experienceYears = 3
-heightCm = 165
-weightKg = 55
-hirePrice = 500000
-bio = Jockey bio
-awards = Local cup 2025
-specialties = Sprint
-avatar = file
-achievements = file
-licenseDocument = file
+```http
+GET {{baseUrl}}/api/v1/role-applications/me
+Authorization: Bearer {{userToken}}
 ```
 
-### Spectator application
+No body.
 
-`POST /api/v1/role-applications/spectator`
+## Admin Role Applications
+
+### List Applications
+
+```http
+GET {{baseUrl}}/api/v1/admin/role-applications?role=OWNER&status=PENDING
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### List By Role
+
+```http
+GET {{baseUrl}}/api/v1/admin/role-applications/role/OWNER
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### List By Status
+
+```http
+GET {{baseUrl}}/api/v1/admin/role-applications/status/PENDING
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Approve Application
+
+```http
+PUT {{baseUrl}}/api/v1/admin/role-applications/{{roleApplicationId}}/approve?role=OWNER
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+`role` is recommended because different profile tables can all have the same `profileId` such as `1`.
+Allowed values: `OWNER`, `JOCKEY`, `SPECTATOR`, `REFEREE`.
+
+### Reject Application
+
+```http
+PUT {{baseUrl}}/api/v1/admin/role-applications/{{roleApplicationId}}/reject?role=OWNER
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
-  "displayName": "Spectator One",
-  "phone": "0900000004",
-  "location": "HCMC",
-  "favoriteHorseBreed": "Arabian",
-  "bio": "Love horse racing"
+  "reason": "Documents are not valid"
 }
 ```
 
-### Referee application
+`role` is recommended here too. Allowed values: `OWNER`, `JOCKEY`, `SPECTATOR`, `REFEREE`.
 
-`POST /api/v1/role-applications/referee` multipart form-data:
+## Horses
 
-```text
-licenseNumber = REF-LIC-001
-experienceYears = 6
-specialty = Race referee
-bio = Certified referee
-certificationDocument = file
+### Public Approved Horses
+
+```http
+GET {{baseUrl}}/api/v1/horses/approved
 ```
 
-### My role application
+No body.
 
-`GET /api/v1/role-applications/me`
+### Owner Create Horse
 
-### Admin role application review
-
-`GET /api/v1/admin/role-applications`
-
-Query optional:
-
-```text
-?role=OWNER&status=PENDING
+```http
+POST {{baseUrl}}/api/v1/owner/horses
+Authorization: Bearer {{ownerToken}}
+Content-Type: multipart/form-data
 ```
 
-`GET /api/v1/admin/role-applications/role/{role}`
-
-`GET /api/v1/admin/role-applications/status/{status}`
-
-Status hop le:
+Form-data:
 
 ```text
-NONE, PENDING, APPROVED, REJECTED
+name=Thunder
+breed=Thoroughbred
+age=4
+gender=MALE
+color=Bay
+heightCm=160
+weightKg=480
+image=@horse.png
+document=@horse-document.pdf
 ```
 
-`PUT /api/v1/admin/role-applications/{profileId}/approve`
+### Owner List Horses
 
-Body: none.
+```http
+GET {{baseUrl}}/api/v1/owner/horses
+Authorization: Bearer {{ownerToken}}
+```
 
-`PUT /api/v1/admin/role-applications/{profileId}/reject`
+No body.
+
+### Owner Get Horse
+
+```http
+GET {{baseUrl}}/api/v1/owner/horses/{{horseId}}
+Authorization: Bearer {{ownerToken}}
+```
+
+No body.
+
+### Public Get Horse
+
+```http
+GET {{baseUrl}}/api/v1/horses/{{horseId}}
+```
+
+No body.
+
+### Owner Update Horse
+
+```http
+PUT {{baseUrl}}/api/v1/owner/horses/{{horseId}}
+Authorization: Bearer {{ownerToken}}
+Content-Type: multipart/form-data
+```
+
+Form-data:
+
+```text
+name=Thunder Updated
+breed=Thoroughbred
+age=5
+gender=MALE
+color=Bay
+heightCm=162
+weightKg=485
+image=@horse-new.png
+document=@horse-document-new.pdf
+```
+
+### Admin List Horses
+
+```http
+GET {{baseUrl}}/api/v1/admin/horses?status=PENDING
+Authorization: Bearer {{adminToken}}
+```
+
+No body. `status`: `PENDING`, `APPROVED`, `REJECTED`, `SUSPENDED`.
+
+### Admin Approve Horse
+
+```http
+PUT {{baseUrl}}/api/v1/admin/horses/{{horseId}}/approve
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Admin Reject Horse
+
+```http
+PUT {{baseUrl}}/api/v1/admin/horses/{{horseId}}/reject
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
-  "reason": "Document is not clear"
+  "reason": "Horse document is not valid"
 }
 ```
 
-## 6. Horse APIs
+### Admin Suspend Horse
 
-### Owner create horse
-
-`POST /api/v1/owner/horses` multipart form-data:
-
-```text
-name = Thunder
-breed = Arabian
-age = 4
-gender = Male
-color = Black
-heightCm = 160
-weightKg = 450
-image = file
-document = file
+```http
+PUT {{baseUrl}}/api/v1/admin/horses/{{horseId}}/suspend
+Authorization: Bearer {{adminToken}}
 ```
-
-### Owner get/update horse
-
-`GET /api/v1/owner/horses`
-
-`GET /api/v1/owner/horses/{id}`
-
-`GET /api/v1/horses/{id}`
-
-`GET /api/v1/horses/approved`
-
-`PUT /api/v1/owner/horses/{id}` multipart form-data:
-
-```text
-name = Thunder Updated
-breed = Arabian
-age = 5
-gender = Male
-color = Black
-heightCm = 162
-weightKg = 455
-image = file
-document = file
-```
-
-### Admin horse review
-
-`GET /api/v1/admin/horses?status=PENDING`
-
-Horse status:
-
-```text
-PENDING, APPROVED, REJECTED, SUSPENDED
-```
-
-`PUT /api/v1/admin/horses/{id}/approve`
-
-Body: none.
-
-`PUT /api/v1/admin/horses/{id}/reject`
 
 ```json
 {
-  "reason": "Horse document is invalid"
+  "reason": "Health issue"
 }
 ```
 
-`PUT /api/v1/admin/horses/{id}/suspend`
+## Jockey Profiles
 
-```json
-{
-  "reason": "Horse temporarily suspended"
-}
+### Jockey Get My Profile
+
+```http
+GET {{baseUrl}}/api/v1/jockey/profile
+Authorization: Bearer {{jockeyToken}}
 ```
 
-## 7. Jockey Profile and Invitation APIs
+No body.
 
-### Jockey profile
+### Jockey Update Profile
 
-`GET /api/v1/jockey/profile`
+```http
+PUT {{baseUrl}}/api/v1/jockey/profile
+Authorization: Bearer {{jockeyToken}}
+Content-Type: multipart/form-data
+```
 
-`POST /api/v1/jockey/profile` multipart form-data:
+Form-data:
 
 ```text
-licenseNumber = JOCKEY-LIC-001
-experienceYears = 3
-heightCm = 165
-weightKg = 55
-hirePrice = 500000
-bio = Jockey bio
-awards = Local cup 2025
-specialties = Sprint
-avatar = file
-achievements = file
-licenseDocument = file
+licenseNumber=JOCKEY-001
+experienceYears=4
+heightCm=171
+weightKg=59
+hirePrice=60000
+bio=Updated jockey bio
+awards=Updated awards
+specialties=Endurance
+avatar=@avatar-new.png
+achievements=@achievement-new.png
+licenseDocument=@license-new.pdf
 ```
 
-`PUT /api/v1/jockey/profile` multipart form-data:
+### Public Available Jockeys
 
-```text
-licenseNumber = JOCKEY-LIC-001-UPD
-experienceYears = 4
-heightCm = 166
-weightKg = 56
-hirePrice = 600000
-bio = Updated bio
-awards = Updated awards
-specialties = Sprint, endurance
-avatar = file
-achievements = file
-licenseDocument = file
+```http
+GET {{baseUrl}}/api/v1/jockeys/available
 ```
 
-`GET /api/v1/jockeys/available`
+No body.
 
-`GET /api/v1/jockeys/{id}`
+### Public Get Jockey
 
-`GET /api/v1/admin/jockey-profiles?status=PENDING`
-
-Jockey status:
-
-```text
-PENDING, APPROVED, REJECTED, SUSPENDED
+```http
+GET {{baseUrl}}/api/v1/jockeys/{{jockeyId}}
 ```
 
-### Owner invite jockey
+No body.
 
-`POST /api/v1/owner/jockey-invitations`
+### Admin List Jockey Profiles
+
+```http
+GET {{baseUrl}}/api/v1/admin/jockey-profiles?status=PENDING
+Authorization: Bearer {{adminToken}}
+```
+
+No body. `status`: `PENDING`, `APPROVED`, `REJECTED`, `SUSPENDED`.
+
+## Jockey Invitations
+
+### Owner Invite Jockey
+
+```http
+POST {{baseUrl}}/api/v1/owner/jockey-invitations
+Authorization: Bearer {{ownerToken}}
+```
 
 ```json
 {
   "horseId": 1,
-  "jockeyId": 2,
-  "message": "Please ride Thunder"
+  "jockeyId": 3,
+  "message": "Please join my horse team"
 }
 ```
 
-`GET /api/v1/owner/jockey-invitations`
+### Owner List Invitations
 
-`GET /api/v1/owner/jockey-invitations/{id}`
+```http
+GET {{baseUrl}}/api/v1/owner/jockey-invitations
+Authorization: Bearer {{ownerToken}}
+```
 
-`GET /api/v1/owners/me/jockeys`
+No body.
 
-`PUT /api/v1/owner/jockey-invitations/{id}/cancel`
+### Owner Get Invitation
 
-Body: none.
+```http
+GET {{baseUrl}}/api/v1/owner/jockey-invitations/{{jockeyInvitationId}}
+Authorization: Bearer {{ownerToken}}
+```
 
-### Jockey accept/reject invitation
+No body.
 
-`GET /api/v1/jockey/invitations`
+### Owner Accepted Jockeys
 
-`GET /api/v1/jockey/invitations/{id}`
+```http
+GET {{baseUrl}}/api/v1/owners/me/jockeys
+Authorization: Bearer {{ownerToken}}
+```
 
-`PUT /api/v1/jockey/invitations/{id}/accept`
+No body.
+
+### Owner Cancel Invitation
+
+```http
+PUT {{baseUrl}}/api/v1/owner/jockey-invitations/{{jockeyInvitationId}}/cancel
+Authorization: Bearer {{ownerToken}}
+```
+
+No body.
+
+### Jockey List Invitations
+
+```http
+GET {{baseUrl}}/api/v1/jockey/invitations
+Authorization: Bearer {{jockeyToken}}
+```
+
+No body.
+
+### Jockey Get Invitation
+
+```http
+GET {{baseUrl}}/api/v1/jockey/invitations/{{jockeyInvitationId}}
+Authorization: Bearer {{jockeyToken}}
+```
+
+No body.
+
+### Jockey Accept Invitation
+
+```http
+PUT {{baseUrl}}/api/v1/jockey/invitations/{{jockeyInvitationId}}/accept
+Authorization: Bearer {{jockeyToken}}
+```
 
 ```json
 {
@@ -507,7 +628,12 @@ Body: none.
 }
 ```
 
-`PUT /api/v1/jockey/invitations/{id}/reject`
+### Jockey Reject Invitation
+
+```http
+PUT {{baseUrl}}/api/v1/jockey/invitations/{{jockeyInvitationId}}/reject
+Authorization: Bearer {{jockeyToken}}
+```
 
 ```json
 {
@@ -515,171 +641,212 @@ Body: none.
 }
 ```
 
-### Eligible horse teams
+## Wallets, ZaloPay Deposits, Withdrawals
 
-`GET /api/v1/owner/horse-teams/eligible`
+### My Wallet
 
-`GET /api/v1/admin/tournaments/{id}/eligible-horse-teams`
-
-## 8. Finance, Wallet, Payment, Withdrawal APIs
-
-### Admin finance settings
-
-`GET /api/v1/admin/finance-settings`
-
-`PUT /api/v1/admin/finance-settings`
-
-```json
-{
-  "jockeyHireTaxPercent": 10.00
-}
+```http
+GET {{baseUrl}}/api/v1/wallets/me
+Authorization: Bearer {{userToken}}
 ```
 
-`GET /api/v1/admin/finance-settings/race-prize-shares`
+No body.
 
-`PUT /api/v1/admin/finance-settings/race-prize-shares`
+### My Wallet Transactions
 
-```json
-{
-  "shares": [
-    {
-      "rank": 1,
-      "jockeyPercent": 20.00
-    },
-    {
-      "rank": 2,
-      "jockeyPercent": 15.00
-    },
-    {
-      "rank": 3,
-      "jockeyPercent": 10.00
-    }
-  ]
-}
+```http
+GET {{baseUrl}}/api/v1/wallets/me/transactions
+Authorization: Bearer {{userToken}}
 ```
 
-### Wallet
+No body.
 
-`GET /api/v1/wallets/me`
+### Create ZaloPay Deposit Order
 
-`GET /api/v1/wallets/me/transactions`
-
-`GET /api/v1/admin/wallet`
-
-`GET /api/v1/admin/wallet/transactions`
-
-### Deposit order
-
-`POST /api/v1/wallets/me/deposit-orders`
+```http
+POST {{baseUrl}}/api/v1/wallets/me/deposit-orders
+Authorization: Bearer {{userToken}}
+```
 
 ```json
 {
-  "amount": 5000000,
+  "amount": 10000,
   "currency": "VND",
-  "provider": "PAYOS"
+  "provider": "ZALOPAY"
 }
 ```
 
-Provider hop le hien tai:
-
-```text
-PAYOS
-```
-
-`GET /api/v1/wallets/me/deposit-orders`
-
-`GET /api/v1/wallets/me/deposit-orders/{id}`
-
-### Deposit callback
-
-`POST /api/v1/payment-callbacks/deposits`
-
-Can dung `referenceCode` tra ve tu deposit order va callback token dung config local.
+Expected important fields:
 
 ```json
 {
-  "referenceCode": "DEP-CHANGE-ME",
-  "status": "PAID",
-  "callbackToken": "CHANGE_ME",
-  "providerTransactionId": "TXN-001",
-  "metadata": "manual test"
-}
-```
-
-Payment order status thuong dung:
-
-```text
-PENDING, PAID, FAILED, EXPIRED, CANCELLED
-```
-
-### payOS webhook
-
-`POST /api/v1/wallets/top-up/payos/webhook`
-
-`POST /api/payos/webhook`
-
-Body mau toi thieu phu thuoc model SDK payOS. Dung webhook that tu payOS la chuan nhat. Mau tham khao:
-
-```json
-{
-  "code": "00",
-  "desc": "success",
-  "success": true,
   "data": {
-    "orderCode": 123456,
-    "amount": 5000000,
-    "description": "DEP-CHANGE-ME",
-    "accountNumber": "12345678",
-    "reference": "PAYOS-REF-001",
-    "transactionDateTime": "2026-06-01 10:00:00",
-    "currency": "VND",
-    "paymentLinkId": "link-id",
-    "code": "00",
-    "desc": "success"
-  },
-  "signature": "PAYOS_SIGNATURE"
+    "provider": "ZALOPAY",
+    "status": "PENDING",
+    "checkoutUrl": "https://qcgateway.zalopay.vn/openinapp?...",
+    "paymentLinkId": "260525_1",
+    "qrCode": null
+  }
 }
 ```
 
-### Admin payment
+Open `data.checkoutUrl` in browser to test ZaloPay sandbox. When using ngrok, ZaloPay redirects and calls back through the public ngrok URL, and the backend updates the order status automatically.
 
-`GET /api/v1/admin/payment-orders`
+### List My Deposit Orders
 
-`GET /api/v1/admin/payment-orders/{id}`
+```http
+GET {{baseUrl}}/api/v1/wallets/me/deposit-orders
+Authorization: Bearer {{userToken}}
+```
 
-`GET /api/v1/admin/payment-callback-logs`
+No body.
 
-### User withdrawal
+### Get My Deposit Order
 
-`POST /api/v1/wallets/me/withdrawals`
+```http
+GET {{baseUrl}}/api/v1/wallets/me/deposit-orders/{{paymentOrderId}}
+Authorization: Bearer {{userToken}}
+```
+
+No body.
+
+### ZaloPay Return
+
+```http
+GET {{baseUrl}}/api/zalopay/return?apptransid=260525_1&status=1&checksum=VALID_CHECKSUM
+```
+
+No body. ZaloPay redirects the browser here after sandbox payment. The backend verifies the redirect checksum, calls ZaloPay query API, then credits the wallet if the query says paid.
+
+### ZaloPay Callback
+
+```http
+POST {{baseUrl}}/api/zalopay/callback
+```
 
 ```json
 {
-  "amount": 100000,
+  "data": "{\"app_id\":2554,\"app_trans_id\":\"260525_1\",\"amount\":10000,\"zp_trans_id\":100000001}",
+  "mac": "VALID_MAC",
+  "type": 1
+}
+```
+
+`mac` must be `HMAC_SHA256(zalopay.key2, data)`. Localhost callback is mostly for manual testing because ZaloPay servers cannot call your local machine without a public tunnel.
+
+Expected success:
+
+```json
+{
+  "return_code": 1,
+  "return_message": "success"
+}
+```
+
+### Manual Deposit Callback
+
+This endpoint still exists for internal/dev callback testing.
+
+```http
+POST {{baseUrl}}/api/v1/payment-callbacks/deposits
+```
+
+```json
+{
+  "referenceCode": "DEP-EXAMPLE",
+  "status": "PAID",
+  "callbackToken": "dev-callback-token",
+  "providerTransactionId": "DEV-CALLBACK-001",
+  "metadata": "{\"source\":\"manual-test\"}"
+}
+```
+
+### Admin List Payment Orders
+
+```http
+GET {{baseUrl}}/api/v1/admin/payment-orders
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Admin Get Payment Order
+
+```http
+GET {{baseUrl}}/api/v1/admin/payment-orders/{{paymentOrderId}}
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Admin Payment Callback Logs
+
+```http
+GET {{baseUrl}}/api/v1/admin/payment-callback-logs
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### User Request Withdrawal
+
+```http
+POST {{baseUrl}}/api/v1/wallets/me/withdrawals
+Authorization: Bearer {{userToken}}
+```
+
+```json
+{
+  "amount": 1000,
   "bankName": "VCB",
-  "bankAccountNumber": "0123456789",
-  "bankAccountName": "OWNER ONE",
+  "bankAccountNumber": "123456789",
+  "bankAccountName": "TEST USER",
   "reason": "Withdraw test"
 }
 ```
 
-`GET /api/v1/wallets/me/withdrawals`
+### User List Withdrawals
 
-`GET /api/v1/wallets/me/withdrawals/{id}`
-
-### Admin withdrawal
-
-`GET /api/v1/admin/withdrawals`
-
-Optional:
-
-```text
-?status=PENDING
+```http
+GET {{baseUrl}}/api/v1/wallets/me/withdrawals
+Authorization: Bearer {{userToken}}
 ```
 
-`GET /api/v1/admin/withdrawals/{id}`
+No body.
 
-`PUT /api/v1/admin/withdrawals/{id}/approve`
+### User Get Withdrawal
+
+```http
+GET {{baseUrl}}/api/v1/wallets/me/withdrawals/{{withdrawalId}}
+Authorization: Bearer {{userToken}}
+```
+
+No body.
+
+### Admin List Withdrawals
+
+```http
+GET {{baseUrl}}/api/v1/admin/withdrawals?status=PENDING
+Authorization: Bearer {{adminToken}}
+```
+
+No body. `status`: `PENDING`, `APPROVED`, `REJECTED`, `PAID`, `CANCELLED`.
+
+### Admin Get Withdrawal
+
+```http
+GET {{baseUrl}}/api/v1/admin/withdrawals/{{withdrawalId}}
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Admin Approve Withdrawal
+
+```http
+PUT {{baseUrl}}/api/v1/admin/withdrawals/{{withdrawalId}}/approve
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
@@ -687,84 +854,226 @@ Optional:
 }
 ```
 
-`PUT /api/v1/admin/withdrawals/{id}/reject`
+### Admin Reject Withdrawal
+
+```http
+PUT {{baseUrl}}/api/v1/admin/withdrawals/{{withdrawalId}}/reject
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
-  "note": "Rejected due to invalid bank account"
+  "note": "Rejected"
 }
 ```
 
-`PUT /api/v1/admin/withdrawals/{id}/mark-paid`
+### Admin Mark Withdrawal Paid
+
+```http
+PUT {{baseUrl}}/api/v1/admin/withdrawals/{{withdrawalId}}/mark-paid
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
-  "note": "Transferred"
+  "note": "Bank transfer completed"
 }
 ```
 
-`POST /api/v1/admin/wallet/withdrawals`
+### Admin Wallet
+
+```http
+GET {{baseUrl}}/api/v1/admin/wallet
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Admin Wallet Transactions
+
+```http
+GET {{baseUrl}}/api/v1/admin/wallet/transactions
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Admin Wallet Withdrawal
+
+```http
+POST {{baseUrl}}/api/v1/admin/wallet/withdrawals
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
-  "amount": 100000,
+  "amount": 1000,
   "bankName": "VCB",
-  "bankAccountNumber": "0123456789",
-  "bankAccountName": "ADMIN",
-  "reason": "Admin wallet settlement"
+  "bankAccountNumber": "987654321",
+  "bankAccountName": "ADMIN WALLET",
+  "reason": "Admin wallet withdrawal test"
 }
 ```
 
-`GET /api/v1/admin/wallet/withdrawals`
+### Admin Wallet Withdrawal List
 
-## 9. Tournament APIs
+```http
+GET {{baseUrl}}/api/v1/admin/wallet/withdrawals
+Authorization: Bearer {{adminToken}}
+```
 
-### Create tournament
+No body.
 
-`POST /api/v1/admin/tournaments`
+## Admin Users And Audit
+
+### Users
+
+```http
+GET {{baseUrl}}/api/v1/admin/users
+GET {{baseUrl}}/api/v1/admin/users/active
+GET {{baseUrl}}/api/v1/admin/users/deactivated
+GET {{baseUrl}}/api/v1/admin/users/{{userId}}
+```
+
+Header:
+
+```http
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Deactivate User
+
+```http
+PUT {{baseUrl}}/api/v1/admin/users/{{userId}}/deactivate
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Activate User
+
+```http
+PUT {{baseUrl}}/api/v1/admin/users/{{userId}}/activate
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Update User Role
+
+```http
+PUT {{baseUrl}}/api/v1/admin/users/{{userId}}/role
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
-  "name": "Saigon Race Day 2026",
-  "description": "Test tournament from empty DB",
-  "location": "District 7, HCMC",
-  "registrationOpenAt": "2026-06-01T08:00:00",
-  "registrationCloseAt": "2026-06-05T18:00:00",
-  "startAt": "2026-06-10T08:00:00",
-  "endAt": "2026-06-10T18:00:00",
-  "checkInDeadlineAt": "2026-06-10T07:30:00",
-  "minTeams": 1,
-  "maxTeams": 10,
-  "jockeyChallengeEnabled": true,
-  "jockeyChallengeFirstPoints": 3,
-  "jockeyChallengeSecondPoints": 2,
-  "jockeyChallengeThirdPoints": 1,
-  "jockeyChallengePrizes": [
+  "role": "OWNER"
+}
+```
+
+`role`: `USER`, `OWNER`, `ADMIN`, `JOCKEY`, `SPECTATOR`, `REFEREE`.
+
+### Payout Debts
+
+```http
+GET {{baseUrl}}/api/v1/admin/payout-debts
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Audit Logs
+
+```http
+GET {{baseUrl}}/api/v1/admin/audit-logs?referenceType=ADMIN_WALLET_WITHDRAWAL&referenceId=1
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+## Finance Settings
+
+### Get Finance Settings
+
+```http
+GET {{baseUrl}}/api/v1/admin/finance-settings
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Update Finance Settings
+
+```http
+PUT {{baseUrl}}/api/v1/admin/finance-settings
+Authorization: Bearer {{adminToken}}
+```
+
+```json
+{
+  "jockeyHireTaxPercent": 10.0
+}
+```
+
+### Get Race Prize Shares
+
+```http
+GET {{baseUrl}}/api/v1/admin/finance-settings/race-prize-shares
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Update Race Prize Shares
+
+```http
+PUT {{baseUrl}}/api/v1/admin/finance-settings/race-prize-shares
+Authorization: Bearer {{adminToken}}
+```
+
+```json
+{
+  "shares": [
     {
       "rank": 1,
-      "amount": 1000000,
-      "note": "Best jockey of the day"
+      "jockeyPercent": 20.0
+    },
+    {
+      "rank": 2,
+      "jockeyPercent": 15.0
+    },
+    {
+      "rank": 3,
+      "jockeyPercent": 10.0
     }
   ]
 }
 ```
 
-### Update tournament
+## Tournaments And Races
 
-`PUT /api/v1/admin/tournaments/{id}`
+### Admin Create Tournament
+
+```http
+POST {{baseUrl}}/api/v1/admin/tournaments
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
-  "name": "Saigon Race Day 2026 Updated",
-  "description": "Updated description",
-  "location": "District 7, HCMC",
+  "name": "Spring Cup",
+  "description": "Spring racing tournament",
+  "location": "Ho Chi Minh City",
   "registrationOpenAt": "2026-06-01T08:00:00",
   "registrationCloseAt": "2026-06-05T18:00:00",
   "startAt": "2026-06-10T08:00:00",
   "endAt": "2026-06-10T18:00:00",
   "checkInDeadlineAt": "2026-06-10T07:30:00",
-  "minTeams": 1,
-  "maxTeams": 10,
+  "minTeams": 2,
+  "maxTeams": 8,
   "jockeyChallengeEnabled": true,
   "jockeyChallengeFirstPoints": 3,
   "jockeyChallengeSecondPoints": 2,
@@ -779,31 +1088,67 @@ Optional:
 }
 ```
 
-### Add race
+### Admin Update Tournament
 
-`POST /api/v1/admin/tournaments/{id}/races`
+```http
+PUT {{baseUrl}}/api/v1/admin/tournaments/{{tournamentId}}
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
-  "name": "Race 1200m",
+  "name": "Spring Cup Updated",
+  "description": "Updated description",
+  "location": "Ho Chi Minh City",
+  "registrationOpenAt": "2026-06-01T08:00:00",
+  "registrationCloseAt": "2026-06-05T18:00:00",
+  "startAt": "2026-06-10T08:00:00",
+  "endAt": "2026-06-10T18:00:00",
+  "checkInDeadlineAt": "2026-06-10T07:30:00",
+  "minTeams": 2,
+  "maxTeams": 10,
+  "jockeyChallengeEnabled": true,
+  "jockeyChallengeFirstPoints": 3,
+  "jockeyChallengeSecondPoints": 2,
+  "jockeyChallengeThirdPoints": 1,
+  "jockeyChallengePrizes": [
+    {
+      "rank": 1,
+      "amount": 1200000,
+      "note": "Best jockey updated"
+    }
+  ]
+}
+```
+
+### Admin Add Tournament Race
+
+```http
+POST {{baseUrl}}/api/v1/admin/tournaments/{{tournamentId}}/races
+Authorization: Bearer {{adminToken}}
+```
+
+```json
+{
+  "name": "Race 1",
   "distance": "1200m",
   "scheduledStartAt": "2026-06-10T09:00:00",
-  "scheduledEndAt": "2026-06-10T09:30:00",
-  "minParticipants": 1,
+  "scheduledEndAt": "2026-06-10T10:00:00",
+  "minParticipants": 2,
   "maxParticipants": 8,
-  "entryFee": 100000,
-  "refereeId": 3,
-  "note": "Morning race",
+  "entryFee": 10000,
+  "refereeId": 4,
+  "note": "Opening race",
   "prizes": [
     {
       "rank": 1,
-      "amount": 2000000,
-      "itemName": "Gold cup",
-      "note": "Champion"
+      "amount": 1000000,
+      "itemName": "Gold medal",
+      "note": "Winner"
     },
     {
       "rank": 2,
-      "amount": 1000000,
+      "amount": 500000,
       "itemName": "Silver medal",
       "note": "Runner up"
     }
@@ -811,97 +1156,144 @@ Optional:
 }
 ```
 
-### Replace all races
+### Admin Replace Tournament Races
 
-`PUT /api/v1/admin/tournaments/{id}/races`
+```http
+PUT {{baseUrl}}/api/v1/admin/tournaments/{{tournamentId}}/races
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 [
   {
-    "name": "Race 1200m",
+    "name": "Race 1",
     "distance": "1200m",
     "scheduledStartAt": "2026-06-10T09:00:00",
-    "scheduledEndAt": "2026-06-10T09:30:00",
-    "minParticipants": 1,
+    "scheduledEndAt": "2026-06-10T10:00:00",
+    "minParticipants": 2,
     "maxParticipants": 8,
-    "entryFee": 100000,
-    "refereeId": 3,
-    "note": "Morning race",
+    "entryFee": 10000,
+    "refereeId": 4,
+    "note": "Race 1",
     "prizes": [
       {
         "rank": 1,
-        "amount": 2000000,
-        "itemName": "Gold cup",
-        "note": "Champion"
+        "amount": 1000000,
+        "itemName": "Gold medal",
+        "note": "Winner"
       }
     ]
   }
 ]
 ```
 
-### Tournament status and public read
+### Admin Update Tournament Status
 
-`PUT /api/v1/admin/tournaments/{id}/status?status=PUBLISHED`
-
-Body: none.
-
-Tournament status:
-
-```text
-DRAFT, PUBLISHED, OPEN_REGISTRATION, REGISTRATION_CLOSED, SCHEDULED, ONGOING, COMPLETED, CANCELLED
+```http
+PUT {{baseUrl}}/api/v1/admin/tournaments/{{tournamentId}}/status?status=PUBLISHED
+Authorization: Bearer {{adminToken}}
 ```
 
-`PUT /api/v1/admin/tournaments/{id}/open-registration`
+No body. `status`: `DRAFT`, `PUBLISHED`, `OPEN_REGISTRATION`, `REGISTRATION_CLOSED`, `SCHEDULED`, `ONGOING`, `COMPLETED`, `CANCELLED`.
 
-`PUT /api/v1/admin/tournaments/{id}/close-registration`
+### Admin Open Registration
 
-`GET /api/v1/admin/tournaments`
-
-Optional:
-
-```text
-?status=OPEN_REGISTRATION
+```http
+PUT {{baseUrl}}/api/v1/admin/tournaments/{{tournamentId}}/open-registration
+Authorization: Bearer {{adminToken}}
 ```
 
-`GET /api/v1/admin/tournaments/{id}`
+No body.
 
-`GET /api/v1/tournaments`
+### Admin Close Registration
 
-`GET /api/v1/tournaments/{id}`
+```http
+PUT {{baseUrl}}/api/v1/admin/tournaments/{{tournamentId}}/close-registration
+Authorization: Bearer {{adminToken}}
+```
 
-`GET /api/v1/tournaments/{id}/races`
+No body.
 
-## 10. Race Registration, Scheduling, Operation APIs
+### Admin List Tournaments
 
-### Owner register race
+```http
+GET {{baseUrl}}/api/v1/admin/tournaments?status=PUBLISHED
+Authorization: Bearer {{adminToken}}
+```
 
-Dieu kien: tournament da `OPEN_REGISTRATION`, horse da `APPROVED`, jockey invitation da `ACCEPTED`, owner co du tien entry fee neu race co fee.
+No body.
 
-`POST /api/v1/races/{id}/registrations`
+### Admin Get Tournament
+
+```http
+GET {{baseUrl}}/api/v1/admin/tournaments/{{tournamentId}}
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Public Tournaments
+
+```http
+GET {{baseUrl}}/api/v1/tournaments
+GET {{baseUrl}}/api/v1/tournaments/{{tournamentId}}
+GET {{baseUrl}}/api/v1/tournaments/{{tournamentId}}/races
+```
+
+No body.
+
+### Register For Race
+
+```http
+POST {{baseUrl}}/api/v1/races/{{raceId}}/registrations
+Authorization: Bearer {{ownerToken}}
+```
 
 ```json
 {
   "horseId": 1,
   "jockeyInvitationId": 1,
-  "note": "Register Thunder"
+  "note": "Register horse team"
 }
 ```
 
-`GET /api/v1/owner/race-registrations`
+### Owner Race Registrations
 
-`PUT /api/v1/owner/race-registrations/{id}/withdraw`
+```http
+GET {{baseUrl}}/api/v1/owner/race-registrations
+Authorization: Bearer {{ownerToken}}
+```
+
+No body.
+
+### Owner Withdraw Race Registration
+
+```http
+PUT {{baseUrl}}/api/v1/owner/race-registrations/{{registrationId}}/withdraw
+Authorization: Bearer {{ownerToken}}
+```
 
 ```json
 {
-  "note": "Owner withdraws registration"
+  "note": "Cannot join"
 }
 ```
 
-### Admin review registration
+### Admin Race Registrations
 
-`GET /api/v1/admin/tournaments/{id}/race-registrations`
+```http
+GET {{baseUrl}}/api/v1/admin/tournaments/{{tournamentId}}/race-registrations
+Authorization: Bearer {{adminToken}}
+```
 
-`PUT /api/v1/admin/race-registrations/{id}/approve`
+No body.
+
+### Admin Approve Race Registration
+
+```http
+PUT {{baseUrl}}/api/v1/admin/race-registrations/{{registrationId}}/approve
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
@@ -910,36 +1302,44 @@ Dieu kien: tournament da `OPEN_REGISTRATION`, horse da `APPROVED`, jockey invita
 }
 ```
 
-`PUT /api/v1/admin/race-registrations/{id}/reject`
+### Admin Reject Race Registration
+
+```http
+PUT {{baseUrl}}/api/v1/admin/race-registrations/{{registrationId}}/reject
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
-  "note": "Invalid team",
+  "note": "Rejected",
   "gateNumber": null
 }
 ```
 
-### Phase 8 schedule APIs
+### Admin Schedule Tournament
 
-`PUT /api/v1/admin/tournaments/{id}/schedule`
-
-Body: none.
-
-Rule chinh:
-
-```text
-ADMIN only
-Tournament status phai OPEN_REGISTRATION hoac REGISTRATION_CLOSED
-Approved participant count >= minTeams va <= maxTeams
-Race khong vuot maxParticipants
-Gate > 0 va unique trong race
-Referee role REFEREE va khong overlap lich
-Sau schedule tournament thanh SCHEDULED
+```http
+PUT {{baseUrl}}/api/v1/admin/tournaments/{{tournamentId}}/schedule
+Authorization: Bearer {{adminToken}}
 ```
 
-`GET /api/v1/admin/races/{id}/participants`
+No body.
 
-`PUT /api/v1/admin/races/{raceId}/participants/{participantId}/gate`
+### Admin Race Participants
+
+```http
+GET {{baseUrl}}/api/v1/admin/races/{{raceId}}/participants
+Authorization: Bearer {{adminToken}}
+```
+
+No body.
+
+### Admin Update Participant Gate
+
+```http
+PUT {{baseUrl}}/api/v1/admin/races/{{raceId}}/participants/{{participantId}}/gate
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
@@ -947,40 +1347,57 @@ Sau schedule tournament thanh SCHEDULED
 }
 ```
 
-`PUT /api/v1/admin/races/{id}/referee`
+### Admin Assign Race Referee
+
+```http
+PUT {{baseUrl}}/api/v1/admin/races/{{raceId}}/referee
+Authorization: Bearer {{adminToken}}
+```
 
 ```json
 {
-  "refereeId": 3
+  "refereeId": 4
 }
 ```
 
-### Referee race operation APIs
+### Referee Races
 
-`GET /api/v1/referee/races`
+```http
+GET {{baseUrl}}/api/v1/referee/races
+Authorization: Bearer {{refereeToken}}
+```
 
-`PUT /api/v1/referee/races/{id}/participants/{participantId}/check-in`
+No body.
+
+### Referee Check In Participant
+
+```http
+PUT {{baseUrl}}/api/v1/referee/races/{{raceId}}/participants/{{participantId}}/check-in
+Authorization: Bearer {{refereeToken}}
+```
 
 ```json
 {
   "status": "CHECKED_IN",
-  "note": "Ready"
+  "note": "Checked in at gate"
 }
 ```
 
-Check-in status hop le:
+### Referee Start Race
 
-```text
-CHECKED_IN, ABSENT, DISQUALIFIED
+```http
+PUT {{baseUrl}}/api/v1/referee/races/{{raceId}}/start
+Authorization: Bearer {{refereeToken}}
 ```
 
-`PUT /api/v1/referee/races/{id}/start`
+No body.
 
-Body: none.
+### Referee Finalize Race Results
 
-Rule: race dang `SCHEDULED`, referee phai la assigned referee, so participant `CHECKED_IN` >= `minParticipants`.
-
-`POST /api/v1/referee/races/{id}/results/finalize`
+```http
+POST {{baseUrl}}/api/v1/referee/races/{{raceId}}/results/finalize
+Authorization: Bearer {{refereeToken}}
+```
 
 ```json
 {
@@ -995,7 +1412,7 @@ Rule: race dang `SCHEDULED`, referee phai la assigned referee, so participant `C
     {
       "participantId": 2,
       "rank": 2,
-      "finishTimeMillis": 76000,
+      "finishTimeMillis": 73500,
       "status": "FINISHED",
       "note": "Second"
     }
@@ -1003,350 +1420,123 @@ Rule: race dang `SCHEDULED`, referee phai la assigned referee, so participant `C
 }
 ```
 
-Result participant status hop le:
+### Public Race Results
 
-```text
-FINISHED, DNF, DISQUALIFIED, ABSENT
+```http
+GET {{baseUrl}}/api/v1/races/{{raceId}}/results
 ```
 
-Rule: race phai `ONGOING`; finalize xong race thanh `RESULT_CONFIRMED` va payout ngay.
+No body.
 
-`GET /api/v1/races/{id}/results`
+### Create Race Complaint
 
-### Jockey challenge APIs
-
-`PUT /api/v1/admin/tournaments/{id}/jockey-challenge/finalize`
-
-Body: none.
-
-`GET /api/v1/tournaments/{id}/jockey-challenge`
-
-## 11. Race Complaint APIs
-
-### Owner create complaint
-
-Dieu kien: owner cung race, race da co result, trong 24 gio sau result.
-
-`POST /api/v1/races/{id}/complaints`
+```http
+POST {{baseUrl}}/api/v1/races/{{raceId}}/complaints
+Authorization: Bearer {{ownerToken}}
+```
 
 ```json
 {
   "accusedParticipantId": 2,
-  "reason": "Horse/jockey violated race rule",
-  "evidenceUrl": "https://example.com/evidence/video-001"
+  "reason": "Unsafe behavior during race",
+  "evidenceUrl": "https://example.com/evidence.mp4"
 }
 ```
 
-### Owner view complaints
+### Owner Race Complaints
 
-`GET /api/v1/owner/race-complaints`
-
-Tra ve complaint minh tao va complaint minh bi khieu nai. Thong tin complainant duoc an danh voi owner bi khieu nai.
-
-### Admin view/filter complaints
-
-`GET /api/v1/admin/race-complaints`
-
-Optional:
-
-```text
-?status=PENDING
+```http
+GET {{baseUrl}}/api/v1/owner/race-complaints
+Authorization: Bearer {{ownerToken}}
 ```
 
-Complaint status:
+No body.
 
-```text
-PENDING, APPROVED, REJECTED
+### Admin Race Complaints
+
+```http
+GET {{baseUrl}}/api/v1/admin/race-complaints?status=PENDING
+Authorization: Bearer {{adminToken}}
 ```
 
-### Admin resolve complaint
+No body. `status`: `PENDING`, `APPROVED`, `REJECTED`.
 
-Reject:
+### Admin Resolve Race Complaint
 
-`PUT /api/v1/admin/race-complaints/{id}/resolve`
-
-```json
-{
-  "status": "REJECTED",
-  "banUntil": null,
-  "fineAmount": 0,
-  "adminNote": "Not enough evidence"
-}
+```http
+PUT {{baseUrl}}/api/v1/admin/race-complaints/{{complaintId}}/resolve
+Authorization: Bearer {{adminToken}}
 ```
-
-Approve:
 
 ```json
 {
   "status": "APPROVED",
-  "banUntil": "2026-07-10T00:00:00",
-  "fineAmount": 500000,
-  "adminNote": "Complaint approved after review"
+  "banUntil": "2026-07-01T00:00:00",
+  "fineAmount": 100000,
+  "adminNote": "Complaint accepted"
 }
 ```
 
-Rule: approve se ban owner bi khieu nai den `banUntil`, tru lai owner prize da nhan va tru them `fineAmount`. Jockey prize khong bi anh huong.
+### Admin Finalize Jockey Challenge
 
-## 12. Admin audit APIs
-
-`GET /api/v1/admin/audit-logs`
-
-Optional:
-
-```text
-?referenceType=RACE_COMPLAINT&referenceId=1
+```http
+PUT {{baseUrl}}/api/v1/admin/tournaments/{{tournamentId}}/jockey-challenge/finalize
+Authorization: Bearer {{adminToken}}
 ```
 
-## 13. Thu tu test mau tu DB trang
+No body.
 
-### Step A - Login admin
+### Public Jockey Challenge Standings
 
-`POST /api/v1/auth/login`
-
-```json
-{
-  "email": "admin@example.local",
-  "password": "Admin12345!"
-}
+```http
+GET {{baseUrl}}/api/v1/tournaments/{{tournamentId}}/jockey-challenge
 ```
 
-### Step B - Register 3 users
+No body.
 
-Owner:
+## Horse Teams
 
-```json
-{
-  "username": "owner01",
-  "fullName": "Owner One",
-  "email": "owner01@example.com",
-  "phone": "0900000001",
-  "password": "Password123!"
-}
+### Owner Eligible Horse Teams
+
+```http
+GET {{baseUrl}}/api/v1/owner/horse-teams/eligible
+Authorization: Bearer {{ownerToken}}
 ```
 
-Jockey:
+No body.
 
-```json
-{
-  "username": "jockey01",
-  "fullName": "Jockey One",
-  "email": "jockey01@example.com",
-  "phone": "0900000002",
-  "password": "Password123!"
-}
+### Admin Eligible Horse Teams For Tournament
+
+```http
+GET {{baseUrl}}/api/v1/admin/tournaments/{{tournamentId}}/eligible-horse-teams
+Authorization: Bearer {{adminToken}}
 ```
 
-Referee:
+No body.
 
-```json
-{
-  "username": "referee01",
-  "fullName": "Referee One",
-  "email": "referee01@example.com",
-  "phone": "0900000003",
-  "password": "Password123!"
-}
+## Recommended Smoke Flow
+
+1. Register/login users for `admin`, `owner`, `jockey`, `referee`.
+2. Use admin role update API to assign roles if needed.
+3. Owner creates horse, admin approves horse.
+4. Jockey creates profile, admin approves profile through role/profile flow.
+5. Owner invites jockey, jockey accepts.
+6. User creates ZaloPay deposit order and opens `checkoutUrl`.
+7. Admin creates tournament and races.
+8. Open registration, owner registers horse team, admin approves registration.
+9. Schedule tournament, referee checks in participant, starts race, finalizes result.
+10. Test complaints, withdrawals, admin wallet, audit logs.
+
+## Automated Verification
+
+Run all tests:
+
+```powershell
+.\mvnw.cmd test
 ```
 
-### Step C - Gan role nhanh bang admin
+Run only the broad API/payment checks:
 
-`PUT /api/v1/admin/users/{{ownerUserId}}/role`
-
-```json
-{
-  "role": "OWNER"
-}
+```powershell
+.\mvnw.cmd "-Dtest=PaymentServiceImplTest,AllApiSmokeTest,WalletControllerSecurityTest" test
 ```
-
-`PUT /api/v1/admin/users/{{jockeyUserId}}/role`
-
-```json
-{
-  "role": "JOCKEY"
-}
-```
-
-`PUT /api/v1/admin/users/{{refereeUserId}}/role`
-
-```json
-{
-  "role": "REFEREE"
-}
-```
-
-### Step D - Tao horse, tao/approve jockey profile
-
-Owner token: `POST /api/v1/owner/horses` form-data nhu muc Horse.
-
-Admin token: `PUT /api/v1/admin/horses/{{horseId}}/approve`.
-
-Jockey token: `POST /api/v1/jockey/profile` form-data nhu muc Jockey Profile.
-
-Neu profile status con pending, admin check:
-
-```text
-GET /api/v1/admin/jockey-profiles?status=PENDING
-```
-
-### Step E - Owner invite jockey, jockey accept
-
-Owner:
-
-```json
-{
-  "horseId": 1,
-  "jockeyId": 2,
-  "message": "Please ride Thunder"
-}
-```
-
-Jockey accept:
-
-```json
-{
-  "note": "Accepted"
-}
-```
-
-### Step F - Nap tien owner neu race co entry fee
-
-Tao deposit order:
-
-```json
-{
-  "amount": 5000000,
-  "currency": "VND",
-  "provider": "PAYOS"
-}
-```
-
-Neu local callback token dung config, callback paid:
-
-```json
-{
-  "referenceCode": "DEP-CHANGE-ME",
-  "status": "PAID",
-  "callbackToken": "CHANGE_ME",
-  "providerTransactionId": "TXN-001",
-  "metadata": "manual test"
-}
-```
-
-### Step G - Tao tournament va race
-
-Admin tao tournament nhu muc Tournament. Sau do tao race nhu muc Add race.
-
-Open registration:
-
-```text
-PUT /api/v1/admin/tournaments/{{tournamentId}}/open-registration
-```
-
-### Step H - Dang ky race va approve
-
-Owner:
-
-```json
-{
-  "horseId": 1,
-  "jockeyInvitationId": 1,
-  "note": "Register Thunder"
-}
-```
-
-Admin approve:
-
-```json
-{
-  "note": "Approved",
-  "gateNumber": 1
-}
-```
-
-### Step I - Schedule tournament
-
-Neu registration van open, co the close truoc:
-
-```text
-PUT /api/v1/admin/tournaments/{{tournamentId}}/close-registration
-```
-
-Schedule:
-
-```text
-PUT /api/v1/admin/tournaments/{{tournamentId}}/schedule
-```
-
-Lay participant:
-
-```text
-GET /api/v1/admin/races/{{raceId}}/participants
-```
-
-### Step J - Referee check-in, start, finalize
-
-Referee check-in:
-
-```json
-{
-  "status": "CHECKED_IN",
-  "note": "Ready"
-}
-```
-
-Start:
-
-```text
-PUT /api/v1/referee/races/{{raceId}}/start
-```
-
-Finalize:
-
-```json
-{
-  "results": [
-    {
-      "participantId": 1,
-      "rank": 1,
-      "finishTimeMillis": 72000,
-      "status": "FINISHED",
-      "note": "Winner"
-    }
-  ]
-}
-```
-
-### Step K - Complaint
-
-Can co it nhat 2 participants trong cung race neu muon owner A khieu nai owner B.
-
-Owner tao complaint:
-
-```json
-{
-  "accusedParticipantId": 2,
-  "reason": "Violation evidence",
-  "evidenceUrl": "https://example.com/evidence"
-}
-```
-
-Admin approve complaint:
-
-```json
-{
-  "status": "APPROVED",
-  "banUntil": "2026-07-10T00:00:00",
-  "fineAmount": 500000,
-  "adminNote": "Approved after review"
-}
-```
-
-## 14. Luu y khi test tu DB trang
-
-- Nhieu API GET se tra list rong luc ban moi tao DB; do la dung.
-- Cac API `OWNER`, `JOCKEY`, `REFEREE`, `ADMIN` se tra 403 neu token sai role.
-- API schedule can participant duoc tao tu registration approved; chi tao registration chua du.
-- API start race can participant `CHECKED_IN` dat `minParticipants`.
-- API finalize result can race dang `ONGOING`.
-- Complaint chi tao duoc trong 24 gio sau khi race co official result.
-- Mot so webhook payment can secret/signature dung config nen test local co the fail business validation neu token/signature sai; dung deposit callback manual de nap tien nhanh hon.

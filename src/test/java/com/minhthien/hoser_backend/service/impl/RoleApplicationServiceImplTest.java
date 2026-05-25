@@ -179,6 +179,32 @@ class RoleApplicationServiceImplTest {
     }
 
     @Test
+    void adminApproveCanUseRoleWhenMultiplePendingApplicationsShareProfileId() {
+        RoleApplicationServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        User ownerCandidate = user(1L, "owner-candidate", UserRole.USER);
+        OwnerProfile ownerProfile = OwnerProfile.builder()
+                .id(1L)
+                .user(ownerCandidate)
+                .stableName("Stable")
+                .address("Address")
+                .status(RoleApprovalStatus.PENDING)
+                .build();
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(ownerProfileRepository.findById(1L)).thenReturn(Optional.of(ownerProfile));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(ownerProfileRepository.save(any(OwnerProfile.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.approveApplication(1L, 9L, UserRole.OWNER);
+
+        assertThat(response.getRole()).isEqualTo(UserRole.OWNER);
+        assertThat(response.getStatus()).isEqualTo(RoleApprovalStatus.APPROVED);
+        assertThat(ownerCandidate.getRole()).isEqualTo(UserRole.OWNER);
+        verify(mailService).sendRoleApplicationApproved(ownerCandidate, UserRole.OWNER);
+    }
+
+    @Test
     void adminRejectOwnerApplicationSendsRejectedEmailWithReason() {
         RoleApplicationServiceImpl service = service();
         User admin = user(9L, "admin", UserRole.ADMIN);

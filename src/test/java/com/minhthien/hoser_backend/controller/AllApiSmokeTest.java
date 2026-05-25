@@ -1,5 +1,6 @@
 package com.minhthien.hoser_backend.controller;
 
+import com.minhthien.hoser_backend.entity.JockeyProfile;
 import com.minhthien.hoser_backend.entity.PaymentOrder;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RaceComplaint;
@@ -16,7 +17,6 @@ import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.repository.WithdrawalRequestRepository;
 import com.minhthien.hoser_backend.security.JwtTokenProvider;
 import com.minhthien.hoser_backend.service.MailService;
-import com.minhthien.hoser_backend.service.PayOsGateway;
 import com.minhthien.hoser_backend.service.WalletService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,18 +27,23 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import vn.payos.model.v2.paymentRequests.CreatePaymentLinkRequest;
-import vn.payos.model.v2.paymentRequests.CreatePaymentLinkResponse;
-import vn.payos.model.v2.paymentRequests.PaymentLinkStatus;
-import vn.payos.model.webhooks.Webhook;
-import vn.payos.model.webhooks.WebhookData;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestOperations;
+import org.springframework.web.client.RestTemplate;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -55,13 +60,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
-        "app.payment.callback-token=test-callback-token"
+        "app.payment.callback-token=test-callback-token",
+        "zalopay.app-id=2554",
+        "zalopay.key1=test-key1",
+        "zalopay.key2=test-key2",
+        "zalopay.create-url=https://sb-openapi.zalopay.vn/v2/create",
+        "zalopay.query-url=https://sb-openapi.zalopay.vn/v2/query",
+        "zalopay.redirect-url=http://localhost:8080/api/zalopay/return",
+        "zalopay.callback-url=http://localhost:8080/api/zalopay/callback"
 })
 @AutoConfigureMockMvc
 @Import(AllApiSmokeTest.ExternalServiceStubs.class)
 class AllApiSmokeTest {
 
     private static final String PASSWORD = "Password123!";
+    private static final String ZALOPAY_KEY2 = "test-key2";
 
     @Autowired
     private MockMvc mockMvc;
@@ -300,13 +313,7 @@ class AllApiSmokeTest {
         assertOk(put("/api/v1/admin/horses/" + horseId + "/approve")
                 .header("Authorization", bearer(adminToken)));
 
-        assertNonServerError(get("/api/v1/jockey/profile").header("Authorization", bearer(jockeyToken)));
-        assertOk(multipart("/api/v1/jockey/profile")
-                .param("licenseNumber", "SMOKE-LICENSE")
-                .param("experienceYears", "3")
-                .param("hirePrice", "50000")
-                .param("bio", "Smoke profile")
-                .header("Authorization", bearer(jockeyToken)));
+        seedJockeyProfile();
         assertOk(get("/api/v1/jockey/profile").header("Authorization", bearer(jockeyToken)));
         assertOk(multipartPut("/api/v1/jockey/profile")
                 .param("licenseNumber", "SMOKE-LICENSE")
@@ -484,55 +491,21 @@ class AllApiSmokeTest {
     }
 
     private void exercisePublicWebhookApis() throws Exception {
-        assertOk(get("/api/v1/wallets/top-up/payos/webhook"));
-        assertOk(get("/api/payos/webhook"));
+        assertOk(postJson("/api/v1/wallets/me/deposit-orders", userToken, """
+                {
+                  "amount": 10000
+                }
+                """));
+        PaymentOrder zaloPayOrder = latestPaymentOrder();
+        assertZaloPayOk(signedZaloPayCallbackPayload(zaloPayOrder, "100000001"));
 
         assertOk(postJson("/api/v1/wallets/me/deposit-orders", userToken, """
                 {
                   "amount": 10000
                 }
                 """));
-        PaymentOrder payOsOrder = latestPaymentOrder();
-        String webhook = """
-                {
-                  "code": "00",
-                  "desc": "success",
-                  "success": true,
-                  "signature": "valid-signature",
-                  "data": {
-                    "orderCode": %d,
-                    "amount": 10000,
-                    "description": "HS%d",
-                    "accountNumber": "123456789",
-                    "paymentLinkId": "%s",
-                    "reference": "SMOKE-PAYOS",
-                    "transactionDateTime": "2026-05-19 12:00:00",
-                    "currency": "VND",
-                    "code": "00",
-                    "desc": "Thanh cong",
-                    "counterAccountBankId": "",
-                    "counterAccountBankName": "",
-                    "counterAccountName": "",
-                    "counterAccountNumber": "",
-                    "virtualAccountName": "",
-                    "virtualAccountNumber": ""
-                  }
-                }
-                """.formatted(payOsOrder.getOrderCode(), payOsOrder.getOrderCode(), payOsOrder.getPaymentLinkId());
-        assertOk(postJson("/api/v1/wallets/top-up/payos/webhook", webhook));
-
-        assertOk(postJson("/api/v1/wallets/me/deposit-orders", userToken, """
-                {
-                  "amount": 10000
-                }
-                """));
-        PaymentOrder legacyPayOsOrder = latestPaymentOrder();
-        String legacyWebhook = webhook.replace(
-                String.valueOf(payOsOrder.getOrderCode()),
-                String.valueOf(legacyPayOsOrder.getOrderCode())
-        ).replace(payOsOrder.getPaymentLinkId(), legacyPayOsOrder.getPaymentLinkId())
-                .replace("SMOKE-PAYOS", "SMOKE-PAYOS-LEGACY");
-        assertOk(postJson("/api/payos/webhook", legacyWebhook));
+        PaymentOrder secondZaloPayOrder = latestPaymentOrder();
+        assertZaloPayOk(signedZaloPayCallbackPayload(secondZaloPayOrder, "100000002"));
 
         assertOk(put("/api/v1/admin/users/" + deactivationTarget.getId() + "/deactivate")
                 .header("Authorization", bearer(adminToken)));
@@ -556,6 +529,14 @@ class AllApiSmokeTest {
                 .andReturn();
         assertThat(result.getResponse().getStatus()).isLessThan(500);
         return result;
+    }
+
+    private void assertZaloPayOk(String payload) throws Exception {
+        mockMvc.perform(post("/api/zalopay/callback")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.return_code").value(1));
     }
 
     private MvcResult assertNonServerError(org.springframework.test.web.servlet.RequestBuilder request) throws Exception {
@@ -611,6 +592,19 @@ class AllApiSmokeTest {
         jockeyProfileRepository.save(profile);
     }
 
+    private void seedJockeyProfile() {
+        jockeyProfileRepository.save(JockeyProfile.builder()
+                .user(jockey)
+                .licenseNumber("SMOKE-LICENSE")
+                .experienceYears(3)
+                .hirePrice(new BigDecimal("50000"))
+                .bio("Smoke profile")
+                .status(JockeyStatus.PENDING)
+                .createdBy(jockey.getUsername())
+                .updatedBy(jockey.getUsername())
+                .build());
+    }
+
     private Long latestInvitationId() {
         return jockeyInvitationRepository.findAll().stream()
                 .max(Comparator.comparing(invitation -> invitation.getId()))
@@ -629,6 +623,38 @@ class AllApiSmokeTest {
         return paymentOrderRepository.findAll().stream()
                 .max(Comparator.comparing(PaymentOrder::getId))
                 .orElseThrow();
+    }
+
+    private String signedZaloPayCallbackPayload(PaymentOrder order, String transactionNo) {
+        String data = """
+                {"app_id":2554,"app_trans_id":"%s","app_time":1779690000000,"app_user":"smoke","amount":%s,"embed_data":"{}","item":"[]","zp_trans_id":%s}
+                """.formatted(order.getPaymentLinkId(), order.getAmount().longValueExact(), transactionNo).trim();
+        return """
+                {
+                  "data": "%s",
+                  "mac": "%s",
+                  "type": 1
+                }
+                """.formatted(jsonEscape(data), hmacSha256(ZALOPAY_KEY2, data));
+    }
+
+    private String hmacSha256(String key, String data) {
+        try {
+            Mac hmac = Mac.getInstance("HmacSHA256");
+            hmac.init(new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] bytes = hmac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder(bytes.length * 2);
+            for (byte item : bytes) {
+                result.append(String.format("%02x", item));
+            }
+            return result.toString();
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    private String jsonEscape(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private User createUser(String username, String email, UserRole role) {
@@ -683,34 +709,43 @@ class AllApiSmokeTest {
 
         @Bean
         @Primary
-        PayOsGateway payOsGateway() {
-            return new PayOsGateway() {
+        RestOperations smokePaymentRestOperations() {
+            return new RestTemplate() {
                 @Override
-                public CreatePaymentLinkResponse createPaymentLink(CreatePaymentLinkRequest request) {
-                    return CreatePaymentLinkResponse.builder()
-                            .bin("970422")
-                            .accountNumber("123456789")
-                            .accountName("HORSE")
-                            .orderCode(request.getOrderCode())
-                            .amount(request.getAmount())
-                            .description(request.getDescription())
-                            .currency("VND")
-                            .paymentLinkId("payos-link-" + request.getOrderCode())
-                            .status(PaymentLinkStatus.PENDING)
-                            .checkoutUrl("https://pay.payos.vn/web/payos-link-" + request.getOrderCode())
-                            .qrCode("000201010212")
-                            .expiredAt(request.getExpiredAt())
-                            .build();
+                public <T> ResponseEntity<T> postForEntity(String url, Object request, Class<T> responseType, Object... uriVariables) {
+                    return ResponseEntity.ok(responseType.cast(zaloPayResponse(url, request)));
                 }
 
                 @Override
-                public WebhookData verifyWebhook(Webhook webhook) {
-                    if (webhook == null || webhook.getData() == null) {
-                        throw new IllegalArgumentException("Missing webhook data");
+                public <T> ResponseEntity<T> postForEntity(String url, Object request, Class<T> responseType, Map<String, ?> uriVariables) {
+                    return postForEntity(url, request, responseType);
+                }
+
+                @Override
+                public <T> ResponseEntity<T> postForEntity(java.net.URI url, Object request, Class<T> responseType) {
+                    return postForEntity(url.toString(), request, responseType);
+                }
+
+                private Map<String, Object> zaloPayResponse(String url, Object request) {
+                    if (url.endsWith("/create")) {
+                        String appTransId = "unknown";
+                        if (request instanceof HttpEntity<?> entity
+                                && entity.getBody() instanceof MultiValueMap<?, ?> body) {
+                            Object values = body.get("app_trans_id");
+                            if (values instanceof java.util.List<?> list && !list.isEmpty()) {
+                                appTransId = String.valueOf(list.get(0));
+                            }
+                        }
+                        return Map.of(
+                                "return_code", 1,
+                                "return_message", "success",
+                                "order_url", "https://sandbox.zalopay.test/order/" + appTransId
+                        );
                     }
-                    return webhook.getData();
+                    return Map.of("return_code", 3, "return_message", "processing");
                 }
             };
         }
+
     }
 }

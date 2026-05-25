@@ -225,7 +225,7 @@ class Phase2Phase3MoneyFlowIntegrationTest {
                 .user(user)
                 .amount(new BigDecimal(amount))
                 .currency(PaymentOrder.DEFAULT_CURRENCY)
-                .provider(PaymentProvider.PAYOS)
+                .provider(PaymentProvider.ZALOPAY)
                 .status(PaymentOrderStatus.PENDING)
                 .referenceCode("DEP-" + user.getUsername())
                 .transferContent("HORSE DEP-" + user.getUsername())

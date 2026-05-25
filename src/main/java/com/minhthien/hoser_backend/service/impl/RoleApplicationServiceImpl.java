@@ -197,9 +197,15 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
     @Override
     @Transactional
     public RoleApplicationResponse approveApplication(Long profileId, Long adminId) {
+        return approveApplication(profileId, adminId, null);
+    }
+
+    @Override
+    @Transactional
+    public RoleApplicationResponse approveApplication(Long profileId, Long adminId, UserRole role) {
         requireAdmin(adminId);
-        UserRole role = requireUniquePendingApplicationRole(profileId);
-        return switch (role) {
+        UserRole resolvedRole = resolvePendingApplicationRole(profileId, role);
+        return switch (resolvedRole) {
             case OWNER -> approveOwner(profileId, adminId);
             case JOCKEY -> approveJockey(profileId, adminId);
             case SPECTATOR -> approveSpectator(profileId, adminId);
@@ -211,10 +217,16 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
     @Override
     @Transactional
     public RoleApplicationResponse rejectApplication(Long profileId, Long adminId, AdminReviewRequest request) {
+        return rejectApplication(profileId, adminId, null, request);
+    }
+
+    @Override
+    @Transactional
+    public RoleApplicationResponse rejectApplication(Long profileId, Long adminId, UserRole role, AdminReviewRequest request) {
         requireAdmin(adminId);
-        UserRole role = requireUniquePendingApplicationRole(profileId);
+        UserRole resolvedRole = resolvePendingApplicationRole(profileId, role);
         String reason = requireReason(request);
-        return switch (role) {
+        return switch (resolvedRole) {
             case OWNER -> rejectOwner(profileId, adminId, reason);
             case JOCKEY -> rejectJockey(profileId, adminId, reason);
             case SPECTATOR -> rejectSpectator(profileId, adminId, reason);
@@ -502,6 +514,14 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
             throw new BadRequestException("Profile id matches multiple pending role applications");
         }
         return matches.get(0);
+    }
+
+    private UserRole resolvePendingApplicationRole(Long profileId, UserRole role) {
+        if (role == null) {
+            return requireUniquePendingApplicationRole(profileId);
+        }
+        requireApplicationRole(role);
+        return role;
     }
 
     private void requirePending(RoleApprovalStatus status) {
