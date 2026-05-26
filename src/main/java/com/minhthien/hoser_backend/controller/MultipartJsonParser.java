@@ -7,12 +7,14 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.CrossOrigin;
 
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
+@CrossOrigin(origins = "http://localhost:5173")
 public class MultipartJsonParser {
     private final ObjectMapper objectMapper;
     private final Validator validator;
