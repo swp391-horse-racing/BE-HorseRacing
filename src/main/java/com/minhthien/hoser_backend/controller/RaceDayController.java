@@ -130,6 +130,14 @@ public class RaceDayController {
                 raceDayService.getRefereeRaces(currentUser.getId())));
     }
 
+    @GetMapping("/referee/races/{id}/participants")
+    public ResponseEntity<ApiResponse<List<RaceParticipantResponse>>> getRefereeRaceParticipants(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                raceDayService.getRefereeRaceParticipants(currentUser.getId(), id)));
+    }
+
     @PutMapping("/referee/races/{id}/participants/{participantId}/check-in")
     public ResponseEntity<ApiResponse<RaceParticipantResponse>> checkInRaceParticipant(
             @AuthenticationPrincipal User currentUser,

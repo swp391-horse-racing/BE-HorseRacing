@@ -341,8 +341,10 @@ Base chính: `/api/v1`
 
 | Method | Path | Mục đích |
 | --- | --- | --- |
-| POST | `/api/v1/admin/tournaments` | Admin tạo tournament JSON/multipart |
-| PUT | `/api/v1/admin/tournaments/{id}` | Admin cập nhật tournament JSON/multipart |
+| POST | `/api/v1/admin/tournament-banners` | Admin upload banner, trả `bannerUrl` |
+| POST | `/api/v1/admin/tournaments` | Admin tạo tournament bằng JSON |
+| PUT | `/api/v1/admin/tournaments/{id}` | Admin cập nhật tournament bằng JSON |
+| PUT | `/api/v1/admin/tournaments/{id}/banner` | Admin cập nhật banner tournament |
 | POST | `/api/v1/admin/tournaments/{id}/races` | Thêm race |
 | PUT | `/api/v1/admin/tournaments/{id}/races` | Replace races |
 | PUT | `/api/v1/admin/tournaments/{id}/status` | Đổi status |
@@ -373,6 +375,7 @@ Base chính: `/api/v1`
 | PUT | `/api/v1/admin/races/{raceId}/participants/{participantId}/gate` | Update gate |
 | PUT | `/api/v1/admin/races/{id}/referee` | Assign referee |
 | GET | `/api/v1/referee/races` | Referee xem races |
+| GET | `/api/v1/referee/races/{id}/participants` | Referee xem participants/owner cần check-in |
 | PUT | `/api/v1/referee/races/{id}/participants/{participantId}/check-in` | Check-in participant |
 | PUT | `/api/v1/referee/races/{id}/start` | Start race |
 | POST | `/api/v1/referee/races/{id}/results/finalize` | Finalize race result |

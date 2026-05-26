@@ -19,6 +19,9 @@ public class TournamentUpdateRequest {
     @Size(max = 255, message = "Location must be at most 255 characters")
     private String location;
 
+    @Size(max = 500, message = "Banner URL must be at most 500 characters")
+    private String bannerUrl;
+
     private LocalDateTime registrationOpenAt;
 
     private LocalDateTime registrationCloseAt;

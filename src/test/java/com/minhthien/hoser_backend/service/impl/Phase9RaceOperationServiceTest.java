@@ -120,6 +120,42 @@ class Phase9RaceOperationServiceTest {
     }
 
     @Test
+    void assignedRefereeCanViewParticipantsBeforeCheckIn() {
+        RaceDayServiceImpl service = service();
+        User referee = user(8L, "referee", UserRole.REFEREE);
+        User owner = user(1L, "owner", UserRole.OWNER);
+        User jockey = user(2L, "jockey", UserRole.JOCKEY);
+        Race race = race(referee, RaceStatus.SCHEDULED);
+        RaceParticipant participant = participant(101L, race, 1, owner, jockey, RaceParticipantStatus.REGISTERED);
+
+        when(userRepository.findById(8L)).thenReturn(Optional.of(referee));
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+        when(raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(10L)).thenReturn(List.of(participant));
+
+        var response = service.getRefereeRaceParticipants(8L, 10L);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).getId()).isEqualTo(101L);
+        assertThat(response.get(0).getOwnerUsername()).isEqualTo("owner");
+        assertThat(response.get(0).getJockeyUsername()).isEqualTo("jockey");
+        assertThat(response.get(0).getStatus()).isEqualTo(RaceParticipantStatus.REGISTERED);
+    }
+
+    @Test
+    void nonAssignedRefereeCannotViewParticipantsBeforeCheckIn() {
+        RaceDayServiceImpl service = service();
+        User referee = user(8L, "referee", UserRole.REFEREE);
+        Race race = race(user(9L, "other-referee", UserRole.REFEREE), RaceStatus.SCHEDULED);
+
+        when(userRepository.findById(8L)).thenReturn(Optional.of(referee));
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+
+        assertThatThrownBy(() -> service.getRefereeRaceParticipants(8L, 10L))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessage("Referee is not assigned to this race");
+    }
+
+    @Test
     void startRaceFailsWhenCheckedInBelowMinimum() {
         RaceDayServiceImpl service = service();
         User referee = user(8L, "referee", UserRole.REFEREE);

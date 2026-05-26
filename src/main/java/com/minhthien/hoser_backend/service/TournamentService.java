@@ -20,6 +20,10 @@ public interface TournamentService {
     TournamentResponse updateTournament(Long adminId, Long tournamentId, TournamentUpdateRequest request,
                                         MultipartFile banner);
 
+    String uploadTournamentBanner(Long adminId, MultipartFile banner);
+
+    TournamentResponse updateTournamentBanner(Long adminId, Long tournamentId, MultipartFile banner);
+
     TournamentResponse addTournamentRace(Long adminId, Long tournamentId, RaceRequest request);
 
     TournamentResponse replaceTournamentRaces(Long adminId, Long tournamentId, List<RaceRequest> requests);

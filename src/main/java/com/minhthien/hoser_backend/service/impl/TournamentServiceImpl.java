@@ -223,6 +223,7 @@ public class TournamentServiceImpl implements TournamentService {
         tournament.setName(request.getName());
         tournament.setDescription(request.getDescription());
         tournament.setLocation(request.getLocation());
+        tournament.setBannerUrl(request.getBannerUrl());
         tournament.setRegistrationOpenAt(request.getRegistrationOpenAt());
         tournament.setRegistrationCloseAt(request.getRegistrationCloseAt());
         tournament.setStartAt(request.getStartAt());
@@ -249,6 +250,9 @@ public class TournamentServiceImpl implements TournamentService {
         }
         if (request.getLocation() != null) {
             tournament.setLocation(request.getLocation());
+        }
+        if (request.getBannerUrl() != null) {
+            tournament.setBannerUrl(request.getBannerUrl());
         }
         if (request.getRegistrationOpenAt() != null) {
             tournament.setRegistrationOpenAt(request.getRegistrationOpenAt());
@@ -288,6 +292,25 @@ public class TournamentServiceImpl implements TournamentService {
                     mapChallengePrizes(request.getJockeyChallengePrizes()));
         }
         tournament.setUpdatedBy(updatedBy);
+    }
+
+    @Override
+    public String uploadTournamentBanner(Long adminId, MultipartFile banner) {
+        requireAdmin(adminId);
+        return cloudinaryUploadService.uploadImage(banner, TOURNAMENT_BANNER_FOLDER);
+    }
+
+    @Override
+    @Transactional
+    public TournamentResponse updateTournamentBanner(Long adminId, Long tournamentId, MultipartFile banner) {
+        User admin = requireAdmin(adminId);
+        Tournament tournament = requireTournament(tournamentId);
+        requireConfigEditable(tournament);
+        tournament.setBannerUrl(cloudinaryUploadService.uploadImage(banner, TOURNAMENT_BANNER_FOLDER));
+        tournament.setUpdatedBy(admin.getUsername());
+        Tournament saved = tournamentRepository.save(tournament);
+        recordAudit(admin, "TOURNAMENT_BANNER_UPDATED", saved, "Tournament banner updated");
+        return mapToResponse(saved);
     }
 
     private void applyBanner(Tournament tournament, MultipartFile banner) {

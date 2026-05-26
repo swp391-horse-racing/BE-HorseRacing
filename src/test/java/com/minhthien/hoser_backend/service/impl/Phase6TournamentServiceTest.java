@@ -14,6 +14,7 @@ import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.exception.BadRequestException;
+import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
@@ -95,6 +96,56 @@ class Phase6TournamentServiceTest {
 
         assertThat(response.getBannerUrl()).isEqualTo("https://cdn.example/tournaments/banner.jpg");
         verify(cloudinaryUploadService).uploadImage(banner, "hoser/tournaments/banners");
+    }
+
+    @Test
+    void adminUploadsStandaloneTournamentBanner() {
+        TournamentServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        MockMultipartFile banner = new MockMultipartFile("banner", "banner.jpg", "image/jpeg", "img".getBytes());
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(cloudinaryUploadService.uploadImage(banner, "hoser/tournaments/banners"))
+                .thenReturn("https://cdn.example/tournaments/banner.jpg");
+
+        String bannerUrl = service.uploadTournamentBanner(9L, banner);
+
+        assertThat(bannerUrl).isEqualTo("https://cdn.example/tournaments/banner.jpg");
+        verify(cloudinaryUploadService).uploadImage(banner, "hoser/tournaments/banners");
+    }
+
+    @Test
+    void nonAdminCannotUploadStandaloneTournamentBanner() {
+        TournamentServiceImpl service = service();
+        User owner = user(1L, "owner", UserRole.OWNER);
+        MockMultipartFile banner = new MockMultipartFile("banner", "banner.jpg", "image/jpeg", "img".getBytes());
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
+
+        assertThatThrownBy(() -> service.uploadTournamentBanner(1L, banner))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessage("Only admins can manage tournaments");
+        verify(cloudinaryUploadService, never()).uploadImage(any(), eq("hoser/tournaments/banners"));
+    }
+
+    @Test
+    void adminCreatesDraftRaceDayWithUploadedBannerUrl() {
+        TournamentServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        TournamentRequest request = request();
+        request.setBannerUrl("https://cdn.example/tournaments/uploaded-banner.jpg");
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(tournamentRepository.save(any(Tournament.class))).thenAnswer(invocation -> {
+            Tournament tournament = invocation.getArgument(0);
+            tournament.setId(10L);
+            return tournament;
+        });
+
+        var response = service.createTournament(9L, request);
+
+        assertThat(response.getBannerUrl()).isEqualTo("https://cdn.example/tournaments/uploaded-banner.jpg");
+        verify(cloudinaryUploadService, never()).uploadImage(any(), eq("hoser/tournaments/banners"));
     }
 
     @Test
@@ -209,6 +260,62 @@ class Phase6TournamentServiceTest {
         assertThat(response.getDescription()).isEqualTo("Updated description");
         assertThat(response.getBannerUrl()).isEqualTo("https://cdn.example/tournaments/new-banner.png");
         verify(cloudinaryUploadService).uploadImage(banner, "hoser/tournaments/banners");
+    }
+
+    @Test
+    void updateTournamentReplacesBannerWhenUrlProvided() {
+        TournamentServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        tournament.setBannerUrl("https://cdn.example/tournaments/old-banner.jpg");
+        TournamentUpdateRequest request = new TournamentUpdateRequest();
+        request.setBannerUrl("https://cdn.example/tournaments/uploaded-banner.jpg");
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(tournamentRepository.findById(10L)).thenReturn(Optional.of(tournament));
+        when(tournamentRepository.save(any(Tournament.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.updateTournament(9L, 10L, request);
+
+        assertThat(response.getBannerUrl()).isEqualTo("https://cdn.example/tournaments/uploaded-banner.jpg");
+        verify(cloudinaryUploadService, never()).uploadImage(any(), eq("hoser/tournaments/banners"));
+    }
+
+    @Test
+    void adminUpdatesTournamentBannerByFile() {
+        TournamentServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        tournament.setBannerUrl("https://cdn.example/tournaments/old-banner.jpg");
+        MockMultipartFile banner = new MockMultipartFile("banner", "new-banner.jpg", "image/jpeg",
+                "img".getBytes());
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(tournamentRepository.findById(10L)).thenReturn(Optional.of(tournament));
+        when(cloudinaryUploadService.uploadImage(banner, "hoser/tournaments/banners"))
+                .thenReturn("https://cdn.example/tournaments/new-banner.jpg");
+        when(tournamentRepository.save(any(Tournament.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.updateTournamentBanner(9L, 10L, banner);
+
+        assertThat(response.getBannerUrl()).isEqualTo("https://cdn.example/tournaments/new-banner.jpg");
+        assertThat(tournament.getUpdatedBy()).isEqualTo("admin");
+        verify(cloudinaryUploadService).uploadImage(banner, "hoser/tournaments/banners");
+    }
+
+    @Test
+    void nonAdminCannotUpdateTournamentBannerByFile() {
+        TournamentServiceImpl service = service();
+        User owner = user(1L, "owner", UserRole.OWNER);
+        MockMultipartFile banner = new MockMultipartFile("banner", "new-banner.jpg", "image/jpeg",
+                "img".getBytes());
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
+
+        assertThatThrownBy(() -> service.updateTournamentBanner(1L, 10L, banner))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessage("Only admins can manage tournaments");
+        verify(cloudinaryUploadService, never()).uploadImage(any(), eq("hoser/tournaments/banners"));
     }
 
     @Test

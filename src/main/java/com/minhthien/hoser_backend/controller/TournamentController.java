@@ -5,6 +5,7 @@ import com.minhthien.hoser_backend.dto.request.TournamentRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
+import com.minhthien.hoser_backend.dto.response.TournamentBannerUploadResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentFinalizationResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentLeaderboardResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentPayoutResponse;
@@ -33,7 +34,24 @@ import java.util.List;
 public class TournamentController {
     private final TournamentService tournamentService;
     private final TournamentFinalizationService tournamentFinalizationService;
-    private final MultipartJsonParser multipartJsonParser;
+
+    @PostMapping(value = "/admin/tournament-banners", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<TournamentBannerUploadResponse>> uploadTournamentBanner(
+            @AuthenticationPrincipal User currentUser,
+            @RequestPart("banner") MultipartFile banner) {
+        String bannerUrl = tournamentService.uploadTournamentBanner(currentUser.getId(), banner);
+        return ResponseEntity.ok(ApiResponse.success("Tournament banner uploaded",
+                new TournamentBannerUploadResponse(bannerUrl)));
+    }
+
+    @PutMapping(value = "/admin/tournaments/{id}/banner", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<TournamentResponse>> updateTournamentBanner(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @RequestPart("banner") MultipartFile banner) {
+        return ResponseEntity.ok(ApiResponse.success("Tournament banner updated",
+                tournamentService.updateTournamentBanner(currentUser.getId(), id, banner)));
+    }
 
     @PostMapping(value = "/admin/tournaments", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ApiResponse<TournamentResponse>> createTournament(
@@ -43,16 +61,6 @@ public class TournamentController {
                 tournamentService.createTournament(currentUser.getId(), request)));
     }
 
-    @PostMapping(value = "/admin/tournaments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<TournamentResponse>> createTournamentWithBanner(
-            @AuthenticationPrincipal User currentUser,
-            @RequestPart("data") String data,
-            @RequestPart(value = "banner", required = false) MultipartFile banner) {
-        TournamentRequest request = multipartJsonParser.parse(data, TournamentRequest.class);
-        return ResponseEntity.ok(ApiResponse.success("Tournament created",
-                tournamentService.createTournament(currentUser.getId(), request, banner)));
-    }
-
     @PutMapping(value = "/admin/tournaments/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ApiResponse<TournamentResponse>> updateTournament(
             @AuthenticationPrincipal User currentUser,
@@ -60,17 +68,6 @@ public class TournamentController {
             @Valid @RequestBody TournamentUpdateRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Tournament updated",
                 tournamentService.updateTournament(currentUser.getId(), id, request)));
-    }
-
-    @PutMapping(value = "/admin/tournaments/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<TournamentResponse>> updateTournamentWithBanner(
-            @AuthenticationPrincipal User currentUser,
-            @PathVariable Long id,
-            @RequestPart("data") String data,
-            @RequestPart(value = "banner", required = false) MultipartFile banner) {
-        TournamentUpdateRequest request = multipartJsonParser.parse(data, TournamentUpdateRequest.class);
-        return ResponseEntity.ok(ApiResponse.success("Tournament updated",
-                tournamentService.updateTournament(currentUser.getId(), id, request, banner)));
     }
 
     @PostMapping("/admin/tournaments/{id}/races")

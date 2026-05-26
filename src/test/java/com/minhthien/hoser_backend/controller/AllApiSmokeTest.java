@@ -161,6 +161,7 @@ class AllApiSmokeTest {
         Long horseId = latestHorseId();
         exerciseJockeyInvitationApis(horseId);
         exerciseRaceRegistrationApis();
+        exerciseTournamentApis();
         exerciseRaceSchedulingApis();
         exercisePhase9RaceOperationApis();
         exerciseWalletPaymentAndWithdrawalApis();
@@ -427,6 +428,35 @@ class AllApiSmokeTest {
                 """));
     }
 
+    private void exerciseTournamentApis() throws Exception {
+        assertNonServerError(multipart("/api/v1/admin/tournament-banners")
+                .file(new MockMultipartFile("banner", "banner.jpg", "image/jpeg", "img".getBytes()))
+                .header("Authorization", bearer(userToken)));
+        assertOk(postJson("/api/v1/admin/tournaments", adminToken, """
+                {
+                  "name": "Smoke Tournament",
+                  "description": "Smoke tournament",
+                  "location": "Ho Chi Minh City",
+                  "bannerUrl": "https://cdn.example/tournaments/smoke-banner.jpg",
+                  "registrationOpenAt": "2026-06-01T08:00:00",
+                  "registrationCloseAt": "2026-06-02T08:00:00",
+                  "startAt": "2026-06-03T08:00:00",
+                  "endAt": "2026-06-03T18:00:00",
+                  "checkInDeadlineAt": "2026-06-03T07:30:00",
+                  "minTeams": 1,
+                  "maxTeams": 8,
+                  "jockeyChallengeEnabled": true,
+                  "jockeyChallengeFirstPoints": 3,
+                  "jockeyChallengeSecondPoints": 2,
+                  "jockeyChallengeThirdPoints": 1,
+                  "jockeyChallengePrizes": []
+                }
+                """));
+        assertNonServerError(multipartPut("/api/v1/admin/tournaments/999999/banner")
+                .file(new MockMultipartFile("banner", "banner.jpg", "image/jpeg", "img".getBytes()))
+                .header("Authorization", bearer(adminToken)));
+    }
+
     private void exerciseRaceSchedulingApis() throws Exception {
         assertNonServerError(put("/api/v1/admin/tournaments/999999/schedule")
                 .header("Authorization", bearer(adminToken)));
@@ -445,6 +475,8 @@ class AllApiSmokeTest {
     }
 
     private void exercisePhase9RaceOperationApis() throws Exception {
+        assertNonServerError(get("/api/v1/referee/races/999999/participants")
+                .header("Authorization", bearer(jockeyToken)));
         assertNonServerError(putJson("/api/v1/referee/races/999999/participants/999999/check-in", jockeyToken, """
                 {
                   "status": "CHECKED_IN",

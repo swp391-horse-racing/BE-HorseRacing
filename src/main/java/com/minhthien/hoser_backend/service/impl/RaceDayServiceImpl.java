@@ -311,6 +311,15 @@ public class RaceDayServiceImpl implements RaceDayService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<RaceParticipantResponse> getRefereeRaceParticipants(Long refereeId, Long raceId) {
+        requireAssignedRefereeRace(refereeId, raceId);
+        return raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(raceId).stream()
+                .map(this::mapParticipant)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public RaceParticipantResponse checkInRaceParticipant(Long refereeId, Long raceId, Long participantId,
                                                           RaceParticipantCheckInRequest request) {
