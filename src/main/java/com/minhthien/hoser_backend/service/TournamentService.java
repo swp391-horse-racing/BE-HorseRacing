@@ -6,13 +6,19 @@ import com.minhthien.hoser_backend.dto.request.TournamentUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 public interface TournamentService {
     TournamentResponse createTournament(Long adminId, TournamentRequest request);
 
+    TournamentResponse createTournament(Long adminId, TournamentRequest request, MultipartFile banner);
+
     TournamentResponse updateTournament(Long adminId, Long tournamentId, TournamentUpdateRequest request);
+
+    TournamentResponse updateTournament(Long adminId, Long tournamentId, TournamentUpdateRequest request,
+                                        MultipartFile banner);
 
     TournamentResponse addTournamentRace(Long adminId, Long tournamentId, RaceRequest request);
 

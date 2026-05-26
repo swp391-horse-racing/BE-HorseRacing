@@ -103,6 +103,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/horses/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/jockeys/available").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/jockeys/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/news").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/news/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/tournaments").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/tournaments/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/tournaments/*/races").permitAll()

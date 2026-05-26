@@ -17,11 +17,13 @@ import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
+import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -31,6 +33,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,6 +48,9 @@ class Phase6TournamentServiceTest {
 
     @Mock
     private AdminAuditLogRepository adminAuditLogRepository;
+
+    @Mock
+    private CloudinaryUploadService cloudinaryUploadService;
 
     @Test
     void adminCreatesDraftRaceDayWithChallengeConfigAndNoRequiredRaces() {
@@ -68,6 +75,26 @@ class Phase6TournamentServiceTest {
         verify(adminAuditLogRepository).save(auditCaptor.capture());
         assertThat(auditCaptor.getValue().getAction()).isEqualTo("TOURNAMENT_CREATED");
         assertThat(auditCaptor.getValue().getReferenceId()).isEqualTo("10");
+    }
+
+    @Test
+    void adminCreatesDraftRaceDayWithBanner() {
+        TournamentServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        MockMultipartFile banner = new MockMultipartFile("banner", "banner.jpg", "image/jpeg", "img".getBytes());
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(cloudinaryUploadService.uploadImage(banner, "hoser/tournaments/banners"))
+                .thenReturn("https://cdn.example/tournaments/banner.jpg");
+        when(tournamentRepository.save(any(Tournament.class))).thenAnswer(invocation -> {
+            Tournament tournament = invocation.getArgument(0);
+            tournament.setId(10L);
+            return tournament;
+        });
+
+        var response = service.createTournament(9L, request(), banner);
+
+        assertThat(response.getBannerUrl()).isEqualTo("https://cdn.example/tournaments/banner.jpg");
+        verify(cloudinaryUploadService).uploadImage(banner, "hoser/tournaments/banners");
     }
 
     @Test
@@ -145,6 +172,7 @@ class Phase6TournamentServiceTest {
         TournamentServiceImpl service = service();
         User admin = user(9L, "admin", UserRole.ADMIN);
         Tournament tournament = tournament(TournamentStatus.DRAFT);
+        tournament.setBannerUrl("https://cdn.example/tournaments/existing-banner.jpg");
         TournamentUpdateRequest request = new TournamentUpdateRequest();
         request.setDescription("Updated description");
 
@@ -155,7 +183,32 @@ class Phase6TournamentServiceTest {
         var response = service.updateTournament(9L, 10L, request);
 
         assertThat(response.getDescription()).isEqualTo("Updated description");
+        assertThat(response.getBannerUrl()).isEqualTo("https://cdn.example/tournaments/existing-banner.jpg");
         assertThat(response.getRaces()).hasSize(2);
+        verify(cloudinaryUploadService, never()).uploadImage(any(), eq("hoser/tournaments/banners"));
+    }
+
+    @Test
+    void updateTournamentReplacesBannerWhenFileProvided() {
+        TournamentServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        tournament.setBannerUrl("https://cdn.example/tournaments/old-banner.jpg");
+        TournamentUpdateRequest request = new TournamentUpdateRequest();
+        request.setDescription("Updated description");
+        MockMultipartFile banner = new MockMultipartFile("banner", "new-banner.png", "image/png", "img".getBytes());
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(tournamentRepository.findById(10L)).thenReturn(Optional.of(tournament));
+        when(cloudinaryUploadService.uploadImage(banner, "hoser/tournaments/banners"))
+                .thenReturn("https://cdn.example/tournaments/new-banner.png");
+        when(tournamentRepository.save(any(Tournament.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.updateTournament(9L, 10L, request, banner);
+
+        assertThat(response.getDescription()).isEqualTo("Updated description");
+        assertThat(response.getBannerUrl()).isEqualTo("https://cdn.example/tournaments/new-banner.png");
+        verify(cloudinaryUploadService).uploadImage(banner, "hoser/tournaments/banners");
     }
 
     @Test
@@ -223,7 +276,8 @@ class Phase6TournamentServiceTest {
     }
 
     private TournamentServiceImpl service() {
-        return new TournamentServiceImpl(tournamentRepository, userRepository, adminAuditLogRepository);
+        return new TournamentServiceImpl(tournamentRepository, userRepository, adminAuditLogRepository,
+                cloudinaryUploadService);
     }
 
     private TournamentRequest request() {

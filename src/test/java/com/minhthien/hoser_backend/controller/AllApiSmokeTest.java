@@ -11,6 +11,7 @@ import com.minhthien.hoser_backend.enums.WalletTransactionType;
 import com.minhthien.hoser_backend.repository.HorseRepository;
 import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
 import com.minhthien.hoser_backend.repository.JockeyProfileRepository;
+import com.minhthien.hoser_backend.repository.NewsArticleRepository;
 import com.minhthien.hoser_backend.repository.PaymentOrderRepository;
 import com.minhthien.hoser_backend.repository.PasswordResetOtpRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
@@ -31,6 +32,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.util.MultiValueMap;
@@ -46,6 +48,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -96,6 +99,9 @@ class AllApiSmokeTest {
 
     @Autowired
     private JockeyInvitationRepository jockeyInvitationRepository;
+
+    @Autowired
+    private NewsArticleRepository newsArticleRepository;
 
     @Autowired
     private WithdrawalRequestRepository withdrawalRequestRepository;
@@ -150,6 +156,7 @@ class AllApiSmokeTest {
     void allControllerApisReturnNonServerErrors() throws Exception {
         exerciseAuthApis();
         exerciseUserAndAdminApis();
+        exerciseNewsApis();
         exerciseHorseAndJockeyProfileApis();
         Long horseId = latestHorseId();
         exerciseJockeyInvitationApis(horseId);
@@ -271,6 +278,62 @@ class AllApiSmokeTest {
                   "jockeyHireTaxPercent": 10.00
                 }
                 """));
+    }
+
+    private void exerciseNewsApis() throws Exception {
+        assertOk(postJson("/api/v1/admin/news", adminToken, """
+                {
+                  "title": "Smoke Race News",
+                  "summary": "Smoke news summary",
+                  "content": "Smoke news content",
+                  "category": "Su kien",
+                  "featured": true,
+                  "publishedAt": "2026-05-20T08:00:00"
+                }
+                """));
+        MockMultipartFile dataPart = new MockMultipartFile("data", "", "application/octet-stream", """
+                {
+                  "title": "Smoke Multipart Race News",
+                  "summary": "Smoke multipart news summary",
+                  "content": "Smoke multipart news content",
+                  "category": "Su kien",
+                  "featured": false,
+                  "publishedAt": "2026-05-21T08:00:00"
+                }
+                """.getBytes(StandardCharsets.UTF_8));
+        assertOk(multipart("/api/v1/admin/news")
+                .file(dataPart)
+                .header("Authorization", bearer(adminToken)));
+        Long newsId = latestNewsId();
+
+        assertOk(get("/api/v1/news"));
+        assertOk(get("/api/v1/news/all"));
+        assertOk(get("/api/v1/news?featured=true"));
+        assertOk(get("/api/v1/news?category=Su%20kien"));
+        assertOk(get("/api/v1/news/" + newsId));
+        assertOk(get("/api/v1/admin/news").header("Authorization", bearer(adminToken)));
+        assertOk(get("/api/v1/admin/news/" + newsId).header("Authorization", bearer(adminToken)));
+        assertOk(putJson("/api/v1/admin/news/" + newsId, adminToken, """
+                {
+                  "title": "Smoke Race News Updated",
+                  "summary": "Smoke news summary updated",
+                  "content": "Smoke news content updated",
+                  "featured": false
+                }
+                """));
+        MockMultipartFile updateDataPart = new MockMultipartFile("data", "", "application/octet-stream", """
+                {
+                  "title": "Smoke Multipart Race News Updated",
+                  "summary": "Smoke multipart news summary updated",
+                  "content": "Smoke multipart news content updated",
+                  "featured": true
+                }
+                """.getBytes(StandardCharsets.UTF_8));
+        assertOk(multipartPut("/api/v1/admin/news/" + newsId)
+                .file(updateDataPart)
+                .header("Authorization", bearer(adminToken)));
+        assertOk(delete("/api/v1/admin/news/" + newsId)
+                .header("Authorization", bearer(adminToken)));
     }
 
     private void exerciseHorseAndJockeyProfileApis() throws Exception {
@@ -581,6 +644,13 @@ class AllApiSmokeTest {
     private Long latestJockeyProfileId() {
         return jockeyProfileRepository.findAll().stream()
                 .max(Comparator.comparing(profile -> profile.getId()))
+                .orElseThrow()
+                .getId();
+    }
+
+    private Long latestNewsId() {
+        return newsArticleRepository.findAll().stream()
+                .max(Comparator.comparing(news -> news.getId()))
                 .orElseThrow()
                 .getId();
     }

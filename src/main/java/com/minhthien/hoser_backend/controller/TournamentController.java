@@ -12,8 +12,10 @@ import com.minhthien.hoser_backend.service.TournamentService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,8 +26,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TournamentController {
     private final TournamentService tournamentService;
+    private final MultipartJsonParser multipartJsonParser;
 
-    @PostMapping("/admin/tournaments")
+    @PostMapping(value = "/admin/tournaments", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ApiResponse<TournamentResponse>> createTournament(
             @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody TournamentRequest request) {
@@ -33,13 +36,34 @@ public class TournamentController {
                 tournamentService.createTournament(currentUser.getId(), request)));
     }
 
-    @PutMapping("/admin/tournaments/{id}")
+    @PostMapping(value = "/admin/tournaments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<TournamentResponse>> createTournamentWithBanner(
+            @AuthenticationPrincipal User currentUser,
+            @RequestPart("data") String data,
+            @RequestPart(value = "banner", required = false) MultipartFile banner) {
+        TournamentRequest request = multipartJsonParser.parse(data, TournamentRequest.class);
+        return ResponseEntity.ok(ApiResponse.success("Tournament created",
+                tournamentService.createTournament(currentUser.getId(), request, banner)));
+    }
+
+    @PutMapping(value = "/admin/tournaments/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ApiResponse<TournamentResponse>> updateTournament(
             @AuthenticationPrincipal User currentUser,
             @PathVariable Long id,
             @Valid @RequestBody TournamentUpdateRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Tournament updated",
                 tournamentService.updateTournament(currentUser.getId(), id, request)));
+    }
+
+    @PutMapping(value = "/admin/tournaments/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<TournamentResponse>> updateTournamentWithBanner(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @RequestPart("data") String data,
+            @RequestPart(value = "banner", required = false) MultipartFile banner) {
+        TournamentUpdateRequest request = multipartJsonParser.parse(data, TournamentUpdateRequest.class);
+        return ResponseEntity.ok(ApiResponse.success("Tournament updated",
+                tournamentService.updateTournament(currentUser.getId(), id, request, banner)));
     }
 
     @PostMapping("/admin/tournaments/{id}/races")

@@ -29,6 +29,7 @@ refereeId=4
 horseId=1
 jockeyInvitationId=1
 tournamentId=1
+newsId=1
 raceId=1
 registrationId=1
 participantId=1
@@ -1053,6 +1054,111 @@ Authorization: Bearer {{adminToken}}
 }
 ```
 
+## News
+
+### Admin Create News
+
+```http
+POST {{baseUrl}}/api/v1/admin/news
+Authorization: Bearer {{adminToken}}
+```
+
+```json
+{
+  "title": "Tin tức nổi bật giải đua",
+  "summary": "Tóm tắt ngắn hiển thị trên card tin tức",
+  "content": "Nội dung đầy đủ của bài viết",
+  "category": "Sự kiện",
+  "featured": true,
+  "publishedAt": "2026-05-20T08:00:00"
+}
+```
+
+Optional multipart create with image:
+
+```http
+POST {{baseUrl}}/api/v1/admin/news
+Authorization: Bearer {{adminToken}}
+Content-Type: multipart/form-data
+```
+
+In Postman form-data, add `data` as a text field containing JSON and `image` as a file field.
+
+```text
+data={
+  "title": "Tin tức nổi bật giải đua",
+  "summary": "Tóm tắt ngắn hiển thị trên card tin tức",
+  "content": "Nội dung đầy đủ của bài viết",
+  "category": "Sự kiện",
+  "featured": true,
+  "publishedAt": "2026-05-20T08:00:00"
+}
+image=@news-image.jpg
+```
+
+### Admin Update News
+
+```http
+PUT {{baseUrl}}/api/v1/admin/news/{{newsId}}
+Authorization: Bearer {{adminToken}}
+```
+
+```json
+{
+  "title": "Tin tức nổi bật giải đua cập nhật",
+  "summary": "Tóm tắt đã cập nhật",
+  "content": "Nội dung bài viết đã cập nhật",
+  "category": "Kết quả đua",
+  "featured": false,
+  "publishedAt": "2026-05-21T08:00:00"
+}
+```
+
+Optional multipart update with image:
+
+```http
+PUT {{baseUrl}}/api/v1/admin/news/{{newsId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: multipart/form-data
+```
+
+In Postman form-data, add `data` as a text field containing JSON and `image` as a file field.
+
+```text
+data={
+  "title": "Tin tức nổi bật giải đua cập nhật",
+  "summary": "Tóm tắt đã cập nhật",
+  "content": "Nội dung bài viết đã cập nhật",
+  "featured": false
+}
+image=@news-image-new.jpg
+```
+
+Omit `image` to keep the existing `imageUrl`.
+
+### Admin List And Delete News
+
+```http
+GET {{baseUrl}}/api/v1/admin/news
+GET {{baseUrl}}/api/v1/admin/news/{{newsId}}
+DELETE {{baseUrl}}/api/v1/admin/news/{{newsId}}
+Authorization: Bearer {{adminToken}}
+```
+
+No body for GET and DELETE.
+
+### Public News
+
+```http
+GET {{baseUrl}}/api/v1/news
+GET {{baseUrl}}/api/v1/news/all
+GET {{baseUrl}}/api/v1/news?featured=true
+GET {{baseUrl}}/api/v1/news?category=S%E1%BB%B1%20ki%E1%BB%87n
+GET {{baseUrl}}/api/v1/news/{{newsId}}
+```
+
+No body. Use `/api/v1/news/all` for an unfiltered public list. Public news responses include `imageUrl`, `featured`, `category`, `publishedAt`, and content.
+
 ## Tournaments And Races
 
 ### Admin Create Tournament
@@ -1088,6 +1194,45 @@ Authorization: Bearer {{adminToken}}
 }
 ```
 
+Optional multipart create with banner image:
+
+```http
+POST {{baseUrl}}/api/v1/admin/tournaments
+Authorization: Bearer {{adminToken}}
+Content-Type: multipart/form-data
+```
+
+In Postman form-data, add `data` as a text field containing JSON and `banner` as a file field.
+
+```text
+data={
+  "name": "Spring Cup",
+  "description": "Spring racing tournament",
+  "location": "Ho Chi Minh City",
+  "registrationOpenAt": "2026-06-01T08:00:00",
+  "registrationCloseAt": "2026-06-05T18:00:00",
+  "startAt": "2026-06-10T08:00:00",
+  "endAt": "2026-06-10T18:00:00",
+  "checkInDeadlineAt": "2026-06-10T07:30:00",
+  "minTeams": 2,
+  "maxTeams": 8,
+  "jockeyChallengeEnabled": true,
+  "jockeyChallengeFirstPoints": 3,
+  "jockeyChallengeSecondPoints": 2,
+  "jockeyChallengeThirdPoints": 1,
+  "jockeyChallengePrizes": [
+    {
+      "rank": 1,
+      "amount": 1000000,
+      "note": "Best jockey"
+    }
+  ]
+}
+banner=@tournament-banner.jpg
+```
+
+Tournament responses include `bannerUrl` when a banner has been uploaded.
+
 ### Admin Update Tournament
 
 ```http
@@ -1120,6 +1265,34 @@ Authorization: Bearer {{adminToken}}
   ]
 }
 ```
+
+Optional multipart update with banner image:
+
+```http
+PUT {{baseUrl}}/api/v1/admin/tournaments/{{tournamentId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: multipart/form-data
+```
+
+In Postman form-data, add `data` as a text field containing JSON and `banner` as a file field.
+
+```text
+data={
+  "name": "Spring Cup Updated",
+  "description": "Updated description",
+  "location": "Ho Chi Minh City",
+  "registrationOpenAt": "2026-06-01T08:00:00",
+  "registrationCloseAt": "2026-06-05T18:00:00",
+  "startAt": "2026-06-10T08:00:00",
+  "endAt": "2026-06-10T18:00:00",
+  "checkInDeadlineAt": "2026-06-10T07:30:00",
+  "minTeams": 2,
+  "maxTeams": 10
+}
+banner=@tournament-banner-new.jpg
+```
+
+Omit `banner` to keep the existing `bannerUrl`.
 
 ### Admin Add Tournament Race
 

@@ -24,10 +24,12 @@ import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
+import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import com.minhthien.hoser_backend.service.TournamentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -40,14 +42,22 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class TournamentServiceImpl implements TournamentService {
     private static final String REFERENCE_TYPE = "TOURNAMENT";
+    private static final String TOURNAMENT_BANNER_FOLDER = "hoser/tournaments/banners";
 
     private final TournamentRepository tournamentRepository;
     private final UserRepository userRepository;
     private final AdminAuditLogRepository adminAuditLogRepository;
+    private final CloudinaryUploadService cloudinaryUploadService;
 
     @Override
     @Transactional
     public TournamentResponse createTournament(Long adminId, TournamentRequest request) {
+        return createTournament(adminId, request, null);
+    }
+
+    @Override
+    @Transactional
+    public TournamentResponse createTournament(Long adminId, TournamentRequest request, MultipartFile banner) {
         User admin = requireAdmin(adminId);
         validateBaseRequest(request);
 
@@ -57,6 +67,7 @@ public class TournamentServiceImpl implements TournamentService {
                 .updatedBy(admin.getUsername())
                 .build();
         applyRequest(tournament, request, admin.getUsername());
+        applyBanner(tournament, banner);
         Tournament saved = tournamentRepository.save(tournament);
         recordAudit(admin, "TOURNAMENT_CREATED", saved, "Race day draft created");
         return mapToResponse(saved);
@@ -65,6 +76,13 @@ public class TournamentServiceImpl implements TournamentService {
     @Override
     @Transactional
     public TournamentResponse updateTournament(Long adminId, Long tournamentId, TournamentUpdateRequest request) {
+        return updateTournament(adminId, tournamentId, request, null);
+    }
+
+    @Override
+    @Transactional
+    public TournamentResponse updateTournament(Long adminId, Long tournamentId, TournamentUpdateRequest request,
+                                               MultipartFile banner) {
         User admin = requireAdmin(adminId);
         if (request == null) {
             throw new BadRequestException("Tournament request is required");
@@ -73,6 +91,7 @@ public class TournamentServiceImpl implements TournamentService {
         requireConfigEditable(tournament);
 
         applyUpdateRequest(tournament, request, admin.getUsername());
+        applyBanner(tournament, banner);
         validateBaseTournament(tournament);
         validateConfiguredRaces(tournament);
         validateConfiguredChallenge(tournament);
@@ -269,6 +288,12 @@ public class TournamentServiceImpl implements TournamentService {
                     mapChallengePrizes(request.getJockeyChallengePrizes()));
         }
         tournament.setUpdatedBy(updatedBy);
+    }
+
+    private void applyBanner(Tournament tournament, MultipartFile banner) {
+        if (banner != null) {
+            tournament.setBannerUrl(cloudinaryUploadService.uploadImage(banner, TOURNAMENT_BANNER_FOLDER));
+        }
     }
 
     private void replaceJockeyChallengePrizesForUpdate(Tournament tournament,
@@ -540,6 +565,7 @@ public class TournamentServiceImpl implements TournamentService {
                 .name(tournament.getName())
                 .description(tournament.getDescription())
                 .location(tournament.getLocation())
+                .bannerUrl(tournament.getBannerUrl())
                 .registrationOpenAt(tournament.getRegistrationOpenAt())
                 .registrationCloseAt(tournament.getRegistrationCloseAt())
                 .startAt(tournament.getStartAt())

@@ -38,6 +38,9 @@ public class Tournament {
     @Column(nullable = false, length = 255)
     private String location;
 
+    @Column(name = "banner_url", length = 500)
+    private String bannerUrl;
+
     @Column(name = "registration_open_at", nullable = false)
     private LocalDateTime registrationOpenAt;
 
