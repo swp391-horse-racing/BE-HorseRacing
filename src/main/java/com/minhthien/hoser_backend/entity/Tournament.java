@@ -95,6 +95,14 @@ public class Tournament {
 
     private Long jockeyChallengeFinalizedBy;
 
+    private LocalDateTime finalizedAt;
+
+    private Long finalizedBy;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer pendingComplaintCountAtFinalize = 0;
+
     @OneToMany(mappedBy = "tournament", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("scheduledStartAt ASC")
     @Builder.Default
@@ -145,6 +153,9 @@ public class Tournament {
         }
         if (jockeyChallengeThirdPoints == null) {
             jockeyChallengeThirdPoints = 1;
+        }
+        if (pendingComplaintCountAtFinalize == null) {
+            pendingComplaintCountAtFinalize = 0;
         }
         if (createdBy == null || createdBy.isBlank()) {
             createdBy = "SYSTEM";

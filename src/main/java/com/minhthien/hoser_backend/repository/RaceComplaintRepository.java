@@ -22,4 +22,10 @@ public interface RaceComplaintRepository extends JpaRepository<RaceComplaint, Lo
     @EntityGraph(attributePaths = {"race", "complainantOwner", "accusedOwner", "accusedParticipant",
             "accusedParticipant.horse"})
     List<RaceComplaint> findAllByOrderByCreatedAtDesc();
+
+    @EntityGraph(attributePaths = {"race", "complainantOwner", "accusedOwner", "accusedParticipant",
+            "accusedParticipant.horse"})
+    List<RaceComplaint> findByRaceTournamentId(Long tournamentId);
+
+    long countByRaceTournamentIdAndStatus(Long tournamentId, RaceComplaintStatus status);
 }

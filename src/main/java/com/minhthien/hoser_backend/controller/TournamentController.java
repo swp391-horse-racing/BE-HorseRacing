@@ -5,9 +5,14 @@ import com.minhthien.hoser_backend.dto.request.TournamentRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
+import com.minhthien.hoser_backend.dto.response.TournamentFinalizationResponse;
+import com.minhthien.hoser_backend.dto.response.TournamentLeaderboardResponse;
+import com.minhthien.hoser_backend.dto.response.TournamentPayoutResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
+import com.minhthien.hoser_backend.dto.response.TournamentStatisticsResponse;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
+import com.minhthien.hoser_backend.service.TournamentFinalizationService;
 import com.minhthien.hoser_backend.service.TournamentService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
@@ -26,6 +31,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TournamentController {
     private final TournamentService tournamentService;
+    private final TournamentFinalizationService tournamentFinalizationService;
     private final MultipartJsonParser multipartJsonParser;
 
     @PostMapping(value = "/admin/tournaments", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -109,6 +115,14 @@ public class TournamentController {
                 tournamentService.closeRegistration(currentUser.getId(), id)));
     }
 
+    @PutMapping("/admin/tournaments/{id}/finalize")
+    public ResponseEntity<ApiResponse<TournamentFinalizationResponse>> finalizeTournament(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Tournament finalized",
+                tournamentFinalizationService.finalizeTournament(currentUser.getId(), id)));
+    }
+
     @GetMapping("/admin/tournaments")
     public ResponseEntity<ApiResponse<List<TournamentResponse>>> getAdminTournaments(
             @RequestParam(required = false) TournamentStatus status) {
@@ -118,6 +132,22 @@ public class TournamentController {
     @GetMapping("/admin/tournaments/{id}")
     public ResponseEntity<ApiResponse<TournamentResponse>> getAdminTournament(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(tournamentService.getAdminTournament(id)));
+    }
+
+    @GetMapping("/admin/tournaments/{id}/statistics")
+    public ResponseEntity<ApiResponse<TournamentStatisticsResponse>> getTournamentStatistics(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                tournamentFinalizationService.getStatistics(currentUser.getId(), id)));
+    }
+
+    @GetMapping("/admin/tournaments/{id}/payouts")
+    public ResponseEntity<ApiResponse<List<TournamentPayoutResponse>>> getTournamentPayouts(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                tournamentFinalizationService.getPayouts(currentUser.getId(), id)));
     }
 
     @GetMapping("/tournaments")
@@ -133,5 +163,11 @@ public class TournamentController {
     @GetMapping("/tournaments/{id}/races")
     public ResponseEntity<ApiResponse<List<RaceResponse>>> getPublicTournamentRaces(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(tournamentService.getPublicTournamentRaces(id)));
+    }
+
+    @GetMapping("/tournaments/{id}/leaderboard")
+    public ResponseEntity<ApiResponse<TournamentLeaderboardResponse>> getPublicTournamentLeaderboard(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(tournamentFinalizationService.getLeaderboard(id)));
     }
 }

@@ -31,6 +31,9 @@ public class TournamentResponse {
     private Integer jockeyChallengeThirdPoints;
     private LocalDateTime jockeyChallengeFinalizedAt;
     private Long jockeyChallengeFinalizedBy;
+    private LocalDateTime finalizedAt;
+    private Long finalizedBy;
+    private Integer pendingComplaintCountAtFinalize;
     private List<RaceResponse> races;
     private List<JockeyChallengePrizeResponse> jockeyChallengePrizes;
     private LocalDateTime createdAt;

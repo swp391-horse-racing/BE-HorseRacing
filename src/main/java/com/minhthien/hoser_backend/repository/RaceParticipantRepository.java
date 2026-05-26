@@ -13,6 +13,9 @@ public interface RaceParticipantRepository extends JpaRepository<RaceParticipant
     @EntityGraph(attributePaths = {"race", "owner", "horse", "jockey", "registration"})
     List<RaceParticipant> findByRaceIdOrderByGateNumberAsc(Long raceId);
 
+    @EntityGraph(attributePaths = {"race", "owner", "horse", "jockey", "registration"})
+    List<RaceParticipant> findByRaceTournamentId(Long tournamentId);
+
     Optional<RaceParticipant> findByRegistrationId(Long registrationId);
 
     boolean existsByRaceIdAndGateNumber(Long raceId, Integer gateNumber);
