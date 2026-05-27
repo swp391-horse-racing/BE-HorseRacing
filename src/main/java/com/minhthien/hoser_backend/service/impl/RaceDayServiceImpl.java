@@ -23,6 +23,7 @@ import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.*;
+import com.minhthien.hoser_backend.service.BettingService;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.MailService;
 import com.minhthien.hoser_backend.service.RaceDayService;
@@ -59,6 +60,7 @@ public class RaceDayServiceImpl implements RaceDayService {
     private final TournamentServiceImpl tournamentService;
     private final FinanceSettingsService financeSettingsService;
     private final MailService mailService;
+    private final BettingService bettingService;
 
     @Override
     @Transactional
@@ -353,14 +355,18 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (race.getStatus() != RaceStatus.SCHEDULED) {
             throw new BadRequestException("Only scheduled races can be started");
         }
-        long checkedInCount = raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(raceId).stream()
+        List<RaceParticipant> participants = raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(raceId);
+        long checkedInCount = participants.stream()
                 .filter(participant -> participant.getStatus() == RaceParticipantStatus.CHECKED_IN)
                 .count();
         if (checkedInCount < race.getMinParticipants()) {
             throw new BadRequestException("Race does not have enough checked-in participants");
         }
+        autoMarkRegisteredParticipantsAbsent(participants, refereeId);
         race.setStatus(RaceStatus.ONGOING);
-        return tournamentService.mapRace(raceRepository.save(race));
+        Race saved = raceRepository.save(race);
+        bettingService.lockRaceBets(raceId);
+        return tournamentService.mapRace(saved);
     }
 
     @Override
@@ -382,10 +388,11 @@ public class RaceDayServiceImpl implements RaceDayService {
         }
         Map<Long, RaceParticipant> participantById = participants.stream()
                 .collect(Collectors.toMap(RaceParticipant::getId, Function.identity()));
-        validateResultEntries(request.getResults(), participantById);
+        List<RaceResultEntryRequest> resultEntries = completeResultEntries(request.getResults(), participants);
+        validateResultEntries(resultEntries, participantById);
 
         LocalDateTime now = LocalDateTime.now();
-        List<RaceResult> results = request.getResults().stream()
+        List<RaceResult> results = resultEntries.stream()
                 .map(entry -> buildRaceResult(race, participantById.get(entry.getParticipantId()), entry, refereeId, now))
                 .toList();
         raceResultRepository.saveAll(results);
@@ -394,6 +401,7 @@ public class RaceDayServiceImpl implements RaceDayService {
         race.setResultFinalizedAt(now);
         race.setResultFinalizedBy(refereeId);
         raceRepository.save(race);
+        bettingService.settleRaceBets(raceId);
         return raceResultRepository.findByRaceIdOrderByRankAsc(raceId).stream()
                 .map(this::mapResult)
                 .toList();
@@ -766,6 +774,9 @@ public class RaceDayServiceImpl implements RaceDayService {
             if (!participantIds.add(entry.getParticipantId())) {
                 throw new BadRequestException("Duplicate participant in race result");
             }
+            if (entry.getStatus() == null) {
+                throw new BadRequestException("Result status is required");
+            }
             if (entry.getStatus() == RaceParticipantStatus.FINISHED) {
                 if (participant.getStatus() != RaceParticipantStatus.CHECKED_IN) {
                     throw new BadRequestException("Only checked-in participants can finish a race");
@@ -783,6 +794,42 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (participantIds.size() != participantById.size()) {
             throw new BadRequestException("Race result must include every approved participant");
         }
+    }
+
+    private void autoMarkRegisteredParticipantsAbsent(List<RaceParticipant> participants, Long refereeId) {
+        LocalDateTime now = LocalDateTime.now();
+        participants.stream()
+                .filter(participant -> participant.getStatus() == RaceParticipantStatus.REGISTERED)
+                .forEach(participant -> {
+                    participant.setStatus(RaceParticipantStatus.ABSENT);
+                    if (participant.getCheckInNote() == null || participant.getCheckInNote().isBlank()) {
+                        participant.setCheckInNote("Auto marked absent when race started");
+                    }
+                    participant.setCheckedInAt(now);
+                    participant.setCheckedInBy(refereeId);
+                    raceParticipantRepository.save(participant);
+                });
+    }
+
+    private List<RaceResultEntryRequest> completeResultEntries(List<RaceResultEntryRequest> entries,
+                                                              List<RaceParticipant> participants) {
+        Map<Long, RaceResultEntryRequest> entryByParticipantId = entries.stream()
+                .collect(Collectors.toMap(RaceResultEntryRequest::getParticipantId, Function.identity(),
+                        (first, duplicate) -> first));
+        List<RaceResultEntryRequest> completed = new ArrayList<>(entries);
+        for (RaceParticipant participant : participants) {
+            if (entryByParticipantId.containsKey(participant.getId())) {
+                continue;
+            }
+            if (participant.getStatus() == RaceParticipantStatus.ABSENT) {
+                RaceResultEntryRequest absentEntry = new RaceResultEntryRequest();
+                absentEntry.setParticipantId(participant.getId());
+                absentEntry.setStatus(RaceParticipantStatus.ABSENT);
+                absentEntry.setNote(participant.getCheckInNote());
+                completed.add(absentEntry);
+            }
+        }
+        return completed;
     }
 
     private RaceResult buildRaceResult(Race race, RaceParticipant participant, RaceResultEntryRequest entry,

@@ -28,6 +28,7 @@ import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
+import com.minhthien.hoser_backend.service.BettingService;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.MailService;
 import com.minhthien.hoser_backend.service.WalletService;
@@ -79,6 +80,8 @@ class Phase7RaceRegistrationServiceTest {
     private FinanceSettingsService financeSettingsService;
     @Mock
     private MailService mailService;
+    @Mock
+    private BettingService bettingService;
 
     @Test
     void registerForRaceDebitsOwnerAndCreditsAdminImmediately() {
@@ -293,7 +296,8 @@ class Phase7RaceRegistrationServiceTest {
                 walletService,
                 tournamentService,
                 financeSettingsService,
-                mailService
+                mailService,
+                bettingService
         );
     }
 

@@ -29,6 +29,7 @@ import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
+import com.minhthien.hoser_backend.service.BettingService;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.MailService;
 import com.minhthien.hoser_backend.service.WalletService;
@@ -78,6 +79,8 @@ class Phase9RaceOperationServiceTest {
     private FinanceSettingsService financeSettingsService;
     @Mock
     private MailService mailService;
+    @Mock
+    private BettingService bettingService;
 
     @Test
     void assignedRefereeCanCheckInParticipant() {
@@ -177,14 +180,17 @@ class Phase9RaceOperationServiceTest {
     void startRaceMovesScheduledRaceToOngoing() {
         RaceDayServiceImpl service = service();
         User referee = user(8L, "referee", UserRole.REFEREE);
+        User owner = user(1L, "owner", UserRole.OWNER);
+        User jockey = user(2L, "jockey", UserRole.JOCKEY);
         Race race = race(referee, RaceStatus.SCHEDULED);
         race.setMinParticipants(1);
+        RaceParticipant checkedIn = participant(101L, race, 1, owner, jockey, RaceParticipantStatus.CHECKED_IN);
+        RaceParticipant notCheckedIn = participant(102L, race, 2, owner, jockey, RaceParticipantStatus.REGISTERED);
 
         when(userRepository.findById(8L)).thenReturn(Optional.of(referee));
         when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
         when(raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(10L))
-                .thenReturn(List.of(participant(101L, race, 1, user(1L, "owner", UserRole.OWNER),
-                        user(2L, "jockey", UserRole.JOCKEY), RaceParticipantStatus.CHECKED_IN)));
+                .thenReturn(List.of(checkedIn, notCheckedIn));
         when(raceRepository.save(race)).thenAnswer(invocation -> invocation.getArgument(0));
         when(tournamentService.mapRace(race)).thenReturn(com.minhthien.hoser_backend.dto.response.RaceResponse.builder()
                 .id(10L)
@@ -195,6 +201,12 @@ class Phase9RaceOperationServiceTest {
 
         assertThat(response.getStatus()).isEqualTo(RaceStatus.ONGOING);
         assertThat(race.getStatus()).isEqualTo(RaceStatus.ONGOING);
+        assertThat(checkedIn.getStatus()).isEqualTo(RaceParticipantStatus.CHECKED_IN);
+        assertThat(notCheckedIn.getStatus()).isEqualTo(RaceParticipantStatus.ABSENT);
+        assertThat(notCheckedIn.getCheckedInBy()).isEqualTo(8L);
+        assertThat(notCheckedIn.getCheckInNote()).isEqualTo("Auto marked absent when race started");
+        verify(raceParticipantRepository).save(notCheckedIn);
+        verify(bettingService).lockRaceBets(10L);
     }
 
     @Test
@@ -268,13 +280,99 @@ class Phase9RaceOperationServiceTest {
         verify(walletService).credit(eq(2L), eq(new BigDecimal("20000.00")), eq(WalletTransactionType.PRIZE_PAYOUT),
                 eq("RACE_RESULT"), eq("501"), eq("race-result:501:jockey-prize-credit"), eq(null),
                 eq("Race prize payout jockey share"));
+        verify(bettingService).settleRaceBets(10L);
+    }
+
+    @Test
+    void finalizeResultAutoAddsAbsentParticipantsMissingFromRequest() {
+        RaceDayServiceImpl service = service();
+        User referee = user(8L, "referee", UserRole.REFEREE);
+        User owner = user(1L, "owner", UserRole.OWNER);
+        User jockey = user(2L, "jockey", UserRole.JOCKEY);
+        Race race = race(referee, RaceStatus.ONGOING);
+        race.replacePrizes(List.of(com.minhthien.hoser_backend.entity.RacePrize.builder()
+                .rank(1)
+                .amount(new BigDecimal("100000.00"))
+                .build()));
+        RaceParticipant finisher = participant(101L, race, 1, owner, jockey, RaceParticipantStatus.CHECKED_IN);
+        RaceParticipant absent = participant(102L, race, 2, owner, jockey, RaceParticipantStatus.ABSENT);
+        absent.setCheckInNote("Auto marked absent when race started");
+        RaceFinalizeResultRequest request = resultRequest(101L);
+        AtomicLong ids = new AtomicLong(501L);
+
+        when(userRepository.findById(8L)).thenReturn(Optional.of(referee));
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+        when(raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(10L)).thenReturn(List.of(finisher, absent));
+        when(financeSettingsService.getRacePrizeJockeyPercent(1)).thenReturn(new BigDecimal("20.00"));
+        when(raceResultRepository.saveAll(any())).thenAnswer(invocation -> {
+            List<RaceResult> results = invocation.getArgument(0);
+            results.forEach(result -> result.setId(ids.getAndIncrement()));
+            assertThat(results).hasSize(2);
+            assertThat(results.stream()
+                    .anyMatch(result -> result.getParticipant().getId().equals(102L)
+                            && result.getStatus() == RaceParticipantStatus.ABSENT
+                            && result.getRank() == null
+                            && result.getPrizeAmount().compareTo(BigDecimal.ZERO) == 0)).isTrue();
+            return results;
+        });
+        when(walletService.getOrCreateAdminWallet()).thenReturn(adminWallet(new BigDecimal("1000000.00")));
+        when(raceResultRepository.findByRaceIdOrderByRankAsc(10L)).thenReturn(List.of(
+                RaceResult.builder()
+                        .id(501L)
+                        .race(race)
+                        .participant(finisher)
+                        .owner(owner)
+                        .horse(finisher.getHorse())
+                        .jockey(jockey)
+                        .rank(1)
+                        .status(RaceParticipantStatus.FINISHED)
+                        .prizeAmount(new BigDecimal("100000.00"))
+                        .ownerPrizeAmount(new BigDecimal("80000.00"))
+                        .jockeyPrizeAmount(new BigDecimal("20000.00"))
+                        .jockeyPrizePercent(new BigDecimal("20.00"))
+                        .build(),
+                RaceResult.builder()
+                        .id(502L)
+                        .race(race)
+                        .participant(absent)
+                        .owner(owner)
+                        .horse(absent.getHorse())
+                        .jockey(jockey)
+                        .status(RaceParticipantStatus.ABSENT)
+                        .prizeAmount(BigDecimal.ZERO)
+                        .build()));
+
+        var response = service.finalizeRaceResult(8L, 10L, request);
+
+        assertThat(response).hasSize(2);
+        assertThat(absent.getStatus()).isEqualTo(RaceParticipantStatus.ABSENT);
+        verify(bettingService).settleRaceBets(10L);
+    }
+
+    @Test
+    void finalizeResultStillRejectsMissingCheckedInParticipant() {
+        RaceDayServiceImpl service = service();
+        User referee = user(8L, "referee", UserRole.REFEREE);
+        User owner = user(1L, "owner", UserRole.OWNER);
+        User jockey = user(2L, "jockey", UserRole.JOCKEY);
+        Race race = race(referee, RaceStatus.ONGOING);
+        RaceParticipant first = participant(101L, race, 1, owner, jockey, RaceParticipantStatus.CHECKED_IN);
+        RaceParticipant second = participant(102L, race, 2, owner, jockey, RaceParticipantStatus.CHECKED_IN);
+
+        when(userRepository.findById(8L)).thenReturn(Optional.of(referee));
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+        when(raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(10L)).thenReturn(List.of(first, second));
+
+        assertThatThrownBy(() -> service.finalizeRaceResult(8L, 10L, resultRequest(101L)))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Race result must include every approved participant");
     }
 
     private RaceDayServiceImpl service() {
         return new RaceDayServiceImpl(raceRepository, raceRegistrationRepository, raceParticipantRepository,
                 raceResultRepository, raceComplaintRepository, jockeyChallengeResultRepository,
                 jockeyInvitationRepository, tournamentRepository, userRepository, walletService, tournamentService,
-                financeSettingsService, mailService);
+                financeSettingsService, mailService, bettingService);
     }
 
     private Race race(User referee, RaceStatus status) {

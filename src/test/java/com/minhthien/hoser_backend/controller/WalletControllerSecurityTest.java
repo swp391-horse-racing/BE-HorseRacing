@@ -166,6 +166,29 @@ class WalletControllerSecurityTest {
     }
 
     @Test
+    void anonymousUserCanReachPublicBetMarketEndpoint() throws Exception {
+        mockMvc.perform(get("/api/v1/races/999/bet-market"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success", is(false)))
+                .andExpect(jsonPath("$.message", containsString("Open BetMarket not found")));
+    }
+
+    @Test
+    void anonymousUserCannotPlaceBet() throws Exception {
+        mockMvc.perform(post("/api/v1/races/999/bets")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "participantId": 1,
+                                  "stakeAmount": 10000
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success", is(false)))
+                .andExpect(jsonPath("$.message", is("Unauthorized")));
+    }
+
+    @Test
     void anonymousUserCanGetAvailableJockeys() throws Exception {
         mockMvc.perform(get("/api/v1/jockeys/available"))
                 .andExpect(status().isOk())

@@ -111,6 +111,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/tournaments/*/leaderboard").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/tournaments/*/jockey-challenge").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/races/*/results").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/races/*/bet-market").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/api/zalopay/**").permitAll()
                         .requestMatchers("/api/v1/payment-callbacks/**").permitAll()

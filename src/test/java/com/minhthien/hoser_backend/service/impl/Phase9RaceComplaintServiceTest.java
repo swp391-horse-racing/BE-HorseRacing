@@ -27,6 +27,7 @@ import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
+import com.minhthien.hoser_backend.service.BettingService;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.MailService;
 import com.minhthien.hoser_backend.service.WalletService;
@@ -76,6 +77,8 @@ class Phase9RaceComplaintServiceTest {
     private FinanceSettingsService financeSettingsService;
     @Mock
     private MailService mailService;
+    @Mock
+    private BettingService bettingService;
 
     @Test
     void ownerInSameRaceCreatesComplaintWithin24HoursAndEmailHidesComplainant() {
@@ -203,7 +206,7 @@ class Phase9RaceComplaintServiceTest {
         return new RaceDayServiceImpl(raceRepository, raceRegistrationRepository, raceParticipantRepository,
                 raceResultRepository, raceComplaintRepository, jockeyChallengeResultRepository,
                 jockeyInvitationRepository, tournamentRepository, userRepository, walletService, tournamentService,
-                financeSettingsService, mailService);
+                financeSettingsService, mailService, bettingService);
     }
 
     private RaceComplaint pendingComplaint() {
