@@ -10,6 +10,7 @@ import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.AssignmentStatus;
 import com.minhthien.hoser_backend.enums.HorseStatus;
 import com.minhthien.hoser_backend.enums.JockeyStatus;
+import com.minhthien.hoser_backend.enums.NotificationType;
 import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.DuplicateResourceException;
@@ -21,8 +22,10 @@ import com.minhthien.hoser_backend.repository.JockeyProfileRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.JockeyInvitationService;
+import com.minhthien.hoser_backend.service.NotificationService;
 import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +52,12 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
     private final UserRepository userRepository;
     private final WalletService walletService;
     private final FinanceSettingsService financeSettingsService;
+    private NotificationService notificationService;
+
+    @Autowired(required = false)
+    void setNotificationService(NotificationService notificationService) {
+        this.notificationService = notificationService;
+    }
 
     @Override
     @Transactional
@@ -95,7 +104,12 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         invitation = jockeyInvitationRepository.save(invitation);
         holdHireFee(invitation);
         invitation.setFundsHeldAt(LocalDateTime.now());
-        return mapToResponse(jockeyInvitationRepository.save(invitation));
+        invitation = jockeyInvitationRepository.save(invitation);
+        notify(invitation.getJockey(), NotificationType.INVITATION_CREATED,
+                "New jockey invitation",
+                "You received a jockey invitation for horse " + invitation.getHorse().getName(),
+                invitation);
+        return mapToResponse(invitation);
     }
 
     @Override
@@ -148,7 +162,12 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         invitation.setStatus(AssignmentStatus.CANCELLED);
         invitation.setCancelledAt(LocalDateTime.now());
         invitation.setUpdatedBy(owner.getUsername());
-        return mapToResponse(jockeyInvitationRepository.save(invitation));
+        invitation = jockeyInvitationRepository.save(invitation);
+        notify(invitation.getJockey(), NotificationType.INVITATION_CANCELLED,
+                "Jockey invitation cancelled",
+                "The invitation for horse " + invitation.getHorse().getName() + " was cancelled",
+                invitation);
+        return mapToResponse(invitation);
     }
 
     @Override
@@ -187,7 +206,12 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         invitation.setRespondedAt(LocalDateTime.now());
         invitation.setPaidAt(LocalDateTime.now());
         invitation.setUpdatedBy(jockey.getUsername());
-        return mapToResponse(jockeyInvitationRepository.save(invitation));
+        invitation = jockeyInvitationRepository.save(invitation);
+        notify(invitation.getOwner(), NotificationType.INVITATION_ACCEPTED,
+                "Jockey invitation accepted",
+                invitation.getJockey().getUsername() + " accepted your invitation",
+                invitation);
+        return mapToResponse(invitation);
     }
 
     @Override
@@ -204,7 +228,23 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         invitation.setResponseNote(resolveNote(request));
         invitation.setRespondedAt(LocalDateTime.now());
         invitation.setUpdatedBy(jockey.getUsername());
-        return mapToResponse(jockeyInvitationRepository.save(invitation));
+        invitation = jockeyInvitationRepository.save(invitation);
+        notify(invitation.getOwner(), NotificationType.INVITATION_REJECTED,
+                "Jockey invitation rejected",
+                invitation.getJockey().getUsername() + " rejected your invitation",
+                invitation);
+        return mapToResponse(invitation);
+    }
+
+    private void notify(User recipient, NotificationType type, String title, String message,
+                        JockeyInvitation invitation) {
+        if (notificationService == null) {
+            return;
+        }
+        notificationService.notify(recipient, type, title, message, JOCKEY_INVITATION_REFERENCE,
+                String.valueOf(invitation.getId()),
+                "{\"horseId\":%d,\"jockeyId\":%d,\"ownerId\":%d}".formatted(
+                        invitation.getHorse().getId(), invitation.getJockey().getId(), invitation.getOwner().getId()));
     }
 
     private void requireStillEligible(JockeyInvitation invitation) {

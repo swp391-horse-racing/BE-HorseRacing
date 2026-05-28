@@ -3,12 +3,15 @@ package com.minhthien.hoser_backend.service.impl;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RaceReminderLog;
 import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.enums.NotificationType;
 import com.minhthien.hoser_backend.enums.RaceStatus;
 import com.minhthien.hoser_backend.repository.RaceReminderLogRepository;
 import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.service.MailService;
+import com.minhthien.hoser_backend.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +29,12 @@ public class RaceReminderScheduler {
     private final RaceRepository raceRepository;
     private final RaceReminderLogRepository raceReminderLogRepository;
     private final MailService mailService;
+    private NotificationService notificationService;
+
+    @Autowired(required = false)
+    void setNotificationService(NotificationService notificationService) {
+        this.notificationService = notificationService;
+    }
 
     @Scheduled(
             initialDelayString = "${app.race-reminder.initial-delay-ms:60000}",
@@ -55,13 +64,34 @@ public class RaceReminderScheduler {
                 race.getId(), recipient.getId(), eventType)) {
             return false;
         }
-        mailService.sendRaceReminder(race, recipient);
+        try {
+            mailService.sendRaceReminder(race, recipient);
+        } catch (RuntimeException ex) {
+            log.warn("Could not send race reminder email: raceId={}, recipientId={}",
+                    race.getId(), recipient.getId(), ex);
+        }
+        notifyReminder(race, recipient);
         raceReminderLogRepository.save(RaceReminderLog.builder()
                 .race(race)
                 .recipient(recipient)
                 .eventType(eventType)
                 .build());
         return true;
+    }
+
+    private void notifyReminder(Race race, User recipient) {
+        if (notificationService == null) {
+            return;
+        }
+        try {
+            notificationService.notify(recipient, NotificationType.RACE_SCHEDULED, "Race reminder",
+                    "Race " + race.getName() + " starts in about 3 days",
+                    "RACE", String.valueOf(race.getId()),
+                    "{\"raceId\":%d,\"eventType\":\"%s\"}".formatted(race.getId(), REMINDER_3_DAYS));
+        } catch (RuntimeException ex) {
+            log.warn("Could not create race reminder notification: raceId={}, recipientId={}",
+                    race.getId(), recipient.getId(), ex);
+        }
     }
 
     private Set<User> recipientsFor(Race race) {

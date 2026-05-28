@@ -350,8 +350,8 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 | ADM-07 | PUT | `/api/v1/admin/users/{userId}/role` | ADMIN | `{ "role": "OWNER" }` | Role duoc cap nhat |
 | ADM-08 | GET | `/api/v1/admin/payout-debts` | ADMIN | none | Tong hop no payout |
 | AUD-01 | GET | `/api/v1/admin/audit-logs` | ADMIN | query `referenceType`, `referenceId` optional | List audit log |
-| FIN-01 | GET | `/api/v1/admin/finance-settings` | ADMIN | none | Tra setting hien tai, gom `jockeyHireTaxPercent`, `betWinningTaxPercent` |
-| FIN-02 | PUT | `/api/v1/admin/finance-settings` | ADMIN | `{ "jockeyHireTaxPercent": 10.00, "betWinningTaxPercent": 10.00 }` | Setting doi |
+| FIN-01 | GET | `/api/v1/admin/finance-settings` | ADMIN | none | Tra setting hien tai, gom `jockeyHireTaxPercent`, `betWinningTaxPercent`, `bettingEnabled` |
+| FIN-02 | PUT | `/api/v1/admin/finance-settings` | ADMIN | `{ "jockeyHireTaxPercent": 10.00, "betWinningTaxPercent": 10.00, "bettingEnabled": true }` | Setting doi |
 | FIN-03 | GET | `/api/v1/admin/finance-settings/race-prize-shares` | ADMIN | none | Tra cau hinh chia giai |
 | FIN-04 | PUT | `/api/v1/admin/finance-settings/race-prize-shares` | ADMIN | `RacePrizeShareSettingsRequest` | Cap nhat ty le chia giai |
 
@@ -465,6 +465,7 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 | RACE-20 | PUT | `/api/v1/admin/race-complaints/{id}/resolve` | ADMIN | `RaceComplaintResolveRequest` | Complaint APPROVED/REJECTED |
 | RACE-21 | PUT | `/api/v1/admin/tournaments/{id}/jockey-challenge/finalize` | ADMIN | none | Final standings/prizes |
 | RACE-22 | GET | `/api/v1/tournaments/{id}/jockey-challenge` | Public | path `id` | Jockey challenge standings |
+| RACE-23 | PUT | `/api/v1/admin/races/{id}/cancel` | ADMIN | optional `{ "note": "..." }` | Race CANCELLED, active registrations refunded, active bets cancelled/released |
 
 ### Betting
 
@@ -562,7 +563,7 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 8. Referee goi `RACE-11`, `RACE-12`, `RACE-13`, `RACE-14`, `RACE-15`.
 9. Public goi `RACE-16`, `TOUR-18`.
 10. Owner goi `RACE-17`, `RACE-18`; admin goi `RACE-19`, `RACE-20`.
-11. Admin goi `RACE-21`, public goi `RACE-22`.
+11. Admin goi `RACE-21`, public goi `RACE-22`; neu huy race thi admin goi `RACE-23`.
 12. Admin goi `TOUR-10`, `TOUR-13`, `TOUR-14`.
 
 ### Flow 5 - Betting
@@ -570,7 +571,8 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 1. Admin co the cap nhat thue tien loi thang cuoc bang `FIN-02`:
    ```json
    {
-     "betWinningTaxPercent": 10
+     "betWinningTaxPercent": 10,
+     "bettingEnabled": true
    }
    ```
 2. Admin tao market bang `BET-01`.

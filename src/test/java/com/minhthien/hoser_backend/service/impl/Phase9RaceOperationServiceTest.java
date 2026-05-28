@@ -1,6 +1,7 @@
 package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.dto.request.RaceFinalizeResultRequest;
+import com.minhthien.hoser_backend.dto.request.RaceCancellationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceParticipantCheckInRequest;
 import com.minhthien.hoser_backend.dto.request.RaceResultEntryRequest;
 import com.minhthien.hoser_backend.entity.Horse;
@@ -12,6 +13,7 @@ import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.entity.Wallet;
 import com.minhthien.hoser_backend.enums.RaceParticipantStatus;
+import com.minhthien.hoser_backend.enums.RaceRegistrationStatus;
 import com.minhthien.hoser_backend.enums.RaceStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
@@ -366,6 +368,64 @@ class Phase9RaceOperationServiceTest {
         assertThatThrownBy(() -> service.finalizeRaceResult(8L, 10L, resultRequest(101L)))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Race result must include every approved participant");
+    }
+
+    @Test
+    void adminCancelsScheduledRaceAndRefundsActiveRegistrationAndBets() {
+        RaceDayServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        User owner = user(1L, "owner", UserRole.OWNER);
+        User jockey = user(2L, "jockey", UserRole.JOCKEY);
+        Race race = race(user(8L, "referee", UserRole.REFEREE), RaceStatus.SCHEDULED);
+        Horse horse = Horse.builder().id(101L).name("Horse").owner(owner).build();
+        RaceRegistration registration = RaceRegistration.builder()
+                .id(201L)
+                .race(race)
+                .owner(owner)
+                .horse(horse)
+                .jockey(jockey)
+                .status(RaceRegistrationStatus.APPROVED)
+                .entryFeeAmount(new BigDecimal("100000.00"))
+                .build();
+        RaceCancellationRequest request = new RaceCancellationRequest();
+        request.setNote("Storm");
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+        when(raceRegistrationRepository.findByRaceIdOrderByCreatedAtDesc(10L)).thenReturn(List.of(registration));
+        when(raceRepository.save(race)).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tournamentService.mapRace(race)).thenReturn(com.minhthien.hoser_backend.dto.response.RaceResponse.builder()
+                .id(10L)
+                .status(RaceStatus.CANCELLED)
+                .build());
+
+        var response = service.cancelRace(9L, 10L, request);
+
+        assertThat(response.getStatus()).isEqualTo(RaceStatus.CANCELLED);
+        assertThat(race.getStatus()).isEqualTo(RaceStatus.CANCELLED);
+        assertThat(registration.getStatus()).isEqualTo(RaceRegistrationStatus.CANCELLED);
+        assertThat(registration.getReviewNote()).isEqualTo("Storm");
+        verify(walletService).debitAdmin(eq(new BigDecimal("100000.00")), eq(WalletTransactionType.REFUND),
+                eq("RACE_REGISTRATION"), eq("201"), eq("race-registration:201:entry-admin-refund"),
+                eq(null), eq("Race entry fee refunded after race cancellation"));
+        verify(walletService).refund(eq(1L), eq(new BigDecimal("100000.00")),
+                eq("RACE_REGISTRATION"), eq("201"), eq("race-registration:201:entry-refund"),
+                eq(null), eq("Race entry fee refunded after race cancellation"));
+        verify(bettingService).cancelRaceBets(10L);
+    }
+
+    @Test
+    void adminCannotCancelOngoingOrConfirmedRace() {
+        RaceDayServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        Race race = race(user(8L, "referee", UserRole.REFEREE), RaceStatus.ONGOING);
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+
+        assertThatThrownBy(() -> service.cancelRace(9L, 10L, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Only draft or scheduled races can be cancelled");
     }
 
     private RaceDayServiceImpl service() {

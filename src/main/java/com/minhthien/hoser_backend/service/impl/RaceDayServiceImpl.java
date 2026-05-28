@@ -1,6 +1,7 @@
 package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.dto.request.RaceFinalizeResultRequest;
+import com.minhthien.hoser_backend.dto.request.RaceCancellationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceComplaintRequest;
 import com.minhthien.hoser_backend.dto.request.RaceComplaintResolveRequest;
 import com.minhthien.hoser_backend.dto.request.RaceGateUpdateRequest;
@@ -26,9 +27,13 @@ import com.minhthien.hoser_backend.repository.*;
 import com.minhthien.hoser_backend.service.BettingService;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.MailService;
+import com.minhthien.hoser_backend.service.NotificationService;
 import com.minhthien.hoser_backend.service.RaceDayService;
+import com.minhthien.hoser_backend.service.RealtimeEventService;
 import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +46,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class RaceDayServiceImpl implements RaceDayService {
     private static final String RACE_REGISTRATION_REF = "RACE_REGISTRATION";
     private static final String RACE_RESULT_REF = "RACE_RESULT";
@@ -61,6 +67,18 @@ public class RaceDayServiceImpl implements RaceDayService {
     private final FinanceSettingsService financeSettingsService;
     private final MailService mailService;
     private final BettingService bettingService;
+    private NotificationService notificationService;
+    private RealtimeEventService realtimeEventService;
+
+    @Autowired(required = false)
+    void setNotificationService(NotificationService notificationService) {
+        this.notificationService = notificationService;
+    }
+
+    @Autowired(required = false)
+    void setRealtimeEventService(RealtimeEventService realtimeEventService) {
+        this.realtimeEventService = realtimeEventService;
+    }
 
     @Override
     @Transactional
@@ -107,6 +125,7 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .build();
         RaceRegistration saved = raceRegistrationRepository.save(registration);
         debitRegistrationFee(saved);
+        notifyRegistrationCreated(saved);
         return mapRegistration(saved);
     }
 
@@ -170,6 +189,8 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .status(RaceParticipantStatus.REGISTERED)
                 .build();
         raceParticipantRepository.save(participant);
+        notifyRegistrationStatus(saved, NotificationType.REGISTRATION_APPROVED, "Race registration approved",
+                "Your registration for race " + saved.getRace().getName() + " was approved", true);
         return mapRegistration(saved);
     }
 
@@ -188,7 +209,10 @@ public class RaceDayServiceImpl implements RaceDayService {
         registration.setReviewedBy(adminId);
         registration.setReviewedAt(LocalDateTime.now());
         registration.setReviewNote(request == null ? null : request.getNote());
-        return mapRegistration(raceRegistrationRepository.save(registration));
+        RaceRegistration saved = raceRegistrationRepository.save(registration);
+        notifyRegistrationStatus(saved, NotificationType.REGISTRATION_REJECTED, "Race registration rejected",
+                "Your registration for race " + saved.getRace().getName() + " was rejected", true);
+        return mapRegistration(saved);
     }
 
     @Override
@@ -207,7 +231,10 @@ public class RaceDayServiceImpl implements RaceDayService {
         refundRegistrationFee(registration, "Race entry fee refunded after owner withdrawal");
         registration.setStatus(RaceRegistrationStatus.WITHDRAWN);
         registration.setWithdrawNote(request == null ? null : request.getNote());
-        return mapRegistration(raceRegistrationRepository.save(registration));
+        RaceRegistration saved = raceRegistrationRepository.save(registration);
+        notifyRegistrationStatus(saved, NotificationType.REGISTRATION_WITHDRAWN, "Race registration withdrawn",
+                "Your registration for race " + saved.getRace().getName() + " was withdrawn", false);
+        return mapRegistration(saved);
     }
 
     @Override
@@ -237,6 +264,7 @@ public class RaceDayServiceImpl implements RaceDayService {
         races.forEach(race -> race.setStatus(RaceStatus.SCHEDULED));
         Tournament saved = tournamentRepository.save(tournament);
         races.forEach(this::sendRaceScheduledEmails);
+        races.forEach(this::publishRaceScheduled);
         return tournamentService.mapToResponse(saved);
     }
 
@@ -297,8 +325,43 @@ public class RaceDayServiceImpl implements RaceDayService {
         race.setReferee(referee);
         Race saved = raceRepository.save(race);
         if (saved.getTournament().getStatus() == TournamentStatus.SCHEDULED) {
-            mailService.sendRaceScheduled(saved, referee);
+            safeSendMail(() -> mailService.sendRaceScheduled(saved, referee), "race referee assignment",
+                    saved.getId(), referee.getId());
         }
+        notifyRaceRefereeAssigned(saved, referee);
+        publishRaceStatus(saved, "RACE_REFEREE_ASSIGNED");
+        return tournamentService.mapRace(saved);
+    }
+
+    @Override
+    @Transactional
+    public RaceResponse cancelRace(Long adminId, Long raceId, RaceCancellationRequest request) {
+        requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can cancel races");
+        Race race = requireRace(raceId);
+        if (race.getStatus() != RaceStatus.DRAFT && race.getStatus() != RaceStatus.SCHEDULED) {
+            throw new BadRequestException("Only draft or scheduled races can be cancelled");
+        }
+        raceRegistrationRepository.findByRaceIdOrderByCreatedAtDesc(raceId).stream()
+                .filter(registration -> registration.getStatus() == RaceRegistrationStatus.PENDING
+                        || registration.getStatus() == RaceRegistrationStatus.APPROVED)
+                .forEach(registration -> {
+                    refundRegistrationFee(registration, "Race entry fee refunded after race cancellation");
+                    registration.setStatus(RaceRegistrationStatus.CANCELLED);
+                    registration.setReviewedBy(adminId);
+                    registration.setReviewedAt(LocalDateTime.now());
+                    registration.setReviewNote(request == null ? null : request.getNote());
+                    raceRegistrationRepository.save(registration);
+                    notifyRegistrationStatus(registration, NotificationType.REGISTRATION_CANCELLED,
+                            "Race registration cancelled",
+                            "Your registration for race " + registration.getRace().getName() + " was cancelled",
+                            false);
+                });
+        bettingService.cancelRaceBets(raceId);
+        race.setStatus(RaceStatus.CANCELLED);
+        Race saved = raceRepository.save(race);
+        notifyRaceEvent(saved, NotificationType.RACE_CANCELLED, "Race cancelled",
+                "Race " + saved.getName() + " was cancelled");
+        publishRaceStatus(saved, "RACE_CANCELLED");
         return tournamentService.mapRace(saved);
     }
 
@@ -345,7 +408,9 @@ public class RaceDayServiceImpl implements RaceDayService {
         participant.setCheckInNote(request.getNote());
         participant.setCheckedInAt(LocalDateTime.now());
         participant.setCheckedInBy(refereeId);
-        return mapParticipant(raceParticipantRepository.save(participant));
+        RaceParticipant saved = raceParticipantRepository.save(participant);
+        notifyParticipantCheckIn(saved);
+        return mapParticipant(saved);
     }
 
     @Override
@@ -366,6 +431,9 @@ public class RaceDayServiceImpl implements RaceDayService {
         race.setStatus(RaceStatus.ONGOING);
         Race saved = raceRepository.save(race);
         bettingService.lockRaceBets(raceId);
+        notifyRaceEvent(saved, NotificationType.RACE_STARTED, "Race started",
+                "Race " + saved.getName() + " has started");
+        publishRaceStatus(saved, "RACE_STARTED");
         return tournamentService.mapRace(saved);
     }
 
@@ -402,7 +470,10 @@ public class RaceDayServiceImpl implements RaceDayService {
         race.setResultFinalizedBy(refereeId);
         raceRepository.save(race);
         bettingService.settleRaceBets(raceId);
-        return raceResultRepository.findByRaceIdOrderByRankAsc(raceId).stream()
+        List<RaceResult> savedResults = raceResultRepository.findByRaceIdOrderByRankAsc(raceId);
+        publishRaceResults(race);
+        notifyRaceResults(race, savedResults);
+        return savedResults.stream()
                 .map(this::mapResult)
                 .toList();
     }
@@ -724,6 +795,164 @@ public class RaceDayServiceImpl implements RaceDayService {
     }
 
     private void sendRaceScheduledEmails(Race race) {
+        recipientsFor(race).forEach(recipient -> safeSendMail(
+                () -> mailService.sendRaceScheduled(race, recipient),
+                "race scheduled", race.getId(), recipient.getId()));
+    }
+
+    private void notifyRegistrationCreated(RaceRegistration registration) {
+        notifyUser(registration.getOwner(), NotificationType.REGISTRATION_CREATED,
+                "Race registration submitted",
+                "Your registration for race " + registration.getRace().getName() + " was submitted",
+                RACE_REGISTRATION_REF, String.valueOf(registration.getId()), registrationMetadata(registration));
+        safeSendMail(() -> mailService.sendRegistrationCreated(registration.getOwner(),
+                        registration.getRace().getName(), RACE_REGISTRATION_REF, String.valueOf(registration.getId())),
+                "registration created", registration.getId(), registration.getOwner().getId());
+        userRepository.findByRole(UserRole.ADMIN).forEach(admin -> notifyUser(admin,
+                NotificationType.REGISTRATION_CREATED, "Race registration submitted",
+                registration.getOwner().getUsername() + " submitted a registration for " + registration.getRace().getName(),
+                RACE_REGISTRATION_REF, String.valueOf(registration.getId()), registrationMetadata(registration)));
+    }
+
+    private void notifyRegistrationStatus(RaceRegistration registration, NotificationType type, String title,
+                                          String message, boolean sendEmail) {
+        notifyUser(registration.getOwner(), type, title, message,
+                RACE_REGISTRATION_REF, String.valueOf(registration.getId()), registrationMetadata(registration));
+        if (sendEmail && type == NotificationType.REGISTRATION_APPROVED) {
+            safeSendMail(() -> mailService.sendRegistrationApproved(registration.getOwner(),
+                            registration.getRace().getName(), RACE_REGISTRATION_REF,
+                            String.valueOf(registration.getId())),
+                    "registration approved", registration.getId(), registration.getOwner().getId());
+        } else if (sendEmail && type == NotificationType.REGISTRATION_REJECTED) {
+            safeSendMail(() -> mailService.sendRegistrationRejected(registration.getOwner(),
+                            registration.getRace().getName(), RACE_REGISTRATION_REF,
+                            String.valueOf(registration.getId())),
+                    "registration rejected", registration.getId(), registration.getOwner().getId());
+        }
+    }
+
+    private void publishRaceScheduled(Race race) {
+        notifyRaceEvent(race, NotificationType.RACE_SCHEDULED, "Race scheduled",
+                "Race " + race.getName() + " has been scheduled");
+        publishRaceStatus(race, "RACE_SCHEDULED");
+    }
+
+    private void notifyRaceRefereeAssigned(Race race, User referee) {
+        notifyRaceEvent(race, NotificationType.RACE_REFEREE_ASSIGNED, "Race referee assigned",
+                "A referee was assigned to race " + race.getName());
+        notifyUser(referee, NotificationType.RACE_REFEREE_ASSIGNED, "Race referee assigned",
+                "You were assigned to race " + race.getName(),
+                "RACE", String.valueOf(race.getId()), raceMetadata(race));
+    }
+
+    private void notifyRaceEvent(Race race, NotificationType type, String title, String message) {
+        recipientsFor(race).forEach(recipient -> notifyUser(recipient, type, title, message,
+                "RACE", String.valueOf(race.getId()), raceMetadata(race)));
+    }
+
+    private void notifyParticipantCheckIn(RaceParticipant participant) {
+        String status = participant.getStatus() == RaceParticipantStatus.ABSENT
+                ? "marked absent"
+                : "check-in status updated to " + participant.getStatus();
+        String message = "Participant " + participant.getHorse().getName() + " was " + status;
+        notifyUser(participant.getOwner(), NotificationType.RACE_CHECK_IN_UPDATED, "Race check-in updated",
+                message, "RACE_PARTICIPANT", String.valueOf(participant.getId()), participantMetadata(participant));
+        notifyUser(participant.getJockey(), NotificationType.RACE_CHECK_IN_UPDATED, "Race check-in updated",
+                message, "RACE_PARTICIPANT", String.valueOf(participant.getId()), participantMetadata(participant));
+    }
+
+    private void publishRaceResults(Race race) {
+        if (realtimeEventService == null) {
+            return;
+        }
+        try {
+            realtimeEventService.publishRaceResult(race, "RACE_RESULT_PUBLISHED", String.valueOf(race.getId()));
+            realtimeEventService.publishTournamentLeaderboard(race.getTournament().getId(),
+                    "TOURNAMENT_LEADERBOARD_UPDATED", String.valueOf(race.getId()));
+        } catch (RuntimeException ex) {
+            log.warn("Could not publish race result websocket event: raceId={}", race.getId(), ex);
+        }
+    }
+
+    private void publishRaceStatus(Race race, String eventType) {
+        if (realtimeEventService == null) {
+            return;
+        }
+        try {
+            realtimeEventService.publishRaceStatus(race, eventType, race.getStatus().name(), String.valueOf(race.getId()));
+        } catch (RuntimeException ex) {
+            log.warn("Could not publish race status websocket event: raceId={}, eventType={}",
+                    race.getId(), eventType, ex);
+        }
+    }
+
+    private void notifyRaceResults(Race race, List<RaceResult> results) {
+        recipientsFor(race).forEach(recipient -> {
+            notifyUser(recipient, NotificationType.RACE_RESULT_PUBLISHED, "Race result published",
+                    "Race result was confirmed for " + race.getName(),
+                    RACE_RESULT_REF, String.valueOf(race.getId()), raceMetadata(race));
+            safeSendMail(() -> mailService.sendRaceResultPublished(race, recipient, RACE_RESULT_REF,
+                            String.valueOf(race.getId())),
+                    "race result", race.getId(), recipient.getId());
+        });
+    }
+
+    private void notifyRacePrizePayout(RaceResult result, boolean paid) {
+        NotificationType type = paid ? NotificationType.PRIZE_PAYOUT_PAID : NotificationType.PRIZE_PAYOUT_UNPAID;
+        String status = paid ? "paid" : "unpaid";
+        String subject = paid ? "Race prize paid" : "Race prize unpaid";
+        String baseMessage = "Race prize payout is " + status + " for race " + result.getRace().getName();
+        if (defaultZero(result.getOwnerPrizeAmount()).compareTo(BigDecimal.ZERO) > 0) {
+            notifyPrizeRecipient(result.getOwner(), type, subject, baseMessage,
+                    RACE_RESULT_REF, String.valueOf(result.getId()));
+        }
+        if (defaultZero(result.getJockeyPrizeAmount()).compareTo(BigDecimal.ZERO) > 0) {
+            notifyPrizeRecipient(result.getJockey(), type, subject, baseMessage,
+                    RACE_RESULT_REF, String.valueOf(result.getId()));
+        }
+    }
+
+    private void notifyChallengePrizePayout(JockeyChallengeResult result, boolean paid) {
+        NotificationType type = paid ? NotificationType.PRIZE_PAYOUT_PAID : NotificationType.PRIZE_PAYOUT_UNPAID;
+        String status = paid ? "paid" : "unpaid";
+        String subject = paid ? "Jockey challenge prize paid" : "Jockey challenge prize unpaid";
+        String referenceId = "%d:%d".formatted(result.getTournament().getId(), result.getJockey().getId());
+        notifyPrizeRecipient(result.getJockey(), type, subject,
+                "Jockey challenge prize payout is " + status,
+                JOCKEY_CHALLENGE_REF, referenceId);
+    }
+
+    private void notifyPrizeRecipient(User recipient, NotificationType type, String title, String message,
+                                      String referenceType, String referenceId) {
+        notifyUser(recipient, type, title, message, referenceType, referenceId,
+                "{\"status\":\"%s\"}".formatted(type == NotificationType.PRIZE_PAYOUT_PAID ? "PAID" : "UNPAID"));
+        safeSendMail(() -> mailService.sendPrizePayout(recipient, title, message, referenceType, referenceId),
+                "prize payout", Long.valueOf(referenceId.replaceAll(":.*", "")), recipient.getId());
+    }
+
+    private void notifyUser(User recipient, NotificationType type, String title, String message,
+                            String referenceType, String referenceId, String metadataJson) {
+        if (notificationService == null) {
+            return;
+        }
+        try {
+            notificationService.notify(recipient, type, title, message, referenceType, referenceId, metadataJson);
+        } catch (RuntimeException ex) {
+            log.warn("Could not create notification: recipientId={}, type={}, referenceType={}, referenceId={}",
+                    recipient == null ? null : recipient.getId(), type, referenceType, referenceId, ex);
+        }
+    }
+
+    private void safeSendMail(Runnable action, String event, Long referenceId, Long recipientId) {
+        try {
+            action.run();
+        } catch (RuntimeException ex) {
+            log.warn("Could not send email: event={}, referenceId={}, recipientId={}",
+                    event, referenceId, recipientId, ex);
+        }
+    }
+
+    private Set<User> recipientsFor(Race race) {
         Set<User> recipients = new LinkedHashSet<>();
         raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(race.getId()).forEach(participant -> {
             recipients.add(participant.getOwner());
@@ -731,7 +960,24 @@ public class RaceDayServiceImpl implements RaceDayService {
         });
         recipients.add(race.getReferee());
         recipients.remove(null);
-        recipients.forEach(recipient -> mailService.sendRaceScheduled(race, recipient));
+        return recipients;
+    }
+
+    private String registrationMetadata(RaceRegistration registration) {
+        return "{\"raceId\":%d,\"tournamentId\":%d,\"horseId\":%d,\"jockeyId\":%d,\"status\":\"%s\"}".formatted(
+                registration.getRace().getId(), registration.getRace().getTournament().getId(),
+                registration.getHorse().getId(), registration.getJockey().getId(), registration.getStatus());
+    }
+
+    private String raceMetadata(Race race) {
+        return "{\"raceId\":%d,\"tournamentId\":%d,\"status\":\"%s\"}".formatted(
+                race.getId(), race.getTournament().getId(), race.getStatus());
+    }
+
+    private String participantMetadata(RaceParticipant participant) {
+        return "{\"raceId\":%d,\"participantId\":%d,\"horseId\":%d,\"jockeyId\":%d,\"status\":\"%s\"}".formatted(
+                participant.getRace().getId(), participant.getId(), participant.getHorse().getId(),
+                participant.getJockey().getId(), participant.getStatus());
     }
 
     private void debitRegistrationFee(RaceRegistration registration) {
@@ -871,6 +1117,7 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (!adminWalletCanPay(prizeAmount)) {
             result.setPayoutStatus(RacePayoutStatus.UNPAID);
             raceResultRepository.save(result);
+            notifyRacePrizePayout(result, false);
             return;
         }
         String referenceId = String.valueOf(result.getId());
@@ -891,6 +1138,7 @@ public class RaceDayServiceImpl implements RaceDayService {
         }
         result.setPayoutStatus(RacePayoutStatus.PAID);
         raceResultRepository.save(result);
+        notifyRacePrizePayout(result, true);
     }
 
     private void payoutChallengePrize(JockeyChallengeResult result) {
@@ -900,6 +1148,7 @@ public class RaceDayServiceImpl implements RaceDayService {
         }
         if (!adminWalletCanPay(result.getPrizeAmount())) {
             result.setPayoutStatus(RacePayoutStatus.UNPAID);
+            notifyChallengePrizePayout(result, false);
             return;
         }
         String referenceId = "%d:%d".formatted(result.getTournament().getId(), result.getJockey().getId());
@@ -912,6 +1161,7 @@ public class RaceDayServiceImpl implements RaceDayService {
                 "jockey-challenge:%s:jockey-prize-credit".formatted(referenceId),
                 null, "Jockey challenge prize payout");
         result.setPayoutStatus(RacePayoutStatus.PAID);
+        notifyChallengePrizePayout(result, true);
     }
 
     private boolean adminWalletCanPay(BigDecimal amount) {

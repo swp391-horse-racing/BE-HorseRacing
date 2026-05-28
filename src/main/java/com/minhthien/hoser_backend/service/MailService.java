@@ -19,4 +19,24 @@ public interface MailService {
 
     void sendRaceComplaintCreated(RaceComplaint complaint);
 
+    default void sendRegistrationCreated(User recipient, String raceName, String referenceType, String referenceId) {
+    }
+
+    default void sendRegistrationApproved(User recipient, String raceName, String referenceType, String referenceId) {
+    }
+
+    default void sendRegistrationRejected(User recipient, String raceName, String referenceType, String referenceId) {
+    }
+
+    default void sendDepositStatus(User recipient, String status, String referenceType, String referenceId) {
+    }
+
+    default void sendWithdrawalStatus(User recipient, String status, String referenceType, String referenceId) {
+    }
+
+    default void sendRaceResultPublished(Race race, User recipient, String referenceType, String referenceId) {
+    }
+
+    default void sendPrizePayout(User recipient, String subject, String message, String referenceType, String referenceId) {
+    }
 }

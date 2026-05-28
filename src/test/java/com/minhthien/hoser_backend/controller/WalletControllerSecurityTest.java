@@ -168,9 +168,9 @@ class WalletControllerSecurityTest {
     @Test
     void anonymousUserCanReachPublicBetMarketEndpoint() throws Exception {
         mockMvc.perform(get("/api/v1/races/999/bet-market"))
-                .andExpect(status().isNotFound())
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success", is(false)))
-                .andExpect(jsonPath("$.message", containsString("Open BetMarket not found")));
+                .andExpect(jsonPath("$.message", containsString("Betting feature is disabled")));
     }
 
     @Test

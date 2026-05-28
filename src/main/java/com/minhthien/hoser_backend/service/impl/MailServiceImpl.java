@@ -3,13 +3,17 @@ package com.minhthien.hoser_backend.service.impl;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RaceComplaint;
 import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.entity.EmailEventLog;
+import com.minhthien.hoser_backend.enums.EmailEventStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
+import com.minhthien.hoser_backend.repository.EmailEventLogRepository;
 import com.minhthien.hoser_backend.service.MailService;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.mail.MailPreparationException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
 
@@ -26,12 +30,26 @@ public class MailServiceImpl implements MailService {
     private static final String RACE_SCHEDULED_SUBJECT = "HORSE - Race schedule published";
     private static final String RACE_REMINDER_SUBJECT = "HORSE - Race reminder";
     private static final String RACE_COMPLAINT_SUBJECT = "HORSE - Race complaint received";
+    private static final String REGISTRATION_CREATED_SUBJECT = "HORSE - Race registration received";
+    private static final String REGISTRATION_APPROVED_SUBJECT = "HORSE - Race registration approved";
+    private static final String REGISTRATION_REJECTED_SUBJECT = "HORSE - Race registration rejected";
+    private static final String DEPOSIT_STATUS_SUBJECT = "HORSE - Deposit status";
+    private static final String WITHDRAWAL_STATUS_SUBJECT = "HORSE - Withdrawal status";
+    private static final String RACE_RESULT_SUBJECT = "HORSE - Race result published";
     private static final DateTimeFormatter RACE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final JavaMailSender mailSender;
+    private final EmailEventLogRepository emailEventLogRepository;
+
+    @Autowired
+    public MailServiceImpl(JavaMailSender mailSender, EmailEventLogRepository emailEventLogRepository) {
+        this.mailSender = mailSender;
+        this.emailEventLogRepository = emailEventLogRepository;
+    }
 
     public MailServiceImpl(JavaMailSender mailSender) {
         this.mailSender = mailSender;
+        this.emailEventLogRepository = null;
     }
 
     @Override
@@ -40,6 +58,9 @@ public class MailServiceImpl implements MailService {
         sendHtmlEmail(
                 email,
                 OTP_SUBJECT,
+                "OTP",
+                null,
+                null,
                 buildOtpPlainText(formattedOtp),
                 buildOtpHtml(formattedOtp)
         );
@@ -50,6 +71,9 @@ public class MailServiceImpl implements MailService {
         sendHtmlEmail(
                 user.getEmail(),
                 ROLE_APPROVED_SUBJECT,
+                "ROLE_APPROVED",
+                "USER",
+                String.valueOf(user.getId()),
                 buildApprovedPlainText(user, role),
                 buildApprovedHtml(user, role)
         );
@@ -60,6 +84,9 @@ public class MailServiceImpl implements MailService {
         sendHtmlEmail(
                 user.getEmail(),
                 ROLE_REJECTED_SUBJECT,
+                "ROLE_REJECTED",
+                "USER",
+                String.valueOf(user.getId()),
                 buildRejectedPlainText(user, role, reason),
                 buildRejectedHtml(user, role, reason)
         );
@@ -70,6 +97,9 @@ public class MailServiceImpl implements MailService {
         sendHtmlEmail(
                 recipient.getEmail(),
                 RACE_SCHEDULED_SUBJECT,
+                "RACE_SCHEDULED",
+                "RACE",
+                String.valueOf(race.getId()),
                 buildRacePlainText(race, recipient, "Race schedule has been published."),
                 buildRaceHtml(race, recipient, "Race schedule has been published.",
                         "Please review your race time and assignment.")
@@ -81,6 +111,9 @@ public class MailServiceImpl implements MailService {
         sendHtmlEmail(
                 recipient.getEmail(),
                 RACE_REMINDER_SUBJECT,
+                "RACE_REMINDER",
+                "RACE",
+                String.valueOf(race.getId()),
                 buildRacePlainText(race, recipient, "Your race is coming soon."),
                 buildRaceHtml(race, recipient, "Your race is coming soon.",
                         "This is the 3-day reminder for the scheduled race.")
@@ -93,12 +126,74 @@ public class MailServiceImpl implements MailService {
         sendHtmlEmail(
                 recipient.getEmail(),
                 RACE_COMPLAINT_SUBJECT,
+                "RACE_COMPLAINT",
+                "RACE_COMPLAINT",
+                String.valueOf(complaint.getId()),
                 buildComplaintPlainText(complaint),
                 buildComplaintHtml(complaint)
         );
     }
 
-    private void sendHtmlEmail(String to, String subject, String plainText, String html) {
+    @Override
+    public void sendRegistrationCreated(User recipient, String raceName, String referenceType, String referenceId) {
+        sendSimpleStatusEmail(recipient, REGISTRATION_CREATED_SUBJECT, "REGISTRATION_CREATED",
+                "Your registration for " + raceName + " has been received.", referenceType, referenceId);
+    }
+
+    @Override
+    public void sendRegistrationApproved(User recipient, String raceName, String referenceType, String referenceId) {
+        sendSimpleStatusEmail(recipient, REGISTRATION_APPROVED_SUBJECT, "REGISTRATION_APPROVED",
+                "Your registration for " + raceName + " has been approved.", referenceType, referenceId);
+    }
+
+    @Override
+    public void sendRegistrationRejected(User recipient, String raceName, String referenceType, String referenceId) {
+        sendSimpleStatusEmail(recipient, REGISTRATION_REJECTED_SUBJECT, "REGISTRATION_REJECTED",
+                "Your registration for " + raceName + " has been rejected.", referenceType, referenceId);
+    }
+
+    @Override
+    public void sendDepositStatus(User recipient, String status, String referenceType, String referenceId) {
+        sendSimpleStatusEmail(recipient, DEPOSIT_STATUS_SUBJECT, "DEPOSIT_STATUS",
+                "Your deposit status is " + status + ".", referenceType, referenceId);
+    }
+
+    @Override
+    public void sendWithdrawalStatus(User recipient, String status, String referenceType, String referenceId) {
+        sendSimpleStatusEmail(recipient, WITHDRAWAL_STATUS_SUBJECT, "WITHDRAWAL_STATUS",
+                "Your withdrawal status is " + status + ".", referenceType, referenceId);
+    }
+
+    @Override
+    public void sendRaceResultPublished(Race race, User recipient, String referenceType, String referenceId) {
+        sendHtmlEmail(
+                recipient.getEmail(),
+                RACE_RESULT_SUBJECT,
+                "RACE_RESULT_PUBLISHED",
+                referenceType,
+                referenceId,
+                buildRacePlainText(race, recipient, "Race result has been published."),
+                buildRaceHtml(race, recipient, "Race result has been published.",
+                        "Please open the race result screen for the official standings.")
+        );
+    }
+
+    @Override
+    public void sendPrizePayout(User recipient, String subject, String message, String referenceType, String referenceId) {
+        sendSimpleStatusEmail(recipient, subject, "PRIZE_PAYOUT", message, referenceType, referenceId);
+    }
+
+    private void sendSimpleStatusEmail(User recipient, String subject, String templateType, String message,
+                                       String referenceType, String referenceId) {
+        sendHtmlEmail(recipient.getEmail(), subject, templateType, referenceType, referenceId,
+                "HORSE\n\nXin chao %s,\n\n%s\n\nEmail nay duoc gui tu dong tu HORSE."
+                        .formatted(displayName(recipient), message),
+                layoutHtml(subject, "Notification", subject, HtmlUtils.htmlEscape(message), "", "",
+                        "#0f766e", "#d7f7f1"));
+    }
+
+    private void sendHtmlEmail(String to, String subject, String templateType, String referenceType,
+                               String referenceId, String plainText, String html) {
         MimeMessage message = mailSender.createMimeMessage();
 
         try {
@@ -110,11 +205,38 @@ public class MailServiceImpl implements MailService {
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(plainText, html);
+            mailSender.send(message);
+            recordEmail(to, subject, templateType, referenceType, referenceId, EmailEventStatus.SENT, null);
         } catch (MessagingException ex) {
+            recordEmail(to, subject, templateType, referenceType, referenceId,
+                    EmailEventStatus.FAILED, ex.getMessage());
             throw new MailPreparationException("Could not prepare email", ex);
+        } catch (RuntimeException ex) {
+            recordEmail(to, subject, templateType, referenceType, referenceId,
+                    EmailEventStatus.FAILED, ex.getMessage());
+            throw ex;
         }
+    }
 
-        mailSender.send(message);
+    private void recordEmail(String to, String subject, String templateType, String referenceType,
+                             String referenceId, EmailEventStatus status, String errorMessage) {
+        if (emailEventLogRepository == null) {
+            return;
+        }
+        try {
+            emailEventLogRepository.save(EmailEventLog.builder()
+                    .toEmail(to)
+                    .subject(subject)
+                    .templateType(templateType)
+                    .referenceType(referenceType)
+                    .referenceId(referenceId)
+                    .status(status)
+                    .errorMessage(errorMessage)
+                    .sentAt(status == EmailEventStatus.SENT ? java.time.LocalDateTime.now() : null)
+                    .build());
+        } catch (RuntimeException ignored) {
+            // Email logging must not affect the calling workflow.
+        }
     }
 
     private String formatOtp(String otp) {

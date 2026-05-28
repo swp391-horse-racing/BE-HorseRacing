@@ -31,4 +31,6 @@ public interface BettingService {
     void lockRaceBets(Long raceId);
 
     void settleRaceBets(Long raceId);
+
+    void cancelRaceBets(Long raceId);
 }

@@ -56,6 +56,9 @@ public class FinanceSettingsServiceImpl implements FinanceSettingsService {
         if (betWinningTaxPercent != null) {
             settings.setBetWinningTaxPercent(betWinningTaxPercent);
         }
+        if (request.getBettingEnabled() != null) {
+            settings.setBettingEnabled(request.getBettingEnabled());
+        }
         settings.setUpdatedBy(updatedBy);
         return mapToResponse(financeSettingsRepository.save(settings));
     }
@@ -70,6 +73,12 @@ public class FinanceSettingsServiceImpl implements FinanceSettingsService {
     @Transactional
     public BigDecimal getBetWinningTaxPercent() {
         return getOrCreateSettings().getBetWinningTaxPercent();
+    }
+
+    @Override
+    @Transactional
+    public boolean isBettingEnabled() {
+        return Boolean.TRUE.equals(getOrCreateSettings().getBettingEnabled());
     }
 
     @Override
@@ -128,6 +137,7 @@ public class FinanceSettingsServiceImpl implements FinanceSettingsService {
                         .id(FinanceSettings.SINGLETON_ID)
                         .jockeyHireTaxPercent(FinanceSettings.DEFAULT_JOCKEY_HIRE_TAX_PERCENT)
                         .betWinningTaxPercent(FinanceSettings.DEFAULT_BET_WINNING_TAX_PERCENT)
+                        .bettingEnabled(FinanceSettings.DEFAULT_BETTING_ENABLED)
                         .build()));
     }
 
@@ -139,6 +149,10 @@ public class FinanceSettingsServiceImpl implements FinanceSettingsService {
         }
         if (settings.getBetWinningTaxPercent() == null) {
             settings.setBetWinningTaxPercent(FinanceSettings.DEFAULT_BET_WINNING_TAX_PERCENT);
+            changed = true;
+        }
+        if (settings.getBettingEnabled() == null) {
+            settings.setBettingEnabled(FinanceSettings.DEFAULT_BETTING_ENABLED);
             changed = true;
         }
         return changed ? financeSettingsRepository.save(settings) : settings;
@@ -155,6 +169,7 @@ public class FinanceSettingsServiceImpl implements FinanceSettingsService {
         return FinanceSettingsResponse.builder()
                 .jockeyHireTaxPercent(settings.getJockeyHireTaxPercent())
                 .betWinningTaxPercent(settings.getBetWinningTaxPercent())
+                .bettingEnabled(settings.getBettingEnabled())
                 .createdAt(settings.getCreatedAt())
                 .updatedAt(settings.getUpdatedAt())
                 .build();

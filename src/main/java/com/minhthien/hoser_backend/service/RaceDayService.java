@@ -1,6 +1,7 @@
 package com.minhthien.hoser_backend.service;
 
 import com.minhthien.hoser_backend.dto.request.RaceFinalizeResultRequest;
+import com.minhthien.hoser_backend.dto.request.RaceCancellationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceComplaintRequest;
 import com.minhthien.hoser_backend.dto.request.RaceComplaintResolveRequest;
 import com.minhthien.hoser_backend.dto.request.RaceGateUpdateRequest;
@@ -43,6 +44,8 @@ public interface RaceDayService {
                                                   RaceGateUpdateRequest request);
 
     RaceResponse assignRaceReferee(Long adminId, Long raceId, RaceRefereeAssignmentRequest request);
+
+    RaceResponse cancelRace(Long adminId, Long raceId, RaceCancellationRequest request);
 
     List<RaceResponse> getRefereeRaces(Long refereeId);
 

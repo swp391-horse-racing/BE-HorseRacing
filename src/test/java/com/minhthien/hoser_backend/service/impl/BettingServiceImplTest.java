@@ -71,6 +71,7 @@ class BettingServiceImplTest {
     @Test
     void adminCreatesAndOpensRaceBetMarket() {
         BettingServiceImpl service = service();
+        enableBetting();
         User admin = user(9L, "admin", UserRole.ADMIN);
         Race race = race(RaceStatus.SCHEDULED);
         RaceParticipant participant = participant(101L, race);
@@ -104,6 +105,7 @@ class BettingServiceImplTest {
     @Test
     void spectatorPlacesBetAndStakeIsHeld() {
         BettingServiceImpl service = service();
+        enableBetting();
         User spectator = user(5L, "spectator", UserRole.SPECTATOR);
         User admin = user(9L, "admin", UserRole.ADMIN);
         Race race = race(RaceStatus.SCHEDULED);
@@ -135,6 +137,7 @@ class BettingServiceImplTest {
     @Test
     void nonSpectatorCannotPlaceBet() {
         BettingServiceImpl service = service();
+        enableBetting();
         User owner = user(1L, "owner", UserRole.OWNER);
         when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
 
@@ -146,6 +149,7 @@ class BettingServiceImplTest {
     @Test
     void stakeMustBeInsideAdminConfiguredLimits() {
         BettingServiceImpl service = service();
+        enableBetting();
         User spectator = user(5L, "spectator", UserRole.SPECTATOR);
         User admin = user(9L, "admin", UserRole.ADMIN);
         Race race = race(RaceStatus.SCHEDULED);
@@ -166,6 +170,7 @@ class BettingServiceImplTest {
     @Test
     void userCanViewOnlyCurrentlyBettableRaceMarkets() {
         BettingServiceImpl service = service();
+        enableBetting();
         User user = user(4L, "user", UserRole.USER);
         User admin = user(9L, "admin", UserRole.ADMIN);
         Race bettableRace = race(RaceStatus.SCHEDULED);
@@ -196,12 +201,35 @@ class BettingServiceImplTest {
     @Test
     void ownerCannotViewBettableRaceMarkets() {
         BettingServiceImpl service = service();
+        enableBetting();
         User owner = user(1L, "owner", UserRole.OWNER);
         when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
 
         assertThatThrownBy(() -> service.getBettableRaceMarkets(1L))
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessage("Only users or spectators can view bettable races");
+    }
+
+    @Test
+    void bettingFlagOffBlocksOperationalBettingApis() {
+        BettingServiceImpl service = service();
+        when(financeSettingsService.isBettingEnabled()).thenReturn(false);
+
+        assertThatThrownBy(() -> service.createBetMarket(9L, 10L, marketRequest()))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Betting feature is disabled");
+        assertThatThrownBy(() -> service.getPublicOpenBetMarket(10L))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Betting feature is disabled");
+        assertThatThrownBy(() -> service.getBettableRaceMarkets(5L))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Betting feature is disabled");
+        assertThatThrownBy(() -> service.placeBet(5L, 10L, betRequest(101L, "50000.00")))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Betting feature is disabled");
+
+        verify(betMarketRepository, never()).save(any());
+        verify(walletService, never()).hold(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -410,9 +438,38 @@ class BettingServiceImplTest {
                 eq("Winning bet profit received"));
     }
 
+    @Test
+    void cancelRaceBetsCancelsMarketAndReleasesOpenBets() {
+        BettingServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        User spectator = user(5L, "spectator", UserRole.SPECTATOR);
+        Race race = race(RaceStatus.SCHEDULED);
+        RaceParticipant participant = participant(101L, race);
+        BetMarket market = market(301L, race, admin, BetMarketStatus.OPEN);
+        Bet placedBet = bet(401L, market, participant, spectator, BetStatus.PLACED, "50000.00");
+
+        when(betMarketRepository.findFirstByRaceIdAndStatusInOrderByCreatedAtDesc(eq(10L), any()))
+                .thenReturn(Optional.of(market));
+        when(betRepository.findByRaceIdAndStatusIn(eq(10L), any())).thenReturn(List.of(placedBet));
+
+        service.cancelRaceBets(10L);
+
+        assertThat(market.getStatus()).isEqualTo(BetMarketStatus.CANCELLED);
+        assertThat(market.getCancelledAt()).isNotNull();
+        assertThat(placedBet.getStatus()).isEqualTo(BetStatus.CANCELLED);
+        assertThat(placedBet.getSettledAt()).isNotNull();
+        verify(walletService).release(eq(5L), eq(new BigDecimal("50000.00")), eq(WalletTransactionType.BET_STAKE),
+                eq("BET"), eq("401"), eq("bet:401:stake-cancel-release"), eq(null),
+                eq("Cancelled race bet stake released"));
+    }
+
     private BettingServiceImpl service() {
         return new BettingServiceImpl(betMarketRepository, betRepository, raceRepository, raceParticipantRepository,
                 raceResultRepository, userRepository, walletService, financeSettingsService);
+    }
+
+    private void enableBetting() {
+        when(financeSettingsService.isBettingEnabled()).thenReturn(true);
     }
 
     private BetMarketRequest marketRequest() {

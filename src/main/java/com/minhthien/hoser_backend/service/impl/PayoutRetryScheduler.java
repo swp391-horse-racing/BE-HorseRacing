@@ -2,14 +2,19 @@ package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.entity.JockeyChallengeResult;
 import com.minhthien.hoser_backend.entity.RaceResult;
+import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.entity.Wallet;
+import com.minhthien.hoser_backend.enums.NotificationType;
 import com.minhthien.hoser_backend.enums.RacePayoutStatus;
 import com.minhthien.hoser_backend.enums.WalletTransactionType;
 import com.minhthien.hoser_backend.repository.JockeyChallengeResultRepository;
 import com.minhthien.hoser_backend.repository.RaceResultRepository;
+import com.minhthien.hoser_backend.service.MailService;
+import com.minhthien.hoser_backend.service.NotificationService;
 import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +31,18 @@ public class PayoutRetryScheduler {
     private final RaceResultRepository raceResultRepository;
     private final JockeyChallengeResultRepository jockeyChallengeResultRepository;
     private final WalletService walletService;
+    private NotificationService notificationService;
+    private MailService mailService;
+
+    @Autowired(required = false)
+    void setNotificationService(NotificationService notificationService) {
+        this.notificationService = notificationService;
+    }
+
+    @Autowired(required = false)
+    void setMailService(MailService mailService) {
+        this.mailService = mailService;
+    }
 
     @Scheduled(
             initialDelayString = "${app.payout.retry-initial-delay-ms:60000}",
@@ -73,6 +90,7 @@ public class PayoutRetryScheduler {
             }
             result.setPayoutStatus(RacePayoutStatus.PAID);
             raceResultRepository.save(result);
+            notifyRacePrizePaid(result);
             paid++;
         }
         return paid;
@@ -101,6 +119,9 @@ public class PayoutRetryScheduler {
                     null, "Jockey challenge prize payout retry");
             result.setPayoutStatus(RacePayoutStatus.PAID);
             jockeyChallengeResultRepository.save(result);
+            notifyPrize(result.getJockey(), "Jockey challenge prize paid",
+                    "Jockey challenge prize payout is paid",
+                    JOCKEY_CHALLENGE_REF, referenceId);
             paid++;
         }
         return paid;
@@ -122,5 +143,35 @@ public class PayoutRetryScheduler {
             return totalAmount;
         }
         return ownerAmount;
+    }
+
+    private void notifyRacePrizePaid(RaceResult result) {
+        String message = "Race prize payout is paid for race " + result.getRace().getName();
+        if (defaultZero(result.getOwnerPrizeAmount()).compareTo(BigDecimal.ZERO) > 0) {
+            notifyPrize(result.getOwner(), "Race prize paid", message, RACE_RESULT_REF, String.valueOf(result.getId()));
+        }
+        if (defaultZero(result.getJockeyPrizeAmount()).compareTo(BigDecimal.ZERO) > 0) {
+            notifyPrize(result.getJockey(), "Race prize paid", message, RACE_RESULT_REF, String.valueOf(result.getId()));
+        }
+    }
+
+    private void notifyPrize(User recipient, String title, String message, String referenceType, String referenceId) {
+        if (notificationService != null) {
+            try {
+                notificationService.notify(recipient, NotificationType.PRIZE_PAYOUT_PAID, title, message,
+                        referenceType, referenceId, "{\"status\":\"PAID\"}");
+            } catch (RuntimeException ex) {
+                log.warn("Could not notify payout retry: recipientId={}, referenceType={}, referenceId={}",
+                        recipient == null ? null : recipient.getId(), referenceType, referenceId, ex);
+            }
+        }
+        if (mailService != null) {
+            try {
+                mailService.sendPrizePayout(recipient, title, message, referenceType, referenceId);
+            } catch (RuntimeException ex) {
+                log.warn("Could not send payout retry email: recipientId={}, referenceType={}, referenceId={}",
+                        recipient == null ? null : recipient.getId(), referenceType, referenceId, ex);
+            }
+        }
     }
 }

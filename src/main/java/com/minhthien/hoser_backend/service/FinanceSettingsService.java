@@ -16,6 +16,8 @@ public interface FinanceSettingsService {
 
     BigDecimal getBetWinningTaxPercent();
 
+    boolean isBettingEnabled();
+
     RacePrizeShareSettingsResponse getRacePrizeShareSettings();
 
     RacePrizeShareSettingsResponse updateRacePrizeShareSettings(RacePrizeShareSettingsRequest request,

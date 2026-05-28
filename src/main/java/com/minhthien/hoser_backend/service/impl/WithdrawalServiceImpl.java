@@ -10,6 +10,8 @@ import com.minhthien.hoser_backend.entity.AdminWalletWithdrawal;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.entity.WithdrawalRequest;
 import com.minhthien.hoser_backend.enums.AdminWalletWithdrawalStatus;
+import com.minhthien.hoser_backend.enums.NotificationType;
+import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.enums.WalletTransactionType;
 import com.minhthien.hoser_backend.enums.WithdrawalStatus;
 import com.minhthien.hoser_backend.exception.BadRequestException;
@@ -18,9 +20,13 @@ import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
 import com.minhthien.hoser_backend.repository.AdminWalletWithdrawalRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.repository.WithdrawalRequestRepository;
+import com.minhthien.hoser_backend.service.MailService;
+import com.minhthien.hoser_backend.service.NotificationService;
 import com.minhthien.hoser_backend.service.WalletService;
 import com.minhthien.hoser_backend.service.WithdrawalService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +36,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class WithdrawalServiceImpl implements WithdrawalService {
 
     private static final String USER_WITHDRAWAL_REFERENCE = "USER_WITHDRAWAL";
@@ -40,6 +47,18 @@ public class WithdrawalServiceImpl implements WithdrawalService {
     private final AdminAuditLogRepository adminAuditLogRepository;
     private final UserRepository userRepository;
     private final WalletService walletService;
+    private NotificationService notificationService;
+    private MailService mailService;
+
+    @Autowired(required = false)
+    void setNotificationService(NotificationService notificationService) {
+        this.notificationService = notificationService;
+    }
+
+    @Autowired(required = false)
+    void setMailService(MailService mailService) {
+        this.mailService = mailService;
+    }
 
     @Override
     @Transactional
@@ -65,6 +84,8 @@ public class WithdrawalServiceImpl implements WithdrawalService {
         walletService.hold(userId, withdrawal.getAmount(), WalletTransactionType.WITHDRAW,
                 USER_WITHDRAWAL_REFERENCE, referenceId, "withdraw:user:hold:" + referenceId,
                 null, "Withdrawal requested");
+        notifyAdmins(NotificationType.WITHDRAWAL_CREATED, "Withdrawal requested",
+                user.getUsername() + " requested a withdrawal", withdrawal);
         return mapToResponse(withdrawal);
     }
 
@@ -110,7 +131,11 @@ public class WithdrawalServiceImpl implements WithdrawalService {
         withdrawal.setAdminNote(note(request));
         audit(adminId, "WITHDRAWAL_APPROVED", USER_WITHDRAWAL_REFERENCE, withdrawalId.toString(),
                 withdrawal.getAmount(), note(request));
-        return mapToResponse(withdrawalRequestRepository.save(withdrawal));
+        WithdrawalRequest saved = withdrawalRequestRepository.save(withdrawal);
+        notifyUser(saved.getUser(), NotificationType.WITHDRAWAL_APPROVED, "Withdrawal approved",
+                "Your withdrawal request was approved", saved);
+        sendWithdrawalEmail(saved.getUser(), "APPROVED", saved);
+        return mapToResponse(saved);
     }
 
     @Override
@@ -130,7 +155,11 @@ public class WithdrawalServiceImpl implements WithdrawalService {
         withdrawal.setAdminNote(note(request));
         audit(adminId, "WITHDRAWAL_REJECTED", USER_WITHDRAWAL_REFERENCE, referenceId,
                 withdrawal.getAmount(), note(request));
-        return mapToResponse(withdrawalRequestRepository.save(withdrawal));
+        WithdrawalRequest saved = withdrawalRequestRepository.save(withdrawal);
+        notifyUser(saved.getUser(), NotificationType.WITHDRAWAL_REJECTED, "Withdrawal rejected",
+                "Your withdrawal request was rejected", saved);
+        sendWithdrawalEmail(saved.getUser(), "REJECTED", saved);
+        return mapToResponse(saved);
     }
 
     @Override
@@ -153,7 +182,11 @@ public class WithdrawalServiceImpl implements WithdrawalService {
         withdrawal.setAdminNote(note(request));
         audit(adminId, "WITHDRAWAL_MARKED_PAID", USER_WITHDRAWAL_REFERENCE, referenceId,
                 withdrawal.getAmount(), note(request));
-        return mapToResponse(withdrawalRequestRepository.save(withdrawal));
+        WithdrawalRequest saved = withdrawalRequestRepository.save(withdrawal);
+        notifyUser(saved.getUser(), NotificationType.WITHDRAWAL_PAID, "Withdrawal paid",
+                "Your withdrawal request was marked paid", saved);
+        sendWithdrawalEmail(saved.getUser(), "PAID", saved);
+        return mapToResponse(saved);
     }
 
     @Override
@@ -216,6 +249,40 @@ public class WithdrawalServiceImpl implements WithdrawalService {
 
     private String note(WithdrawalDecisionRequest request) {
         return request == null ? null : request.getNote();
+    }
+
+    private void notifyAdmins(NotificationType type, String title, String message, WithdrawalRequest withdrawal) {
+        userRepository.findByRole(UserRole.ADMIN).forEach(admin ->
+                notifyUser(admin, type, title, message, withdrawal));
+    }
+
+    private void notifyUser(User recipient, NotificationType type, String title, String message,
+                            WithdrawalRequest withdrawal) {
+        if (notificationService == null) {
+            return;
+        }
+        try {
+            notificationService.notify(recipient, type, title, message, USER_WITHDRAWAL_REFERENCE,
+                    String.valueOf(withdrawal.getId()),
+                    "{\"amount\":\"%s\",\"status\":\"%s\"}".formatted(
+                            withdrawal.getAmount(), withdrawal.getStatus()));
+        } catch (RuntimeException ex) {
+            log.warn("Could not notify withdrawal event: withdrawalId={}, type={}",
+                    withdrawal.getId(), type, ex);
+        }
+    }
+
+    private void sendWithdrawalEmail(User recipient, String status, WithdrawalRequest withdrawal) {
+        if (mailService == null) {
+            return;
+        }
+        try {
+            mailService.sendWithdrawalStatus(recipient, status, USER_WITHDRAWAL_REFERENCE,
+                    String.valueOf(withdrawal.getId()));
+        } catch (RuntimeException ex) {
+            log.warn("Could not send withdrawal email: withdrawalId={}, status={}",
+                    withdrawal.getId(), status, ex);
+        }
     }
 
     private WithdrawalResponse mapToResponse(WithdrawalRequest withdrawal) {

@@ -1,6 +1,7 @@
 package com.minhthien.hoser_backend.controller;
 
 import com.minhthien.hoser_backend.dto.request.RaceFinalizeResultRequest;
+import com.minhthien.hoser_backend.dto.request.RaceCancellationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceComplaintRequest;
 import com.minhthien.hoser_backend.dto.request.RaceComplaintResolveRequest;
 import com.minhthien.hoser_backend.dto.request.RaceGateUpdateRequest;
@@ -121,6 +122,15 @@ public class RaceDayController {
             @Valid @RequestBody RaceRefereeAssignmentRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Race referee assigned",
                 raceDayService.assignRaceReferee(currentUser.getId(), id, request)));
+    }
+
+    @PutMapping("/admin/races/{id}/cancel")
+    public ResponseEntity<ApiResponse<RaceResponse>> cancelRace(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @Valid @RequestBody(required = false) RaceCancellationRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Race cancelled",
+                raceDayService.cancelRace(currentUser.getId(), id, request)));
     }
 
     @GetMapping("/referee/races")

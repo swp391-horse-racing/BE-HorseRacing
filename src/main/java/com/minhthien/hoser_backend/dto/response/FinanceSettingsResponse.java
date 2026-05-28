@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 public class FinanceSettingsResponse {
     private BigDecimal jockeyHireTaxPercent;
     private BigDecimal betWinningTaxPercent;
+    private Boolean bettingEnabled;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

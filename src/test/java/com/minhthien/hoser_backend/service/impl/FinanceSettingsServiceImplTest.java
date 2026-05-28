@@ -41,6 +41,7 @@ class FinanceSettingsServiceImplTest {
 
         assertThat(response.getJockeyHireTaxPercent()).isEqualByComparingTo("10.00");
         assertThat(response.getBetWinningTaxPercent()).isEqualByComparingTo("0.00");
+        assertThat(response.getBettingEnabled()).isFalse();
     }
 
     @Test
@@ -88,6 +89,7 @@ class FinanceSettingsServiceImplTest {
                 .id(FinanceSettings.SINGLETON_ID)
                 .jockeyHireTaxPercent(new BigDecimal("10.00"))
                 .betWinningTaxPercent(new BigDecimal("5.00"))
+                .bettingEnabled(true)
                 .build();
         FinanceSettingsRequest request = new FinanceSettingsRequest();
 
@@ -98,7 +100,30 @@ class FinanceSettingsServiceImplTest {
 
         assertThat(response.getJockeyHireTaxPercent()).isEqualByComparingTo("10.00");
         assertThat(response.getBetWinningTaxPercent()).isEqualByComparingTo("5.00");
+        assertThat(response.getBettingEnabled()).isTrue();
         assertThat(settings.getUpdatedBy()).isEqualTo("admin");
+    }
+
+    @Test
+    void updateFinanceSettingsTogglesBettingEnabled() {
+        FinanceSettingsServiceImpl service = service();
+        FinanceSettings settings = FinanceSettings.builder()
+                .id(FinanceSettings.SINGLETON_ID)
+                .jockeyHireTaxPercent(new BigDecimal("10.00"))
+                .betWinningTaxPercent(BigDecimal.ZERO)
+                .bettingEnabled(false)
+                .build();
+        FinanceSettingsRequest request = new FinanceSettingsRequest();
+        request.setBettingEnabled(true);
+
+        when(financeSettingsRepository.findById(FinanceSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
+        when(financeSettingsRepository.save(any(FinanceSettings.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.updateFinanceSettings(request, "admin");
+
+        assertThat(response.getBettingEnabled()).isTrue();
+        assertThat(settings.getBettingEnabled()).isTrue();
+        assertThat(service.isBettingEnabled()).isTrue();
     }
 
     @Test

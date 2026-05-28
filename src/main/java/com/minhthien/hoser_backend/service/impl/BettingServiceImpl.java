@@ -58,6 +58,7 @@ public class BettingServiceImpl implements BettingService {
     @Override
     @Transactional
     public BetMarketResponse createBetMarket(Long adminId, Long raceId, BetMarketRequest request) {
+        requireBettingEnabled();
         User admin = requireUser(adminId);
         requireRole(admin, UserRole.ADMIN, "Only admins can create bet markets");
         validateMarketRequest(request);
@@ -81,6 +82,7 @@ public class BettingServiceImpl implements BettingService {
     @Override
     @Transactional
     public BetMarketResponse openBetMarket(Long adminId, Long marketId) {
+        requireBettingEnabled();
         requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can open bet markets");
         BetMarket market = requireMarket(marketId);
         if (market.getStatus() != BetMarketStatus.DRAFT && market.getStatus() != BetMarketStatus.CLOSED) {
@@ -129,6 +131,7 @@ public class BettingServiceImpl implements BettingService {
     @Override
     @Transactional(readOnly = true)
     public BetMarketResponse getPublicOpenBetMarket(Long raceId) {
+        requireBettingEnabled();
         BetMarket market = betMarketRepository.findByRaceIdAndStatus(raceId, BetMarketStatus.OPEN)
                 .orElseThrow(() -> new ResourceNotFoundException("Open BetMarket", "raceId", raceId));
         validateRaceOpenForBetting(market.getRace());
@@ -138,6 +141,7 @@ public class BettingServiceImpl implements BettingService {
     @Override
     @Transactional(readOnly = true)
     public List<BetMarketResponse> getBettableRaceMarkets(Long userId) {
+        requireBettingEnabled();
         User user = requireUser(userId);
         if (user.getRole() != UserRole.SPECTATOR && user.getRole() != UserRole.USER) {
             throw new UnauthorizedException("Only users or spectators can view bettable races");
@@ -156,6 +160,7 @@ public class BettingServiceImpl implements BettingService {
     @Override
     @Transactional
     public BetResponse placeBet(Long userId, Long raceId, BetRequest request) {
+        requireBettingEnabled();
         User user = requireUser(userId);
         requireRole(user, UserRole.SPECTATOR, "Only spectators can place bets");
         if (request == null || request.getParticipantId() == null || request.getStakeAmount() == null) {
@@ -276,6 +281,27 @@ public class BettingServiceImpl implements BettingService {
         }
     }
 
+    @Override
+    @Transactional
+    public void cancelRaceBets(Long raceId) {
+        Optional<BetMarket> marketOptional = betMarketRepository
+                .findFirstByRaceIdAndStatusInOrderByCreatedAtDesc(raceId,
+                        List.of(BetMarketStatus.DRAFT, BetMarketStatus.OPEN, BetMarketStatus.CLOSED));
+        LocalDateTime now = LocalDateTime.now();
+        marketOptional.ifPresent(market -> {
+            market.setStatus(BetMarketStatus.CANCELLED);
+            market.setCancelledAt(now);
+            betMarketRepository.save(market);
+        });
+        betRepository.findByRaceIdAndStatusIn(raceId, List.of(BetStatus.PLACED, BetStatus.LOCKED))
+                .forEach(bet -> {
+                    releaseCancelledStakeIfNeeded(bet);
+                    bet.setStatus(BetStatus.CANCELLED);
+                    bet.setSettledAt(now);
+                    betRepository.save(bet);
+                });
+    }
+
     private void settleLosingBet(Bet bet, LocalDateTime now) {
         String captureKey = "bet:%d:stake-capture".formatted(bet.getId());
         String adminCreditKey = "bet:%d:stake-admin-credit".formatted(bet.getId());
@@ -317,6 +343,16 @@ public class BettingServiceImpl implements BettingService {
         String releaseKey = "bet:%d:stake-release".formatted(bet.getId());
         walletService.release(bet.getUser().getId(), bet.getStakeAmount(), WalletTransactionType.BET_STAKE,
                 BET_REF, String.valueOf(bet.getId()), releaseKey, null, "Winning bet stake released");
+        bet.setStakeReleaseKey(releaseKey);
+    }
+
+    private void releaseCancelledStakeIfNeeded(Bet bet) {
+        if (bet.getStakeReleaseKey() != null && !bet.getStakeReleaseKey().isBlank()) {
+            return;
+        }
+        String releaseKey = "bet:%d:stake-cancel-release".formatted(bet.getId());
+        walletService.release(bet.getUser().getId(), bet.getStakeAmount(), WalletTransactionType.BET_STAKE,
+                BET_REF, String.valueOf(bet.getId()), releaseKey, null, "Cancelled race bet stake released");
         bet.setStakeReleaseKey(releaseKey);
     }
 
@@ -502,6 +538,12 @@ public class BettingServiceImpl implements BettingService {
     private void requireRole(User user, UserRole role, String message) {
         if (user.getRole() != role) {
             throw new UnauthorizedException(message);
+        }
+    }
+
+    private void requireBettingEnabled() {
+        if (!financeSettingsService.isBettingEnabled()) {
+            throw new BadRequestException("Betting feature is disabled");
         }
     }
 

@@ -12,6 +12,7 @@ import com.minhthien.hoser_backend.repository.HorseRepository;
 import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
 import com.minhthien.hoser_backend.repository.JockeyProfileRepository;
 import com.minhthien.hoser_backend.repository.NewsArticleRepository;
+import com.minhthien.hoser_backend.repository.NotificationRepository;
 import com.minhthien.hoser_backend.repository.PaymentOrderRepository;
 import com.minhthien.hoser_backend.repository.PasswordResetOtpRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
@@ -104,6 +105,9 @@ class AllApiSmokeTest {
     private NewsArticleRepository newsArticleRepository;
 
     @Autowired
+    private NotificationRepository notificationRepository;
+
+    @Autowired
     private WithdrawalRequestRepository withdrawalRequestRepository;
 
     @Autowired
@@ -166,6 +170,7 @@ class AllApiSmokeTest {
         exercisePhase9RaceOperationApis();
         exerciseWalletPaymentAndWithdrawalApis();
         exercisePublicWebhookApis();
+        exerciseNotificationApis();
     }
 
     private void exerciseAuthApis() throws Exception {
@@ -278,7 +283,8 @@ class AllApiSmokeTest {
         assertOk(get("/api/v1/admin/finance-settings").header("Authorization", bearer(adminToken)));
         assertOk(putJson("/api/v1/admin/finance-settings", adminToken, """
                 {
-                  "jockeyHireTaxPercent": 10.00
+                  "jockeyHireTaxPercent": 10.00,
+                  "bettingEnabled": true
                 }
                 """));
     }
@@ -464,6 +470,11 @@ class AllApiSmokeTest {
                   "refereeId": %d
                 }
                 """.formatted(admin.getId())));
+        assertNonServerError(putJson("/api/v1/admin/races/999999/cancel", adminToken, """
+                {
+                  "note": "Smoke cancel"
+                }
+                """));
     }
 
     private void exercisePhase9RaceOperationApis() throws Exception {
@@ -598,6 +609,30 @@ class AllApiSmokeTest {
         assertZaloPayOk(signedZaloPayCallbackPayload(secondZaloPayOrder, "100000002"));
 
         assertOk(put("/api/v1/admin/users/" + deactivationTarget.getId() + "/deactivate")
+                .header("Authorization", bearer(adminToken)));
+    }
+
+    private void exerciseNotificationApis() throws Exception {
+        assertOk(get("/api/v1/notifications").header("Authorization", bearer(userToken)));
+        assertOk(get("/api/v1/notifications").param("status", "UNREAD")
+                .header("Authorization", bearer(userToken)));
+        assertOk(get("/api/v1/notifications/unread-count").header("Authorization", bearer(userToken)));
+        notificationRepository.findAll().stream()
+                .filter(notification -> notification.getRecipient().getId().equals(user.getId()))
+                .findFirst()
+                .ifPresent(notification -> {
+                    try {
+                        assertOk(put("/api/v1/notifications/" + notification.getId() + "/read")
+                                .header("Authorization", bearer(userToken)));
+                    } catch (Exception ex) {
+                        throw new AssertionError(ex);
+                    }
+                });
+        assertOk(put("/api/v1/notifications/read-all").header("Authorization", bearer(userToken)));
+        assertOk(get("/api/v1/admin/notifications").header("Authorization", bearer(adminToken)));
+        assertOk(get("/api/v1/admin/notifications").param("type", "DEPOSIT_PAID")
+                .header("Authorization", bearer(adminToken)));
+        assertOk(get("/api/v1/admin/notifications").param("recipientId", String.valueOf(user.getId()))
                 .header("Authorization", bearer(adminToken)));
     }
 

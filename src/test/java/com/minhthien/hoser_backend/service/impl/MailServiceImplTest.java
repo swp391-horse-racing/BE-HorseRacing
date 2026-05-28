@@ -1,9 +1,12 @@
 package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.entity.Race;
+import com.minhthien.hoser_backend.entity.EmailEventLog;
 import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.enums.EmailEventStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
+import com.minhthien.hoser_backend.repository.EmailEventLogRepository;
 import jakarta.mail.Multipart;
 import jakarta.mail.Part;
 import jakarta.mail.Session;
@@ -13,12 +16,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mail.MailSendException;
 import org.springframework.mail.javamail.JavaMailSender;
 
 import java.util.Properties;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -26,6 +33,9 @@ import static org.mockito.Mockito.when;
 class MailServiceImplTest {
     @Mock
     private JavaMailSender mailSender;
+
+    @Mock
+    private EmailEventLogRepository emailEventLogRepository;
 
     @Test
     void sendRoleApplicationApprovedBuildsHtmlEmail() throws Exception {
@@ -70,10 +80,50 @@ class MailServiceImplTest {
         assertThat(html).contains("2026-06-16 09:00");
     }
 
+    @Test
+    void sendDepositStatusLogsSentEmailEvent() {
+        MailServiceImpl service = serviceWithEmailLog();
+
+        service.sendDepositStatus(user(), "PAID", "DEPOSIT_ORDER", "DEP-1");
+
+        ArgumentCaptor<EmailEventLog> captor = ArgumentCaptor.forClass(EmailEventLog.class);
+        verify(emailEventLogRepository).save(captor.capture());
+        EmailEventLog log = captor.getValue();
+        assertThat(log.getToEmail()).isEqualTo("alice@example.com");
+        assertThat(log.getTemplateType()).isEqualTo("DEPOSIT_STATUS");
+        assertThat(log.getReferenceType()).isEqualTo("DEPOSIT_ORDER");
+        assertThat(log.getReferenceId()).isEqualTo("DEP-1");
+        assertThat(log.getStatus()).isEqualTo(EmailEventStatus.SENT);
+        assertThat(log.getSentAt()).isNotNull();
+    }
+
+    @Test
+    void sendWithdrawalStatusLogsFailureBeforeRethrowing() {
+        MailServiceImpl service = serviceWithEmailLog();
+        doThrow(new MailSendException("smtp down")).when(mailSender).send(any(MimeMessage.class));
+
+        assertThatThrownBy(() -> service.sendWithdrawalStatus(user(), "REJECTED",
+                "USER_WITHDRAWAL", "10"))
+                .isInstanceOf(MailSendException.class);
+
+        ArgumentCaptor<EmailEventLog> captor = ArgumentCaptor.forClass(EmailEventLog.class);
+        verify(emailEventLogRepository).save(captor.capture());
+        EmailEventLog log = captor.getValue();
+        assertThat(log.getTemplateType()).isEqualTo("WITHDRAWAL_STATUS");
+        assertThat(log.getStatus()).isEqualTo(EmailEventStatus.FAILED);
+        assertThat(log.getErrorMessage()).contains("smtp down");
+    }
+
     private MailServiceImpl service() {
         when(mailSender.createMimeMessage())
                 .thenAnswer(invocation -> new MimeMessage(Session.getInstance(new Properties())));
         return new MailServiceImpl(mailSender);
+    }
+
+    private MailServiceImpl serviceWithEmailLog() {
+        when(mailSender.createMimeMessage())
+                .thenAnswer(invocation -> new MimeMessage(Session.getInstance(new Properties())));
+        return new MailServiceImpl(mailSender, emailEventLogRepository);
     }
 
     private MimeMessage sentMessage() {

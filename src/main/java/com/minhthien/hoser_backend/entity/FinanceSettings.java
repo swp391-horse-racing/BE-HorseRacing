@@ -24,6 +24,7 @@ public class FinanceSettings {
     public static final Long SINGLETON_ID = 1L;
     public static final BigDecimal DEFAULT_JOCKEY_HIRE_TAX_PERCENT = new BigDecimal("10.00");
     public static final BigDecimal DEFAULT_BET_WINNING_TAX_PERCENT = new BigDecimal("0.00");
+    public static final boolean DEFAULT_BETTING_ENABLED = false;
 
     @Id
     private Long id;
@@ -33,6 +34,10 @@ public class FinanceSettings {
 
     @Column(nullable = false, precision = 5, scale = 2)
     private BigDecimal betWinningTaxPercent;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean bettingEnabled = DEFAULT_BETTING_ENABLED;
 
     @Column(nullable = false)
     @Builder.Default
@@ -61,6 +66,9 @@ public class FinanceSettings {
         }
         if (betWinningTaxPercent == null) {
             betWinningTaxPercent = DEFAULT_BET_WINNING_TAX_PERCENT;
+        }
+        if (bettingEnabled == null) {
+            bettingEnabled = DEFAULT_BETTING_ENABLED;
         }
         if (createdAt == null) {
             createdAt = now;

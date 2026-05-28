@@ -9,6 +9,7 @@ import com.minhthien.hoser_backend.dto.response.PaymentCallbackLogResponse;
 import com.minhthien.hoser_backend.dto.response.PaymentOrderResponse;
 import com.minhthien.hoser_backend.entity.PaymentOrder;
 import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.enums.NotificationType;
 import com.minhthien.hoser_backend.enums.PaymentOrderStatus;
 import com.minhthien.hoser_backend.enums.PaymentProvider;
 import com.minhthien.hoser_backend.enums.WalletTransactionType;
@@ -16,10 +17,14 @@ import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.repository.PaymentOrderRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
+import com.minhthien.hoser_backend.service.MailService;
+import com.minhthien.hoser_backend.service.NotificationService;
 import com.minhthien.hoser_backend.service.PaymentCallbackLogService;
 import com.minhthien.hoser_backend.service.PaymentService;
 import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -45,6 +50,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentServiceImpl implements PaymentService {
 
     private static final String REFERENCE_TYPE = "DEPOSIT_ORDER";
@@ -58,6 +64,18 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentCallbackLogService paymentCallbackLogService;
     private final ObjectMapper objectMapper;
     private final RestOperations paymentRestOperations;
+    private NotificationService notificationService;
+    private MailService mailService;
+
+    @Autowired(required = false)
+    void setNotificationService(NotificationService notificationService) {
+        this.notificationService = notificationService;
+    }
+
+    @Autowired(required = false)
+    void setMailService(MailService mailService) {
+        this.mailService = mailService;
+    }
 
     @Value("${app.payment.callback-token:dev-callback-token}")
     private String callbackToken;
@@ -232,7 +250,10 @@ public class PaymentServiceImpl implements PaymentService {
             order.setStatus(request.getStatus());
             order.setProviderTransactionId(request.getProviderTransactionId());
             order.setMetadata(request.getMetadata());
-            return mapToResponse(paymentOrderRepository.save(order));
+            PaymentOrder saved = paymentOrderRepository.save(order);
+            publishDepositStatus(saved, NotificationType.DEPOSIT_FAILED, "Deposit failed",
+                    "Your deposit order was not completed", "FAILED");
+            return mapToResponse(saved);
         }
         if (request.getStatus() != PaymentOrderStatus.PAID) {
             throw new BadRequestException("Unsupported callback status: " + request.getStatus());
@@ -248,7 +269,10 @@ public class PaymentServiceImpl implements PaymentService {
         order.setProviderTransactionId(request.getProviderTransactionId());
         order.setMetadata(request.getMetadata());
         order.setPaidAt(LocalDateTime.now());
-        return mapToResponse(paymentOrderRepository.save(order));
+        PaymentOrder saved = paymentOrderRepository.save(order);
+        publishDepositStatus(saved, NotificationType.DEPOSIT_PAID, "Deposit paid",
+                "Your deposit has been credited", "PAID");
+        return mapToResponse(saved);
     }
 
     private Map<String, Object> createZaloPayOrder(PaymentOrder order, User user, String appTransId, String description) {
@@ -354,6 +378,8 @@ public class PaymentServiceImpl implements PaymentService {
         order.setMetadata(metadataJson);
         order.setPaidAt(LocalDateTime.now());
         paymentOrderRepository.save(order);
+        publishDepositStatus(order, NotificationType.DEPOSIT_PAID, "Deposit paid",
+                "Your deposit has been credited", "PAID");
         paymentCallbackLogService.record(logRequest, true, true, null);
     }
 
@@ -364,6 +390,8 @@ public class PaymentServiceImpl implements PaymentService {
             order.setStatus(PaymentOrderStatus.FAILED);
             order.setMetadata(toMetadata(metadata));
             paymentOrderRepository.save(order);
+            publishDepositStatus(order, NotificationType.DEPOSIT_FAILED, "Deposit failed",
+                    "Your deposit order was not completed", "FAILED");
         }
         paymentCallbackLogService.record(logRequest, true, true, null);
     }
@@ -497,6 +525,26 @@ public class PaymentServiceImpl implements PaymentService {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException ex) {
             return value.toString();
+        }
+    }
+
+    private void publishDepositStatus(PaymentOrder order, NotificationType type, String title,
+                                      String message, String status) {
+        if (notificationService != null) {
+            try {
+                notificationService.notify(order.getUser(), type, title, message, REFERENCE_TYPE,
+                        order.getReferenceCode(), "{\"amount\":\"%s\",\"status\":\"%s\"}".formatted(
+                                order.getAmount(), order.getStatus()));
+            } catch (RuntimeException ex) {
+                log.warn("Could not notify deposit event: orderId={}, type={}", order.getId(), type, ex);
+            }
+        }
+        if (mailService != null) {
+            try {
+                mailService.sendDepositStatus(order.getUser(), status, REFERENCE_TYPE, order.getReferenceCode());
+            } catch (RuntimeException ex) {
+                log.warn("Could not send deposit email: orderId={}, status={}", order.getId(), status, ex);
+            }
         }
     }
 
