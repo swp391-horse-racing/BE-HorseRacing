@@ -133,8 +133,8 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
         profile.setLocation(request.getLocation());
         profile.setFavoriteHorseBreed(request.getFavoriteHorseBreed());
         profile.setBio(request.getBio());
-        markProfilePending(profile, user);
-        prepareUserPending(user, UserRole.SPECTATOR);
+        approveProfileByUser(profile, user);
+        approveUserBySelf(user, UserRole.SPECTATOR);
         userRepository.save(user);
         return mapSpectator(spectatorProfileRepository.save(profile));
     }
@@ -396,6 +396,16 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
         userRepository.save(user);
     }
 
+    private void approveUserBySelf(User user, UserRole role) {
+        user.setRole(role);
+        user.setPendingRole(role);
+        user.setRoleApprovalStatus(RoleApprovalStatus.APPROVED);
+        user.setRoleReviewReason(null);
+        user.setRoleReviewedBy(null);
+        user.setRoleReviewedAt(LocalDateTime.now());
+        user.setUpdatedBy(user.getUsername());
+    }
+
     private void rejectUser(User user, UserRole role, Long adminId, String reason) {
         user.setRole(UserRole.USER);
         user.setPendingRole(role);
@@ -453,6 +463,14 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
         profile.setReviewedBy(adminId);
         profile.setReviewedAt(LocalDateTime.now());
         profile.setUpdatedBy("ADMIN:" + adminId);
+    }
+
+    private void approveProfileByUser(SpectatorProfile profile, User user) {
+        profile.setStatus(RoleApprovalStatus.APPROVED);
+        profile.setReviewReason(null);
+        profile.setReviewedBy(null);
+        profile.setReviewedAt(LocalDateTime.now());
+        profile.setUpdatedBy(user.getUsername());
     }
 
     private void approveProfile(RefereeProfile profile, Long adminId) {

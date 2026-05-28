@@ -1,7 +1,9 @@
 package com.minhthien.hoser_backend.controller;
 
 import com.minhthien.hoser_backend.dto.request.NewsArticleRequest;
+import com.minhthien.hoser_backend.dto.request.NewsArticleMultipartRequest;
 import com.minhthien.hoser_backend.dto.request.NewsArticleUpdateRequest;
+import com.minhthien.hoser_backend.dto.request.NewsArticleUpdateMultipartRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
 import com.minhthien.hoser_backend.dto.response.NewsArticleResponse;
 import com.minhthien.hoser_backend.entity.User;
@@ -13,7 +15,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -24,7 +25,6 @@ import java.util.List;
 @CrossOrigin(origins = "http://localhost:5173")
 public class NewsArticleController {
     private final NewsArticleService newsArticleService;
-    private final MultipartJsonParser multipartJsonParser;
 
     @PostMapping(value = "/admin/news", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ApiResponse<NewsArticleResponse>> createNews(
@@ -37,11 +37,10 @@ public class NewsArticleController {
     @PostMapping(value = "/admin/news", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<NewsArticleResponse>> createNewsWithImage(
             @AuthenticationPrincipal User currentUser,
-            @RequestPart("data") String data,
-            @RequestPart(value = "image", required = false) MultipartFile image) {
-        NewsArticleRequest request = multipartJsonParser.parse(data, NewsArticleRequest.class);
+            @Valid @ModelAttribute NewsArticleMultipartRequest request) {
         return ResponseEntity.ok(ApiResponse.success("News created",
-                newsArticleService.createNews(currentUser.getId(), request, image)));
+                newsArticleService.createNews(
+                        currentUser.getId(), request.toNewsArticleRequest(), request.getImage())));
     }
 
     @PutMapping(value = "/admin/news/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -57,11 +56,10 @@ public class NewsArticleController {
     public ResponseEntity<ApiResponse<NewsArticleResponse>> updateNewsWithImage(
             @AuthenticationPrincipal User currentUser,
             @PathVariable Long id,
-            @RequestPart("data") String data,
-            @RequestPart(value = "image", required = false) MultipartFile image) {
-        NewsArticleUpdateRequest request = multipartJsonParser.parse(data, NewsArticleUpdateRequest.class);
+            @Valid @ModelAttribute NewsArticleUpdateMultipartRequest request) {
         return ResponseEntity.ok(ApiResponse.success("News updated",
-                newsArticleService.updateNews(currentUser.getId(), id, request, image)));
+                newsArticleService.updateNews(
+                        currentUser.getId(), id, request.toNewsArticleUpdateRequest(), request.getImage())));
     }
 
     @DeleteMapping("/admin/news/{id}")

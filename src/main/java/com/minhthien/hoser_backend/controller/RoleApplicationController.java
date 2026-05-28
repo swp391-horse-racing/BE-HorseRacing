@@ -46,7 +46,7 @@ public class RoleApplicationController {
     public ResponseEntity<ApiResponse<RoleApplicationResponse>> submitSpectatorApplication(
             @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody SpectatorRoleApplicationRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Spectator role application submitted",
+        return ResponseEntity.ok(ApiResponse.success("Spectator role approved",
                 roleApplicationService.submitSpectatorApplication(currentUser.getId(), request)));
     }
 

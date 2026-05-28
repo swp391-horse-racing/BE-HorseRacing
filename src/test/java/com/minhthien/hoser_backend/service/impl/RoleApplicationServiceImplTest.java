@@ -3,8 +3,10 @@ package com.minhthien.hoser_backend.service.impl;
 import com.minhthien.hoser_backend.dto.request.AdminReviewRequest;
 import com.minhthien.hoser_backend.dto.request.JockeyProfileRequest;
 import com.minhthien.hoser_backend.dto.request.OwnerRoleApplicationRequest;
+import com.minhthien.hoser_backend.dto.request.SpectatorRoleApplicationRequest;
 import com.minhthien.hoser_backend.entity.JockeyProfile;
 import com.minhthien.hoser_backend.entity.OwnerProfile;
+import com.minhthien.hoser_backend.entity.SpectatorProfile;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.JockeyStatus;
 import com.minhthien.hoser_backend.enums.RoleApprovalStatus;
@@ -92,6 +94,19 @@ class RoleApplicationServiceImplTest {
     }
 
     @Test
+    void pendingUserCannotSubmitSpectatorApplication() {
+        RoleApplicationServiceImpl service = service();
+        User user = user(1L, "pending-user", UserRole.USER);
+        user.setPendingRole(UserRole.OWNER);
+        user.setRoleApprovalStatus(RoleApprovalStatus.PENDING);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> service.submitSpectatorApplication(1L, spectatorRequest()))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("A role application is already pending");
+    }
+
+    @Test
     void submitJockeyApplicationReusesJockeyProfileAndKeepsUserAsUser() {
         RoleApplicationServiceImpl service = service();
         User user = user(1L, "jockey-candidate", UserRole.USER);
@@ -114,6 +129,31 @@ class RoleApplicationServiceImplTest {
         assertThat(profile.getStatus()).isEqualTo(JockeyStatus.PENDING);
         assertThat(user.getRole()).isEqualTo(UserRole.USER);
         assertThat(user.getPendingRole()).isEqualTo(UserRole.JOCKEY);
+    }
+
+    @Test
+    void submitSpectatorApplicationApprovesImmediately() {
+        RoleApplicationServiceImpl service = service();
+        User user = user(1L, "spectator-candidate", UserRole.USER);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(spectatorProfileRepository.findByUserId(1L)).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(spectatorProfileRepository.save(any(SpectatorProfile.class))).thenAnswer(invocation -> {
+            SpectatorProfile profile = invocation.getArgument(0);
+            profile.setId(30L);
+            return profile;
+        });
+
+        var response = service.submitSpectatorApplication(1L, spectatorRequest());
+
+        assertThat(response.getRole()).isEqualTo(UserRole.SPECTATOR);
+        assertThat(response.getStatus()).isEqualTo(RoleApprovalStatus.APPROVED);
+        assertThat(user.getRole()).isEqualTo(UserRole.SPECTATOR);
+        assertThat(user.getPendingRole()).isEqualTo(UserRole.SPECTATOR);
+        assertThat(user.getRoleApprovalStatus()).isEqualTo(RoleApprovalStatus.APPROVED);
+        assertThat(user.getRoleReviewReason()).isNull();
+        assertThat(user.getRoleReviewedBy()).isNull();
+        assertThat(user.getRoleReviewedAt()).isNotNull();
     }
 
     @Test
@@ -315,6 +355,16 @@ class RoleApplicationServiceImplTest {
         request.setLicenseNumber("LIC-1");
         request.setHirePrice(new BigDecimal("500.00"));
         request.setBio("Jockey bio");
+        return request;
+    }
+
+    private SpectatorRoleApplicationRequest spectatorRequest() {
+        SpectatorRoleApplicationRequest request = new SpectatorRoleApplicationRequest();
+        request.setDisplayName("Smoke Fan");
+        request.setPhone("0900000001");
+        request.setLocation("Ho Chi Minh City");
+        request.setFavoriteHorseBreed("Thoroughbred");
+        request.setBio("Spectator bio");
         return request;
     }
 

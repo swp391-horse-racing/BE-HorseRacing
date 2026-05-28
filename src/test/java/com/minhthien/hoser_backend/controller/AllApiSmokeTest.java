@@ -195,10 +195,12 @@ class AllApiSmokeTest {
                   "bio": "Smoke spectator"
                 }
                 """));
+        MvcResult spectatorMe = assertOk(get("/api/v1/auth/me").header("Authorization", bearer(userToken)));
+        assertThat(spectatorMe.getResponse().getContentAsString()).contains("\"role\":\"SPECTATOR\"");
         assertOk(get("/api/v1/role-applications/me").header("Authorization", bearer(userToken)));
         assertOk(get("/api/v1/admin/role-applications")
                 .header("Authorization", bearer(adminToken)));
-        assertOk(get("/api/v1/admin/role-applications?role=SPECTATOR&status=PENDING")
+        assertOk(get("/api/v1/admin/role-applications?role=SPECTATOR&status=APPROVED")
                 .header("Authorization", bearer(adminToken)));
         assertOk(get("/api/v1/admin/role-applications/role/SPECTATOR")
                 .header("Authorization", bearer(adminToken)));
@@ -292,18 +294,13 @@ class AllApiSmokeTest {
                   "publishedAt": "2026-05-20T08:00:00"
                 }
                 """));
-        MockMultipartFile dataPart = new MockMultipartFile("data", "", "application/octet-stream", """
-                {
-                  "title": "Smoke Multipart Race News",
-                  "summary": "Smoke multipart news summary",
-                  "content": "Smoke multipart news content",
-                  "category": "Su kien",
-                  "featured": false,
-                  "publishedAt": "2026-05-21T08:00:00"
-                }
-                """.getBytes(StandardCharsets.UTF_8));
         assertOk(multipart("/api/v1/admin/news")
-                .file(dataPart)
+                .param("title", "Smoke Multipart Race News")
+                .param("summary", "Smoke multipart news summary")
+                .param("content", "Smoke multipart news content")
+                .param("category", "Su kien")
+                .param("featured", "false")
+                .param("publishedAt", "2026-05-21T08:00:00")
                 .header("Authorization", bearer(adminToken)));
         Long newsId = latestNewsId();
 
@@ -322,16 +319,11 @@ class AllApiSmokeTest {
                   "featured": false
                 }
                 """));
-        MockMultipartFile updateDataPart = new MockMultipartFile("data", "", "application/octet-stream", """
-                {
-                  "title": "Smoke Multipart Race News Updated",
-                  "summary": "Smoke multipart news summary updated",
-                  "content": "Smoke multipart news content updated",
-                  "featured": true
-                }
-                """.getBytes(StandardCharsets.UTF_8));
         assertOk(multipartPut("/api/v1/admin/news/" + newsId)
-                .file(updateDataPart)
+                .param("title", "Smoke Multipart Race News Updated")
+                .param("summary", "Smoke multipart news summary updated")
+                .param("content", "Smoke multipart news content updated")
+                .param("featured", "true")
                 .header("Authorization", bearer(adminToken)));
         assertOk(delete("/api/v1/admin/news/" + newsId)
                 .header("Authorization", bearer(adminToken)));
