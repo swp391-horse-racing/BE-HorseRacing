@@ -28,6 +28,7 @@ import com.minhthien.hoser_backend.repository.RaceParticipantRepository;
 import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
+import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.WalletService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,6 +65,8 @@ class BettingServiceImplTest {
     private UserRepository userRepository;
     @Mock
     private WalletService walletService;
+    @Mock
+    private FinanceSettingsService financeSettingsService;
 
     @Test
     void adminCreatesAndOpensRaceBetMarket() {
@@ -225,6 +228,7 @@ class BettingServiceImplTest {
         when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
         when(raceResultRepository.findByRaceIdOrderByRankAsc(10L)).thenReturn(List.of(winnerResult));
         when(betRepository.findByRaceIdAndStatusIn(eq(10L), any())).thenReturn(List.of(winningBet, losingBet));
+        when(financeSettingsService.getBetWinningTaxPercent()).thenReturn(BigDecimal.ZERO);
         when(walletService.getOrCreateAdminWallet()).thenReturn(adminWallet(new BigDecimal("1000000.00")));
 
         service.settleRaceBets(10L);
@@ -245,6 +249,87 @@ class BettingServiceImplTest {
         verify(walletService).creditAdmin(eq(new BigDecimal("30000.00")), eq(WalletTransactionType.BET_STAKE),
                 eq("BET"), eq("402"), eq("bet:402:stake-admin-credit"), eq(null),
                 eq("Losing bet stake received"));
+        assertThat(winningBet.getWinningTaxPercent()).isEqualByComparingTo("0.00");
+        assertThat(winningBet.getWinningTaxAmount()).isEqualByComparingTo("0.00");
+        assertThat(winningBet.getGrossProfitAmount()).isEqualByComparingTo("50000.00");
+        assertThat(winningBet.getNetProfitAmount()).isEqualByComparingTo("50000.00");
+    }
+
+    @Test
+    void settleRaceBetsTaxesWinningProfitOnly() {
+        BettingServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        User winnerUser = user(5L, "winner", UserRole.SPECTATOR);
+        Race race = race(RaceStatus.RESULT_CONFIRMED);
+        RaceParticipant winner = participant(101L, race);
+        BetMarket market = market(301L, race, admin, BetMarketStatus.CLOSED);
+        Bet winningBet = bet(401L, market, winner, winnerUser, BetStatus.LOCKED, "50000.00");
+        RaceResult winnerResult = RaceResult.builder()
+                .race(race)
+                .participant(winner)
+                .status(RaceParticipantStatus.FINISHED)
+                .rank(1)
+                .build();
+
+        when(betMarketRepository.findFirstByRaceIdAndStatusInOrderByCreatedAtDesc(eq(10L), any()))
+                .thenReturn(Optional.of(market));
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+        when(raceResultRepository.findByRaceIdOrderByRankAsc(10L)).thenReturn(List.of(winnerResult));
+        when(betRepository.findByRaceIdAndStatusIn(eq(10L), any())).thenReturn(List.of(winningBet));
+        when(financeSettingsService.getBetWinningTaxPercent()).thenReturn(new BigDecimal("10.00"));
+        when(walletService.getOrCreateAdminWallet()).thenReturn(adminWallet(new BigDecimal("1000000.00")));
+
+        service.settleRaceBets(10L);
+
+        assertThat(winningBet.getStatus()).isEqualTo(BetStatus.WON);
+        assertThat(winningBet.getWinningTaxPercent()).isEqualByComparingTo("10.00");
+        assertThat(winningBet.getWinningTaxAmount()).isEqualByComparingTo("5000.00");
+        assertThat(winningBet.getGrossProfitAmount()).isEqualByComparingTo("50000.00");
+        assertThat(winningBet.getNetProfitAmount()).isEqualByComparingTo("45000.00");
+        verify(walletService).release(eq(5L), eq(new BigDecimal("50000.00")), eq(WalletTransactionType.BET_STAKE),
+                eq("BET"), eq("401"), eq("bet:401:stake-release"), eq(null), eq("Winning bet stake released"));
+        verify(walletService).debitAdmin(eq(new BigDecimal("45000.00")), eq(WalletTransactionType.BET_PAYOUT),
+                eq("BET"), eq("401"), eq("bet:401:profit-admin-debit"), eq(null),
+                eq("Winning bet profit paid"));
+        verify(walletService).credit(eq(5L), eq(new BigDecimal("45000.00")), eq(WalletTransactionType.BET_PAYOUT),
+                eq("BET"), eq("401"), eq("bet:401:profit-credit"), eq(null),
+                eq("Winning bet profit received"));
+    }
+
+    @Test
+    void hundredPercentWinningTaxOnlyReleasesStake() {
+        BettingServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        User winnerUser = user(5L, "winner", UserRole.SPECTATOR);
+        Race race = race(RaceStatus.RESULT_CONFIRMED);
+        RaceParticipant winner = participant(101L, race);
+        BetMarket market = market(301L, race, admin, BetMarketStatus.CLOSED);
+        Bet winningBet = bet(401L, market, winner, winnerUser, BetStatus.LOCKED, "50000.00");
+        RaceResult winnerResult = RaceResult.builder()
+                .race(race)
+                .participant(winner)
+                .status(RaceParticipantStatus.FINISHED)
+                .rank(1)
+                .build();
+
+        when(betMarketRepository.findFirstByRaceIdAndStatusInOrderByCreatedAtDesc(eq(10L), any()))
+                .thenReturn(Optional.of(market));
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+        when(raceResultRepository.findByRaceIdOrderByRankAsc(10L)).thenReturn(List.of(winnerResult));
+        when(betRepository.findByRaceIdAndStatusIn(eq(10L), any())).thenReturn(List.of(winningBet));
+        when(financeSettingsService.getBetWinningTaxPercent()).thenReturn(new BigDecimal("100.00"));
+
+        service.settleRaceBets(10L);
+
+        assertThat(winningBet.getStatus()).isEqualTo(BetStatus.WON);
+        assertThat(winningBet.getWinningTaxAmount()).isEqualByComparingTo("50000.00");
+        assertThat(winningBet.getNetProfitAmount()).isEqualByComparingTo("0.00");
+        verify(walletService).release(eq(5L), eq(new BigDecimal("50000.00")), eq(WalletTransactionType.BET_STAKE),
+                eq("BET"), eq("401"), eq("bet:401:stake-release"), eq(null), eq("Winning bet stake released"));
+        verify(walletService, never()).debitAdmin(any(), eq(WalletTransactionType.BET_PAYOUT),
+                any(), any(), any(), any(), any());
+        verify(walletService, never()).credit(any(), any(), eq(WalletTransactionType.BET_PAYOUT),
+                any(), any(), any(), any(), any());
     }
 
     @Test
@@ -268,11 +353,14 @@ class BettingServiceImplTest {
         when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
         when(raceResultRepository.findByRaceIdOrderByRankAsc(10L)).thenReturn(List.of(winnerResult));
         when(betRepository.findByRaceIdAndStatusIn(eq(10L), any())).thenReturn(List.of(winningBet));
+        when(financeSettingsService.getBetWinningTaxPercent()).thenReturn(new BigDecimal("10.00"));
         when(walletService.getOrCreateAdminWallet()).thenReturn(adminWallet(BigDecimal.ZERO));
 
         service.settleRaceBets(10L);
 
         assertThat(winningBet.getStatus()).isEqualTo(BetStatus.UNPAID);
+        assertThat(winningBet.getWinningTaxPercent()).isEqualByComparingTo("10.00");
+        assertThat(winningBet.getNetProfitAmount()).isEqualByComparingTo("45000.00");
         verify(walletService).release(eq(5L), eq(new BigDecimal("50000.00")), eq(WalletTransactionType.BET_STAKE),
                 eq("BET"), eq("401"), eq("bet:401:stake-release"), eq(null), eq("Winning bet stake released"));
         verify(walletService, never()).debitAdmin(any(), eq(WalletTransactionType.BET_PAYOUT),
@@ -281,9 +369,50 @@ class BettingServiceImplTest {
                 any(), any(), any(), any(), any());
     }
 
+    @Test
+    void retryUnpaidBetUsesExistingWinningTaxSnapshot() {
+        BettingServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        User spectator = user(5L, "spectator", UserRole.SPECTATOR);
+        Race race = race(RaceStatus.RESULT_CONFIRMED);
+        RaceParticipant winner = participant(101L, race);
+        BetMarket market = market(301L, race, admin, BetMarketStatus.SETTLED);
+        Bet unpaidBet = bet(401L, market, winner, spectator, BetStatus.UNPAID, "50000.00");
+        unpaidBet.setStakeReleaseKey("bet:401:stake-release");
+        unpaidBet.setGrossProfitAmount(new BigDecimal("50000.00"));
+        unpaidBet.setWinningTaxPercent(new BigDecimal("10.00"));
+        unpaidBet.setWinningTaxAmount(new BigDecimal("5000.00"));
+        unpaidBet.setNetProfitAmount(new BigDecimal("45000.00"));
+        RaceResult winnerResult = RaceResult.builder()
+                .race(race)
+                .participant(winner)
+                .status(RaceParticipantStatus.FINISHED)
+                .rank(1)
+                .build();
+
+        when(betMarketRepository.findFirstByRaceIdAndStatusInOrderByCreatedAtDesc(eq(10L), any()))
+                .thenReturn(Optional.of(market));
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+        when(raceResultRepository.findByRaceIdOrderByRankAsc(10L)).thenReturn(List.of(winnerResult));
+        when(betRepository.findByRaceIdAndStatusIn(eq(10L), any())).thenReturn(List.of(unpaidBet));
+        when(walletService.getOrCreateAdminWallet()).thenReturn(adminWallet(new BigDecimal("1000000.00")));
+
+        service.settleRaceBets(10L);
+
+        assertThat(unpaidBet.getStatus()).isEqualTo(BetStatus.WON);
+        verify(financeSettingsService, never()).getBetWinningTaxPercent();
+        verify(walletService, never()).release(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(walletService).debitAdmin(eq(new BigDecimal("45000.00")), eq(WalletTransactionType.BET_PAYOUT),
+                eq("BET"), eq("401"), eq("bet:401:profit-admin-debit"), eq(null),
+                eq("Winning bet profit paid"));
+        verify(walletService).credit(eq(5L), eq(new BigDecimal("45000.00")), eq(WalletTransactionType.BET_PAYOUT),
+                eq("BET"), eq("401"), eq("bet:401:profit-credit"), eq(null),
+                eq("Winning bet profit received"));
+    }
+
     private BettingServiceImpl service() {
         return new BettingServiceImpl(betMarketRepository, betRepository, raceRepository, raceParticipantRepository,
-                raceResultRepository, userRepository, walletService);
+                raceResultRepository, userRepository, walletService, financeSettingsService);
     }
 
     private BetMarketRequest marketRequest() {

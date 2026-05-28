@@ -23,12 +23,16 @@ import java.time.LocalDateTime;
 public class FinanceSettings {
     public static final Long SINGLETON_ID = 1L;
     public static final BigDecimal DEFAULT_JOCKEY_HIRE_TAX_PERCENT = new BigDecimal("10.00");
+    public static final BigDecimal DEFAULT_BET_WINNING_TAX_PERCENT = new BigDecimal("0.00");
 
     @Id
     private Long id;
 
     @Column(nullable = false, precision = 5, scale = 2)
     private BigDecimal jockeyHireTaxPercent;
+
+    @Column(nullable = false, precision = 5, scale = 2)
+    private BigDecimal betWinningTaxPercent;
 
     @Column(nullable = false)
     @Builder.Default
@@ -54,6 +58,9 @@ public class FinanceSettings {
         }
         if (jockeyHireTaxPercent == null) {
             jockeyHireTaxPercent = DEFAULT_JOCKEY_HIRE_TAX_PERCENT;
+        }
+        if (betWinningTaxPercent == null) {
+            betWinningTaxPercent = DEFAULT_BET_WINNING_TAX_PERCENT;
         }
         if (createdAt == null) {
             createdAt = now;

@@ -27,12 +27,14 @@ import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.BettingService;
+import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -42,6 +44,7 @@ import java.util.Optional;
 public class BettingServiceImpl implements BettingService {
     private static final String BET_REF = "BET";
     private static final BigDecimal FIXED_PAYOUT_MULTIPLIER = new BigDecimal("2.00");
+    private static final BigDecimal HUNDRED_PERCENT = new BigDecimal("100.00");
 
     private final BetMarketRepository betMarketRepository;
     private final BetRepository betRepository;
@@ -50,6 +53,7 @@ public class BettingServiceImpl implements BettingService {
     private final RaceResultRepository raceResultRepository;
     private final UserRepository userRepository;
     private final WalletService walletService;
+    private final FinanceSettingsService financeSettingsService;
 
     @Override
     @Transactional
@@ -288,7 +292,8 @@ public class BettingServiceImpl implements BettingService {
 
     private void settleWinningBet(Bet bet, LocalDateTime now) {
         releaseWinningStakeIfNeeded(bet);
-        if (!adminWalletCanPay(bet.getStakeAmount())) {
+        prepareWinningProfitSnapshotIfNeeded(bet);
+        if (!adminWalletCanPay(bet.getNetProfitAmount())) {
             bet.setStatus(BetStatus.UNPAID);
             bet.setSettledAt(now);
             betRepository.save(bet);
@@ -298,13 +303,17 @@ public class BettingServiceImpl implements BettingService {
     }
 
     private void retryUnpaidProfit(Bet bet, LocalDateTime now) {
-        if (!adminWalletCanPay(bet.getStakeAmount())) {
+        prepareWinningProfitSnapshotIfNeeded(bet);
+        if (!adminWalletCanPay(bet.getNetProfitAmount())) {
             return;
         }
         payWinningProfit(bet, now);
     }
 
     private void releaseWinningStakeIfNeeded(Bet bet) {
+        if (bet.getStakeReleaseKey() != null && !bet.getStakeReleaseKey().isBlank()) {
+            return;
+        }
         String releaseKey = "bet:%d:stake-release".formatted(bet.getId());
         walletService.release(bet.getUser().getId(), bet.getStakeAmount(), WalletTransactionType.BET_STAKE,
                 BET_REF, String.valueOf(bet.getId()), releaseKey, null, "Winning bet stake released");
@@ -312,17 +321,43 @@ public class BettingServiceImpl implements BettingService {
     }
 
     private void payWinningProfit(Bet bet, LocalDateTime now) {
-        String adminDebitKey = "bet:%d:profit-admin-debit".formatted(bet.getId());
-        String profitCreditKey = "bet:%d:profit-credit".formatted(bet.getId());
-        walletService.debitAdmin(bet.getStakeAmount(), WalletTransactionType.BET_PAYOUT,
-                BET_REF, String.valueOf(bet.getId()), adminDebitKey, null, "Winning bet profit paid");
-        walletService.credit(bet.getUser().getId(), bet.getStakeAmount(), WalletTransactionType.BET_PAYOUT,
-                BET_REF, String.valueOf(bet.getId()), profitCreditKey, null, "Winning bet profit received");
-        bet.setProfitAdminDebitKey(adminDebitKey);
-        bet.setProfitCreditKey(profitCreditKey);
+        BigDecimal netProfitAmount = defaultZero(bet.getNetProfitAmount());
+        if (netProfitAmount.compareTo(BigDecimal.ZERO) > 0) {
+            String adminDebitKey = "bet:%d:profit-admin-debit".formatted(bet.getId());
+            String profitCreditKey = "bet:%d:profit-credit".formatted(bet.getId());
+            walletService.debitAdmin(netProfitAmount, WalletTransactionType.BET_PAYOUT,
+                    BET_REF, String.valueOf(bet.getId()), adminDebitKey, null, "Winning bet profit paid");
+            walletService.credit(bet.getUser().getId(), netProfitAmount, WalletTransactionType.BET_PAYOUT,
+                    BET_REF, String.valueOf(bet.getId()), profitCreditKey, null, "Winning bet profit received");
+            bet.setProfitAdminDebitKey(adminDebitKey);
+            bet.setProfitCreditKey(profitCreditKey);
+        }
         bet.setStatus(BetStatus.WON);
         bet.setSettledAt(now);
         betRepository.save(bet);
+    }
+
+    private void prepareWinningProfitSnapshotIfNeeded(Bet bet) {
+        if (bet.getGrossProfitAmount() != null
+                && bet.getWinningTaxPercent() != null
+                && bet.getWinningTaxAmount() != null
+                && bet.getNetProfitAmount() != null) {
+            return;
+        }
+        BigDecimal grossProfitAmount = bet.getStakeAmount().setScale(2, RoundingMode.HALF_UP);
+        BigDecimal taxPercent = financeSettingsService.getBetWinningTaxPercent()
+                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal taxAmount = calculatePercentAmount(grossProfitAmount, taxPercent);
+        BigDecimal netProfitAmount = grossProfitAmount.subtract(taxAmount).setScale(2, RoundingMode.HALF_UP);
+        bet.setGrossProfitAmount(grossProfitAmount);
+        bet.setWinningTaxPercent(taxPercent);
+        bet.setWinningTaxAmount(taxAmount);
+        bet.setNetProfitAmount(netProfitAmount);
+    }
+
+    private BigDecimal calculatePercentAmount(BigDecimal amount, BigDecimal percent) {
+        return amount.multiply(percent)
+                .divide(HUNDRED_PERCENT, 2, RoundingMode.HALF_UP);
     }
 
     private void validateMarketRequest(BetMarketRequest request) {
@@ -371,7 +406,14 @@ public class BettingServiceImpl implements BettingService {
     }
 
     private boolean adminWalletCanPay(BigDecimal amount) {
+        if (defaultZero(amount).compareTo(BigDecimal.ZERO) <= 0) {
+            return true;
+        }
         return walletService.getOrCreateAdminWallet().getAvailableBalance().compareTo(amount) >= 0;
+    }
+
+    private BigDecimal defaultZero(BigDecimal amount) {
+        return amount == null ? BigDecimal.ZERO : amount;
     }
 
     private BetMarketResponse mapMarket(BetMarket market, boolean includeOptions) {
@@ -426,6 +468,10 @@ public class BettingServiceImpl implements BettingService {
                 .username(bet.getUser().getUsername())
                 .stakeAmount(bet.getStakeAmount())
                 .potentialPayoutAmount(bet.getPotentialPayoutAmount())
+                .winningTaxPercent(bet.getWinningTaxPercent())
+                .winningTaxAmount(bet.getWinningTaxAmount())
+                .grossProfitAmount(bet.getGrossProfitAmount())
+                .netProfitAmount(bet.getNetProfitAmount())
                 .status(bet.getStatus())
                 .placedAt(bet.getPlacedAt())
                 .lockedAt(bet.getLockedAt())

@@ -115,6 +115,7 @@ class PaymentServiceImplTest {
         PaymentOrderResponse response = paymentService.createDepositOrder(1L, depositRequest("10000"));
 
         String appTransId = LocalDate.now().format(DateTimeFormatter.ofPattern("yyMMdd")) + "_10";
+        assertThat(response.getCurrency()).isEqualTo(PaymentOrder.DEFAULT_CURRENCY);
         assertThat(response.getProvider()).isEqualTo(PaymentProvider.ZALOPAY);
         assertThat(response.getOrderCode()).isEqualTo(10L);
         assertThat(response.getPaymentLinkId()).isEqualTo(appTransId);
@@ -204,9 +205,22 @@ class PaymentServiceImplTest {
         verifyNoInteractions(userRepository, paymentOrderRepository, paymentRestOperations);
     }
 
+    @Test
+    void createDepositOrderRejectsUnsupportedCurrencyBeforeCallingZaloPay() {
+        CreateDepositOrderRequest request = depositRequest("10000");
+        request.setCurrency("USD");
+
+        assertThatThrownBy(() -> paymentService.createDepositOrder(1L, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Only VND currency is supported");
+
+        verifyNoInteractions(userRepository, paymentOrderRepository, paymentRestOperations);
+    }
+
     private CreateDepositOrderRequest depositRequest(String amount) {
         CreateDepositOrderRequest request = new CreateDepositOrderRequest();
         request.setAmount(new BigDecimal(amount));
+        request.setProvider(PaymentProvider.ZALOPAY);
         return request;
     }
 

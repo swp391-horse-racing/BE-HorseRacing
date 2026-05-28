@@ -40,6 +40,7 @@ class FinanceSettingsServiceImplTest {
         var response = service.getFinanceSettings();
 
         assertThat(response.getJockeyHireTaxPercent()).isEqualByComparingTo("10.00");
+        assertThat(response.getBetWinningTaxPercent()).isEqualByComparingTo("0.00");
     }
 
     @Test
@@ -48,6 +49,7 @@ class FinanceSettingsServiceImplTest {
         FinanceSettings settings = FinanceSettings.builder()
                 .id(FinanceSettings.SINGLETON_ID)
                 .jockeyHireTaxPercent(new BigDecimal("10.00"))
+                .betWinningTaxPercent(BigDecimal.ZERO)
                 .build();
         when(financeSettingsRepository.findById(FinanceSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
         when(financeSettingsRepository.save(any(FinanceSettings.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -59,11 +61,33 @@ class FinanceSettingsServiceImplTest {
     }
 
     @Test
+    void updateFinanceSettingsNormalizesBetWinningTaxPercent() {
+        FinanceSettingsServiceImpl service = service();
+        FinanceSettings settings = FinanceSettings.builder()
+                .id(FinanceSettings.SINGLETON_ID)
+                .jockeyHireTaxPercent(new BigDecimal("10.00"))
+                .betWinningTaxPercent(BigDecimal.ZERO)
+                .build();
+        FinanceSettingsRequest request = new FinanceSettingsRequest();
+        request.setBetWinningTaxPercent(new BigDecimal("7.555"));
+
+        when(financeSettingsRepository.findById(FinanceSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
+        when(financeSettingsRepository.save(any(FinanceSettings.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.updateFinanceSettings(request, "admin");
+
+        assertThat(response.getJockeyHireTaxPercent()).isEqualByComparingTo("10.00");
+        assertThat(response.getBetWinningTaxPercent()).isEqualByComparingTo("7.56");
+        assertThat(settings.getUpdatedBy()).isEqualTo("admin");
+    }
+
+    @Test
     void updateFinanceSettingsKeepsExistingPercentWhenNotProvided() {
         FinanceSettingsServiceImpl service = service();
         FinanceSettings settings = FinanceSettings.builder()
                 .id(FinanceSettings.SINGLETON_ID)
                 .jockeyHireTaxPercent(new BigDecimal("10.00"))
+                .betWinningTaxPercent(new BigDecimal("5.00"))
                 .build();
         FinanceSettingsRequest request = new FinanceSettingsRequest();
 
@@ -73,6 +97,7 @@ class FinanceSettingsServiceImplTest {
         var response = service.updateFinanceSettings(request, "admin");
 
         assertThat(response.getJockeyHireTaxPercent()).isEqualByComparingTo("10.00");
+        assertThat(response.getBetWinningTaxPercent()).isEqualByComparingTo("5.00");
         assertThat(settings.getUpdatedBy()).isEqualTo("admin");
     }
 
@@ -83,6 +108,19 @@ class FinanceSettingsServiceImplTest {
         assertThatThrownBy(() -> service.updateFinanceSettings(request("100.01"), "admin"))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Jockey hire tax percent must be between 0 and 100");
+
+        verify(financeSettingsRepository, never()).save(any(FinanceSettings.class));
+    }
+
+    @Test
+    void updateFinanceSettingsRejectsOutOfRangeBetWinningTaxPercent() {
+        FinanceSettingsServiceImpl service = service();
+        FinanceSettingsRequest request = new FinanceSettingsRequest();
+        request.setBetWinningTaxPercent(new BigDecimal("100.01"));
+
+        assertThatThrownBy(() -> service.updateFinanceSettings(request, "admin"))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Bet winning tax percent must be between 0 and 100");
 
         verify(financeSettingsRepository, never()).save(any(FinanceSettings.class));
     }

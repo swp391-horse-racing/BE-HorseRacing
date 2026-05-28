@@ -502,7 +502,8 @@ class AllApiSmokeTest {
 
         assertOk(postJson("/api/v1/wallets/me/deposit-orders", userToken, """
                 {
-                  "amount": 10000
+                  "amount": 10000,
+                  "provider": "ZALOPAY"
                 }
                 """));
         PaymentOrder callbackOrder = latestPaymentOrder();
@@ -580,7 +581,8 @@ class AllApiSmokeTest {
     private void exercisePublicWebhookApis() throws Exception {
         assertOk(postJson("/api/v1/wallets/me/deposit-orders", userToken, """
                 {
-                  "amount": 10000
+                  "amount": 10000,
+                  "provider": "ZALOPAY"
                 }
                 """));
         PaymentOrder zaloPayOrder = latestPaymentOrder();
@@ -588,7 +590,8 @@ class AllApiSmokeTest {
 
         assertOk(postJson("/api/v1/wallets/me/deposit-orders", userToken, """
                 {
-                  "amount": 10000
+                  "amount": 10000,
+                  "provider": "ZALOPAY"
                 }
                 """));
         PaymentOrder secondZaloPayOrder = latestPaymentOrder();

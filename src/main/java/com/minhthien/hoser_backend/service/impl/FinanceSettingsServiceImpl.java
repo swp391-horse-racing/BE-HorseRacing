@@ -43,12 +43,18 @@ public class FinanceSettingsServiceImpl implements FinanceSettingsService {
         if (request == null) {
             throw new BadRequestException("Finance settings request is required");
         }
-        BigDecimal percent = request.getJockeyHireTaxPercent() == null
+        BigDecimal jockeyHireTaxPercent = request.getJockeyHireTaxPercent() == null
                 ? null
-                : normalizePercent(request.getJockeyHireTaxPercent());
+                : normalizePercent(request.getJockeyHireTaxPercent(), "Jockey hire tax percent");
+        BigDecimal betWinningTaxPercent = request.getBetWinningTaxPercent() == null
+                ? null
+                : normalizePercent(request.getBetWinningTaxPercent(), "Bet winning tax percent");
         FinanceSettings settings = getOrCreateSettings();
-        if (percent != null) {
-            settings.setJockeyHireTaxPercent(percent);
+        if (jockeyHireTaxPercent != null) {
+            settings.setJockeyHireTaxPercent(jockeyHireTaxPercent);
+        }
+        if (betWinningTaxPercent != null) {
+            settings.setBetWinningTaxPercent(betWinningTaxPercent);
         }
         settings.setUpdatedBy(updatedBy);
         return mapToResponse(financeSettingsRepository.save(settings));
@@ -58,6 +64,12 @@ public class FinanceSettingsServiceImpl implements FinanceSettingsService {
     @Transactional
     public BigDecimal getJockeyHireTaxPercent() {
         return getOrCreateSettings().getJockeyHireTaxPercent();
+    }
+
+    @Override
+    @Transactional
+    public BigDecimal getBetWinningTaxPercent() {
+        return getOrCreateSettings().getBetWinningTaxPercent();
     }
 
     @Override
@@ -81,14 +93,14 @@ public class FinanceSettingsServiceImpl implements FinanceSettingsService {
             if (!ranks.add(share.getRank())) {
                 throw new BadRequestException("Race prize share rank must be unique");
             }
-            normalizePercent(share.getJockeyPercent());
+            normalizePercent(share.getJockeyPercent(), "Jockey hire tax percent");
         }
 
         racePrizeShareSettingRepository.deleteAllInBatch();
         List<RacePrizeShareSetting> settings = request.getShares().stream()
                 .map(share -> RacePrizeShareSetting.builder()
                         .rank(share.getRank())
-                        .jockeyPercent(normalizePercent(share.getJockeyPercent()))
+                        .jockeyPercent(normalizePercent(share.getJockeyPercent(), "Jockey hire tax percent"))
                         .createdBy(updatedBy)
                         .updatedBy(updatedBy)
                         .build())
@@ -111,15 +123,30 @@ public class FinanceSettingsServiceImpl implements FinanceSettingsService {
 
     private FinanceSettings getOrCreateSettings() {
         return financeSettingsRepository.findById(FinanceSettings.SINGLETON_ID)
+                .map(this::ensureSettingDefaults)
                 .orElseGet(() -> financeSettingsRepository.save(FinanceSettings.builder()
                         .id(FinanceSettings.SINGLETON_ID)
                         .jockeyHireTaxPercent(FinanceSettings.DEFAULT_JOCKEY_HIRE_TAX_PERCENT)
+                        .betWinningTaxPercent(FinanceSettings.DEFAULT_BET_WINNING_TAX_PERCENT)
                         .build()));
     }
 
-    private BigDecimal normalizePercent(BigDecimal percent) {
+    private FinanceSettings ensureSettingDefaults(FinanceSettings settings) {
+        boolean changed = false;
+        if (settings.getJockeyHireTaxPercent() == null) {
+            settings.setJockeyHireTaxPercent(FinanceSettings.DEFAULT_JOCKEY_HIRE_TAX_PERCENT);
+            changed = true;
+        }
+        if (settings.getBetWinningTaxPercent() == null) {
+            settings.setBetWinningTaxPercent(FinanceSettings.DEFAULT_BET_WINNING_TAX_PERCENT);
+            changed = true;
+        }
+        return changed ? financeSettingsRepository.save(settings) : settings;
+    }
+
+    private BigDecimal normalizePercent(BigDecimal percent, String label) {
         if (percent == null || percent.compareTo(MIN_PERCENT) < 0 || percent.compareTo(MAX_PERCENT) > 0) {
-            throw new BadRequestException("Jockey hire tax percent must be between 0 and 100");
+            throw new BadRequestException(label + " must be between 0 and 100");
         }
         return percent.setScale(2, RoundingMode.HALF_UP);
     }
@@ -127,6 +154,7 @@ public class FinanceSettingsServiceImpl implements FinanceSettingsService {
     private FinanceSettingsResponse mapToResponse(FinanceSettings settings) {
         return FinanceSettingsResponse.builder()
                 .jockeyHireTaxPercent(settings.getJockeyHireTaxPercent())
+                .betWinningTaxPercent(settings.getBetWinningTaxPercent())
                 .createdAt(settings.getCreatedAt())
                 .updatedAt(settings.getUpdatedAt())
                 .build();
@@ -141,7 +169,7 @@ public class FinanceSettingsServiceImpl implements FinanceSettingsService {
     }
 
     private RacePrizeShareSettingResponse mapRacePrizeShareSetting(RacePrizeShareSetting setting) {
-        BigDecimal jockeyPercent = normalizePercent(setting.getJockeyPercent());
+        BigDecimal jockeyPercent = normalizePercent(setting.getJockeyPercent(), "Jockey hire tax percent");
         return RacePrizeShareSettingResponse.builder()
                 .rank(setting.getRank())
                 .jockeyPercent(jockeyPercent)

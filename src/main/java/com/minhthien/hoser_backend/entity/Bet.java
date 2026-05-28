@@ -73,6 +73,18 @@ public class Bet {
     @Column(length = 150)
     private String profitCreditKey;
 
+    @Column(precision = 5, scale = 2)
+    private BigDecimal winningTaxPercent;
+
+    @Column(precision = 19, scale = 2)
+    private BigDecimal winningTaxAmount;
+
+    @Column(precision = 19, scale = 2)
+    private BigDecimal grossProfitAmount;
+
+    @Column(precision = 19, scale = 2)
+    private BigDecimal netProfitAmount;
+
     @Column(nullable = false)
     @Builder.Default
     private LocalDateTime placedAt = LocalDateTime.now();

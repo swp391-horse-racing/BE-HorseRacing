@@ -13,7 +13,7 @@ public class CreateDepositOrderRequest {
     @Positive(message = "Amount must be greater than zero")
     private BigDecimal amount;
 
-    private String currency;
+    private String currency = "VND";
 
     private PaymentProvider provider;
 }

@@ -21,6 +21,10 @@ public class BetResponse {
     private String username;
     private BigDecimal stakeAmount;
     private BigDecimal potentialPayoutAmount;
+    private BigDecimal winningTaxPercent;
+    private BigDecimal winningTaxAmount;
+    private BigDecimal grossProfitAmount;
+    private BigDecimal netProfitAmount;
     private BetStatus status;
     private LocalDateTime placedAt;
     private LocalDateTime lockedAt;

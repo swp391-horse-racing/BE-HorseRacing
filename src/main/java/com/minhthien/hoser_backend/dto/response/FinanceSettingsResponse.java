@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class FinanceSettingsResponse {
     private BigDecimal jockeyHireTaxPercent;
+    private BigDecimal betWinningTaxPercent;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

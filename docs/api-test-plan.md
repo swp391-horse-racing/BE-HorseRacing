@@ -266,10 +266,11 @@ Deposit order:
 ```json
 {
   "amount": 10000,
-  "currency": "VND",
   "provider": "ZALOPAY"
 }
 ```
+
+`currency` khong can gui; backend mac dinh la `VND`.
 
 Deposit callback:
 
@@ -349,8 +350,8 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 | ADM-07 | PUT | `/api/v1/admin/users/{userId}/role` | ADMIN | `{ "role": "OWNER" }` | Role duoc cap nhat |
 | ADM-08 | GET | `/api/v1/admin/payout-debts` | ADMIN | none | Tong hop no payout |
 | AUD-01 | GET | `/api/v1/admin/audit-logs` | ADMIN | query `referenceType`, `referenceId` optional | List audit log |
-| FIN-01 | GET | `/api/v1/admin/finance-settings` | ADMIN | none | Tra setting hien tai |
-| FIN-02 | PUT | `/api/v1/admin/finance-settings` | ADMIN | `{ "jockeyHireTaxPercent": 10.00 }` | Setting doi |
+| FIN-01 | GET | `/api/v1/admin/finance-settings` | ADMIN | none | Tra setting hien tai, gom `jockeyHireTaxPercent`, `betWinningTaxPercent` |
+| FIN-02 | PUT | `/api/v1/admin/finance-settings` | ADMIN | `{ "jockeyHireTaxPercent": 10.00, "betWinningTaxPercent": 10.00 }` | Setting doi |
 | FIN-03 | GET | `/api/v1/admin/finance-settings/race-prize-shares` | ADMIN | none | Tra cau hinh chia giai |
 | FIN-04 | PUT | `/api/v1/admin/finance-settings/race-prize-shares` | ADMIN | `RacePrizeShareSettingsRequest` | Cap nhat ty le chia giai |
 
@@ -566,15 +567,22 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 
 ### Flow 5 - Betting
 
-1. Admin tao market bang `BET-01`.
-2. Admin open market bang `BET-02`.
-3. Public goi `BET-06`.
-4. Spectator/user goi `BET-07`.
-5. Spectator dat cuoc bang `BET-08`.
-6. User goi `BET-09`, `BET-10`.
-7. Admin goi `BET-04`, `BET-05`.
-8. Admin close market bang `BET-03`.
-9. Sau khi race finalize, xac nhan bet status va wallet transaction lien quan.
+1. Admin co the cap nhat thue tien loi thang cuoc bang `FIN-02`:
+   ```json
+   {
+     "betWinningTaxPercent": 10
+   }
+   ```
+2. Admin tao market bang `BET-01`.
+3. Admin open market bang `BET-02`.
+4. Public goi `BET-06`.
+5. Spectator/user goi `BET-07`.
+6. Spectator dat cuoc bang `BET-08`.
+7. User goi `BET-09`, `BET-10`.
+8. Admin goi `BET-04`, `BET-05`.
+9. Admin close market bang `BET-03`.
+10. Sau khi race finalize, xac nhan bet status va wallet transaction lien quan.
+11. Neu user thang, stake duoc release day du; chi tien loi bi tru `betWinningTaxPercent`.
 
 ### Flow 6 - Wallet, Payment, Withdrawal
 
