@@ -4,6 +4,7 @@ import com.minhthien.hoser_backend.entity.PaymentOrder;
 import com.minhthien.hoser_backend.enums.PaymentOrderStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -27,4 +28,11 @@ public interface PaymentOrderRepository extends JpaRepository<PaymentOrder, Long
 
     @EntityGraph(attributePaths = "user")
     List<PaymentOrder> findAllByOrderByCreatedAtDesc();
+
+    @Query("""
+            select po.status, count(po)
+            from PaymentOrder po
+            group by po.status
+            """)
+    List<Object[]> countByStatusGroup();
 }

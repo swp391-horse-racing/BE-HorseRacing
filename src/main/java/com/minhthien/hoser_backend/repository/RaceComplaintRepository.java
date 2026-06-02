@@ -28,4 +28,6 @@ public interface RaceComplaintRepository extends JpaRepository<RaceComplaint, Lo
     List<RaceComplaint> findByRaceTournamentId(Long tournamentId);
 
     long countByRaceTournamentIdAndStatus(Long tournamentId, RaceComplaintStatus status);
+
+    long countByStatus(RaceComplaintStatus status);
 }

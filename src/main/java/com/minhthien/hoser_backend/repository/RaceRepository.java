@@ -2,6 +2,7 @@ package com.minhthien.hoser_backend.repository;
 
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.enums.RaceStatus;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -19,7 +20,32 @@ public interface RaceRepository extends JpaRepository<Race, Long> {
 
     List<Race> findByRefereeIdOrderByScheduledStartAtAsc(Long refereeId);
 
+    @EntityGraph(attributePaths = {"tournament", "referee", "raceTrack"})
+    List<Race> findByRefereeIdOrderByScheduledStartAtAsc(Long refereeId, Pageable pageable);
+
     List<Race> findByTournamentIdAndStatusIn(Long tournamentId, Collection<RaceStatus> statuses);
+
+    long countByStatus(RaceStatus status);
+
+    long countByScheduledStartAtBetween(LocalDateTime startAt, LocalDateTime endAt);
+
+    @EntityGraph(attributePaths = {"tournament", "referee", "raceTrack"})
+    List<Race> findByScheduledStartAtGreaterThanEqualOrderByScheduledStartAtAsc(LocalDateTime startAt, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"tournament", "referee", "raceTrack"})
+    List<Race> findByScheduledStartAtBetweenOrderByScheduledStartAtAsc(
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            Pageable pageable
+    );
+
+    @EntityGraph(attributePaths = {"tournament", "referee", "raceTrack"})
+    List<Race> findByStatusAndScheduledStartAtBetweenOrderByScheduledStartAtAsc(
+            RaceStatus status,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            Pageable pageable
+    );
 
     @EntityGraph(attributePaths = {"tournament", "referee", "participants", "participants.owner",
             "participants.horse", "participants.jockey", "participants.registration"})

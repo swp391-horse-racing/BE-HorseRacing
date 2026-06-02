@@ -19,6 +19,8 @@ public interface JockeyProfileRepository extends JpaRepository<JockeyProfile, Lo
     @EntityGraph(attributePaths = "user")
     List<JockeyProfile> findByStatusOrderByCreatedAtDesc(JockeyStatus status);
 
+    long countByStatus(JockeyStatus status);
+
     @EntityGraph(attributePaths = "user")
     List<JockeyProfile> findAllByOrderByCreatedAtDesc();
 }

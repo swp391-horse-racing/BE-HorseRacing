@@ -18,6 +18,8 @@ public interface TournamentRepository extends JpaRepository<Tournament, Long> {
 
     List<Tournament> findByStatusInOrderByStartAtAsc(Collection<TournamentStatus> statuses);
 
+    long countByStatus(TournamentStatus status);
+
     @EntityGraph(attributePaths = {"jockeyChallengePrizes"})
     Optional<Tournament> findDetailById(Long id);
 }

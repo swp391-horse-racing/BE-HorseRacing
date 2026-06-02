@@ -20,6 +20,10 @@ public interface RaceRegistrationRepository extends JpaRepository<RaceRegistrati
     @EntityGraph(attributePaths = {"race", "race.tournament", "owner", "horse", "jockey", "jockeyInvitation"})
     List<RaceRegistration> findByOwnerIdOrderByCreatedAtDesc(Long ownerId);
 
+    @EntityGraph(attributePaths = {"race", "race.tournament", "race.referee", "race.raceTrack", "owner", "horse",
+            "jockey", "jockeyInvitation"})
+    List<RaceRegistration> findByJockeyIdOrderByCreatedAtDesc(Long jockeyId);
+
     @EntityGraph(attributePaths = {"race", "race.tournament", "owner", "horse", "jockey", "jockeyInvitation"})
     List<RaceRegistration> findByRaceTournamentIdOrderByCreatedAtDesc(Long tournamentId);
 

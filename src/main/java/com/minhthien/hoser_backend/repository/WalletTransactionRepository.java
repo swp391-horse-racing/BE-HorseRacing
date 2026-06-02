@@ -1,9 +1,14 @@
 package com.minhthien.hoser_backend.repository;
 
 import com.minhthien.hoser_backend.entity.WalletTransaction;
+import com.minhthien.hoser_backend.enums.WalletTransactionDirection;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -11,7 +16,35 @@ import java.util.Optional;
 public interface WalletTransactionRepository extends JpaRepository<WalletTransaction, Long> {
     List<WalletTransaction> findByWalletIdOrderByCreatedAtDesc(Long walletId);
 
+    List<WalletTransaction> findByWalletIdOrderByCreatedAtDesc(Long walletId, Pageable pageable);
+
     Optional<WalletTransaction> findByIdempotencyKey(String idempotencyKey);
 
     boolean existsByIdempotencyKey(String idempotencyKey);
+
+    @Query("""
+            select wt.type, coalesce(sum(wt.amount), 0)
+            from WalletTransaction wt
+            where wt.wallet.id = :walletId
+              and wt.direction in :directions
+            group by wt.type
+            """)
+    List<Object[]> sumAmountByTypeForWalletAndDirection(@Param("walletId") Long walletId,
+                                                        @Param("directions") List<WalletTransactionDirection> directions);
+
+    @Query("""
+            select coalesce(sum(wt.amount), 0)
+            from WalletTransaction wt
+            where wt.user.id = :userId
+              and wt.type = com.minhthien.hoser_backend.enums.WalletTransactionType.JOCKEY_PAYOUT
+            """)
+    BigDecimal sumJockeyPayoutByUserId(@Param("userId") Long userId);
+
+    @Query("""
+            select coalesce(sum(wt.amount), 0)
+            from WalletTransaction wt
+            where wt.user.id = :userId
+              and wt.type = com.minhthien.hoser_backend.enums.WalletTransactionType.PRIZE_PAYOUT
+            """)
+    BigDecimal sumPrizePayoutByUserId(@Param("userId") Long userId);
 }

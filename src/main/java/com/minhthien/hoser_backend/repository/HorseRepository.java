@@ -23,6 +23,8 @@ public interface HorseRepository extends JpaRepository<Horse, Long> {
     @EntityGraph(attributePaths = "owner")
     List<Horse> findByStatusOrderByCreatedAtDesc(HorseStatus status);
 
+    long countByStatus(HorseStatus status);
+
     @EntityGraph(attributePaths = "owner")
     List<Horse> findAllByOrderByCreatedAtDesc();
 }

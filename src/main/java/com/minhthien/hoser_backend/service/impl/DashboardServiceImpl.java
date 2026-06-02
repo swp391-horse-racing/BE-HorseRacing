@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DashboardServiceImpl implements DashboardService {
     private static final int RECENT_LIMIT = 10;
+    private static final PageRequest RECENT_PAGE = PageRequest.of(0, RECENT_LIMIT);
 
     private final UserRepository userRepository;
     private final WalletRepository walletRepository;
@@ -76,8 +77,7 @@ public class DashboardServiceImpl implements DashboardService {
                 .distinct()
                 .count());
         summary.put("upcomingRaceCount", upcomingRaceItems(races).size());
-        summary.put("openTournamentCount", tournamentRepository
-                .findByStatusOrderByCreatedAtDesc(TournamentStatus.OPEN_REGISTRATION).size());
+        summary.put("openTournamentCount", tournamentRepository.countByStatus(TournamentStatus.OPEN_REGISTRATION));
 
         List<DashboardItemResponse> alerts = new ArrayList<>();
         addAlert(alerts, "HORSE_PENDING", "Horses pending review",
@@ -148,16 +148,15 @@ public class DashboardServiceImpl implements DashboardService {
     @Transactional
     public DashboardResponse getSpectatorDashboard(Long userId) {
         User user = requireRole(userId, UserRole.SPECTATOR);
-        List<Bet> bets = betRepository.findByUserIdOrderByPlacedAtDesc(userId);
-        List<BetMarket> openMarkets = betMarketRepository.findByStatusOrderByRaceScheduledStartAtAsc(BetMarketStatus.OPEN);
+        List<BetMarket> openMarkets = betMarketRepository.findByStatusOrderByRaceScheduledStartAtAsc(
+                BetMarketStatus.OPEN, RECENT_PAGE);
 
         Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("openTournamentCount", tournamentRepository
-                .findByStatusOrderByCreatedAtDesc(TournamentStatus.OPEN_REGISTRATION).size());
-        summary.put("openBetMarketCount", openMarkets.size());
-        summary.put("betsByStatus", countBy(bets, bet -> bet.getStatus().name()));
-        summary.put("totalBetStake", sum(bets, Bet::getStakeAmount));
-        summary.put("totalBetPayout", sum(bets, Bet::getNetProfitAmount));
+        summary.put("openTournamentCount", tournamentRepository.countByStatus(TournamentStatus.OPEN_REGISTRATION));
+        summary.put("openBetMarketCount", betMarketRepository.countByStatus(BetMarketStatus.OPEN));
+        summary.put("betsByStatus", countRowsByEnumName(betRepository.countByStatusGroupForUser(userId)));
+        summary.put("totalBetStake", zero(betRepository.sumStakeAmountByUserId(userId)));
+        summary.put("totalBetPayout", zero(betRepository.sumNetProfitAmountByUserId(userId)));
         summary.put("predictionEnabled", false);
         summary.put("marketplaceEnabled", false);
 
@@ -174,37 +173,37 @@ public class DashboardServiceImpl implements DashboardService {
     @Transactional
     public DashboardResponse getAdminDashboard(Long userId) {
         User user = requireRole(userId, UserRole.ADMIN);
-        List<User> users = userRepository.findAll();
-        List<WithdrawalRequest> withdrawals = withdrawalRequestRepository.findAllByOrderByCreatedAtDesc();
-        List<Race> races = raceRepository.findAll();
         LocalDate today = LocalDate.now();
+        LocalDateTime todayStart = today.atStartOfDay();
+        LocalDateTime tomorrowStart = today.plusDays(1).atStartOfDay();
+        List<Race> upcomingRaces = raceRepository.findByScheduledStartAtGreaterThanEqualOrderByScheduledStartAtAsc(
+                LocalDateTime.now(), RECENT_PAGE);
 
         Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("usersByRole", countBy(users, u -> u.getRole().name()));
-        summary.put("activeUserCount", users.stream().filter(User::getActive).count());
-        summary.put("deactivatedUserCount", users.stream().filter(u -> !Boolean.TRUE.equals(u.getActive())).count());
-        summary.put("pendingRoleApplicationCount", users.stream()
-                .filter(u -> u.getRoleApprovalStatus() == RoleApprovalStatus.PENDING).count());
-        summary.put("pendingHorseCount", horseRepository.findByStatusOrderByCreatedAtDesc(HorseStatus.PENDING).size());
-        summary.put("pendingJockeyProfileCount", jockeyProfileRepository.findByStatusOrderByCreatedAtDesc(JockeyStatus.PENDING).size());
-        summary.put("openTournamentCount", tournamentRepository.findByStatusOrderByCreatedAtDesc(TournamentStatus.OPEN_REGISTRATION).size());
-        summary.put("ongoingTournamentCount", tournamentRepository.findByStatusOrderByCreatedAtDesc(TournamentStatus.ONGOING).size());
-        summary.put("pendingWithdrawalCount", withdrawals.stream().filter(w -> w.getStatus() == WithdrawalStatus.PENDING).count());
-        summary.put("todayRaceCount", races.stream().filter(race -> isSameDay(race.getScheduledStartAt(), today)).count());
-        summary.put("pendingComplaintCount", raceComplaintRepository.findAll().stream()
-                .filter(complaint -> complaint.getStatus() == RaceComplaintStatus.PENDING).count());
-        summary.put("paymentOrdersByStatus", countBy(paymentOrderRepository.findAll(), order -> order.getStatus().name()));
+        summary.put("usersByRole", countRowsByEnumName(userRepository.countByRoleGroup()));
+        summary.put("activeUserCount", userRepository.countByActive(true));
+        summary.put("deactivatedUserCount", userRepository.countByActive(false));
+        summary.put("pendingRoleApplicationCount", userRepository.countByRoleApprovalStatus(RoleApprovalStatus.PENDING));
+        summary.put("pendingHorseCount", horseRepository.countByStatus(HorseStatus.PENDING));
+        summary.put("pendingJockeyProfileCount", jockeyProfileRepository.countByStatus(JockeyStatus.PENDING));
+        summary.put("openTournamentCount", tournamentRepository.countByStatus(TournamentStatus.OPEN_REGISTRATION));
+        summary.put("ongoingTournamentCount", tournamentRepository.countByStatus(TournamentStatus.ONGOING));
+        summary.put("pendingWithdrawalCount", withdrawalRequestRepository.countByStatus(WithdrawalStatus.PENDING));
+        summary.put("todayRaceCount", raceRepository.countByScheduledStartAtBetween(todayStart, tomorrowStart));
+        summary.put("pendingComplaintCount", raceComplaintRepository.countByStatus(RaceComplaintStatus.PENDING));
+        summary.put("paymentOrdersByStatus", countRowsByEnumName(paymentOrderRepository.countByStatusGroup()));
         summary.put("paymentCallbackLogCount", paymentCallbackLogRepository.count());
         summary.put("adminWalletWithdrawalCount", adminWalletWithdrawalRepository.count());
 
         List<DashboardItemResponse> alerts = new ArrayList<>();
         addAlert(alerts, "ROLE_APPLICATION_PENDING", "Role applications pending review",
                 (Long) summary.get("pendingRoleApplicationCount"));
-        addAlert(alerts, "HORSE_PENDING", "Horses pending review", (Integer) summary.get("pendingHorseCount"));
-        addAlert(alerts, "JOCKEY_PROFILE_PENDING", "Jockey profiles pending review", (Integer) summary.get("pendingJockeyProfileCount"));
+        addAlert(alerts, "HORSE_PENDING", "Horses pending review", (Long) summary.get("pendingHorseCount"));
+        addAlert(alerts, "JOCKEY_PROFILE_PENDING", "Jockey profiles pending review",
+                (Long) summary.get("pendingJockeyProfileCount"));
         addAlert(alerts, "WITHDRAWAL_PENDING", "Withdrawals pending review", (Long) summary.get("pendingWithdrawalCount"));
 
-        return buildAdminDashboard(user, summary, alerts, adminQuickLinks(), adminUpcomingRaces(races));
+        return buildAdminDashboard(user, summary, alerts, adminQuickLinks(), adminUpcomingRaces(upcomingRaces));
     }
 
     @Override
@@ -252,11 +251,13 @@ public class DashboardServiceImpl implements DashboardService {
     @Override
     @Transactional(readOnly = true)
     public List<RaceResponse> getAdminRaces(LocalDateTime from, LocalDateTime to, RaceStatus status) {
-        return raceRepository.findAll().stream()
-                .filter(race -> status == null || race.getStatus() == status)
-                .filter(race -> from == null || !race.getScheduledStartAt().isBefore(from))
-                .filter(race -> to == null || !race.getScheduledStartAt().isAfter(to))
-                .sorted(Comparator.comparing(Race::getScheduledStartAt))
+        LocalDateTime queryFrom = from == null ? LocalDateTime.of(1970, 1, 1, 0, 0) : from;
+        LocalDateTime queryTo = to == null ? LocalDateTime.of(9999, 12, 31, 23, 59, 59) : to;
+        List<Race> races = status == null
+                ? raceRepository.findByScheduledStartAtBetweenOrderByScheduledStartAtAsc(queryFrom, queryTo, PageRequest.of(0, 200))
+                : raceRepository.findByStatusAndScheduledStartAtBetweenOrderByScheduledStartAtAsc(
+                        status, queryFrom, queryTo, PageRequest.of(0, 200));
+        return races.stream()
                 .map(this::mapRace)
                 .toList();
     }
@@ -268,16 +269,16 @@ public class DashboardServiceImpl implements DashboardService {
                                              List<DashboardItemResponse> upcoming) {
         Wallet wallet = walletRepository.findByUserId(user.getId())
                 .orElseGet(() -> walletService.getOrCreateUserWallet(user.getId()));
-        List<WalletTransaction> transactions = walletTransactionRepository.findByWalletIdOrderByCreatedAtDesc(wallet.getId());
-        List<WithdrawalRequest> withdrawals = withdrawalRequestRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
+        List<WalletTransaction> transactions = walletTransactionRepository.findByWalletIdOrderByCreatedAtDesc(
+                wallet.getId(), RECENT_PAGE);
         return DashboardResponse.builder()
                 .role(user.getRole())
                 .account(account(user))
                 .wallet(mapWallet(wallet))
-                .moneyIn(sumTransactions(transactions, Set.of(WalletTransactionDirection.CREDIT)))
-                .moneyOut(sumTransactions(transactions, Set.of(WalletTransactionDirection.DEBIT, WalletTransactionDirection.CAPTURE)))
-                .hold(sumTransactions(transactions, Set.of(WalletTransactionDirection.HOLD)))
-                .withdrawals(withdrawalSummary(withdrawals))
+                .moneyIn(sumTransactions(wallet.getId(), List.of(WalletTransactionDirection.CREDIT)))
+                .moneyOut(sumTransactions(wallet.getId(), List.of(WalletTransactionDirection.DEBIT, WalletTransactionDirection.CAPTURE)))
+                .hold(sumTransactions(wallet.getId(), List.of(WalletTransactionDirection.HOLD)))
+                .withdrawals(withdrawalSummaryFromRows(withdrawalRepositoryRowsForUser(user.getId())))
                 .recentTransactions(transactions.stream().limit(RECENT_LIMIT).map(this::mapTransaction).toList())
                 .recentNotifications(recentNotifications(user.getId()))
                 .businessSummary(businessSummary)
@@ -294,16 +295,16 @@ public class DashboardServiceImpl implements DashboardService {
                                                   List<DashboardQuickLinkResponse> quickLinks,
                                                   List<DashboardItemResponse> upcoming) {
         Wallet wallet = walletService.getOrCreateAdminWallet();
-        List<WalletTransaction> transactions = walletTransactionRepository.findByWalletIdOrderByCreatedAtDesc(wallet.getId());
-        List<WithdrawalRequest> withdrawals = withdrawalRequestRepository.findAllByOrderByCreatedAtDesc();
+        List<WalletTransaction> transactions = walletTransactionRepository.findByWalletIdOrderByCreatedAtDesc(
+                wallet.getId(), RECENT_PAGE);
         return DashboardResponse.builder()
                 .role(user.getRole())
                 .account(account(user))
                 .wallet(mapWallet(wallet))
-                .moneyIn(sumTransactions(transactions, Set.of(WalletTransactionDirection.CREDIT)))
-                .moneyOut(sumTransactions(transactions, Set.of(WalletTransactionDirection.DEBIT, WalletTransactionDirection.CAPTURE)))
-                .hold(sumTransactions(transactions, Set.of(WalletTransactionDirection.HOLD)))
-                .withdrawals(withdrawalSummary(withdrawals))
+                .moneyIn(sumTransactions(wallet.getId(), List.of(WalletTransactionDirection.CREDIT)))
+                .moneyOut(sumTransactions(wallet.getId(), List.of(WalletTransactionDirection.DEBIT, WalletTransactionDirection.CAPTURE)))
+                .hold(sumTransactions(wallet.getId(), List.of(WalletTransactionDirection.HOLD)))
+                .withdrawals(withdrawalSummaryFromRows(withdrawalRepositoryRows()))
                 .recentTransactions(transactions.stream().limit(RECENT_LIMIT).map(this::mapTransaction).toList())
                 .recentNotifications(recentNotifications(user.getId()))
                 .businessSummary(businessSummary)
@@ -332,8 +333,7 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     private List<RaceResponse> jockeyRaceResponses(Long jockeyId) {
-        return raceRegistrationRepository.findAll().stream()
-                .filter(registration -> registration.getJockey().getId().equals(jockeyId))
+        return raceRegistrationRepository.findByJockeyIdOrderByCreatedAtDesc(jockeyId).stream()
                 .map(RaceRegistration::getRace)
                 .collect(Collectors.toMap(Race::getId, Function.identity(), (a, b) -> a, LinkedHashMap::new))
                 .values()
@@ -345,21 +345,15 @@ public class DashboardServiceImpl implements DashboardService {
 
     private JockeyPerformanceResponse buildJockeyPerformance(Long jockeyId) {
         List<RaceResponse> races = jockeyRaceResponses(jockeyId);
-        List<RaceResult> results = raceResultRepository.findAll().stream()
-                .filter(result -> result.getJockey().getId().equals(jockeyId))
-                .toList();
-        List<WalletTransaction> transactions = userTransactions(jockeyId);
         return JockeyPerformanceResponse.builder()
                 .jockeyId(jockeyId)
                 .raceCount((long) races.size())
-                .completedRaceCount(results.stream().filter(result -> result.getRace().getResultFinalizedAt() != null).count())
-                .firstPlaces(results.stream().filter(result -> Objects.equals(result.getRank(), 1)).count())
-                .secondPlaces(results.stream().filter(result -> Objects.equals(result.getRank(), 2)).count())
-                .thirdPlaces(results.stream().filter(result -> Objects.equals(result.getRank(), 3)).count())
-                .totalJockeyPayout(sum(transactions.stream()
-                        .filter(t -> t.getType() == WalletTransactionType.JOCKEY_PAYOUT).toList(), WalletTransaction::getAmount))
-                .totalPrizePayout(sum(transactions.stream()
-                        .filter(t -> t.getType() == WalletTransactionType.PRIZE_PAYOUT).toList(), WalletTransaction::getAmount))
+                .completedRaceCount(raceResultRepository.countCompletedByJockeyId(jockeyId))
+                .firstPlaces(raceResultRepository.countByJockeyIdAndRank(jockeyId, 1))
+                .secondPlaces(raceResultRepository.countByJockeyIdAndRank(jockeyId, 2))
+                .thirdPlaces(raceResultRepository.countByJockeyIdAndRank(jockeyId, 3))
+                .totalJockeyPayout(zero(walletTransactionRepository.sumJockeyPayoutByUserId(jockeyId)))
+                .totalPrizePayout(zero(walletTransactionRepository.sumPrizePayoutByUserId(jockeyId)))
                 .recentRaces(races.stream().limit(RECENT_LIMIT).toList())
                 .build();
     }
@@ -400,6 +394,24 @@ public class DashboardServiceImpl implements DashboardService {
                 .build();
     }
 
+    private DashboardResponse.WithdrawalSummary withdrawalSummaryFromRows(List<Object[]> rows) {
+        Map<String, Long> countByStatus = new LinkedHashMap<>();
+        Map<String, BigDecimal> amountByStatus = new LinkedHashMap<>();
+        long total = 0;
+        for (Object[] row : rows) {
+            String status = ((Enum<?>) row[0]).name();
+            long count = ((Number) row[1]).longValue();
+            countByStatus.put(status, count);
+            amountByStatus.put(status, zero((BigDecimal) row[2]));
+            total += count;
+        }
+        return DashboardResponse.WithdrawalSummary.builder()
+                .total(total)
+                .countByStatus(countByStatus)
+                .amountByStatus(amountByStatus)
+                .build();
+    }
+
     private Map<String, BigDecimal> sumTransactions(List<WalletTransaction> transactions,
                                                     Set<WalletTransactionDirection> directions) {
         return sumBy(transactions.stream()
@@ -407,6 +419,27 @@ public class DashboardServiceImpl implements DashboardService {
                         .toList(),
                 transaction -> transaction.getType().name(),
                 WalletTransaction::getAmount);
+    }
+
+    private Map<String, BigDecimal> sumTransactions(Long walletId, List<WalletTransactionDirection> directions) {
+        Map<String, BigDecimal> totals = new LinkedHashMap<>();
+        walletTransactionRepository.sumAmountByTypeForWalletAndDirection(walletId, directions)
+                .forEach(row -> totals.put(((Enum<?>) row[0]).name(), zero((BigDecimal) row[1])));
+        return totals;
+    }
+
+    private List<Object[]> withdrawalRepositoryRowsForUser(Long userId) {
+        return withdrawalRequestRepository.summarizeByStatusForUser(userId);
+    }
+
+    private List<Object[]> withdrawalRepositoryRows() {
+        return withdrawalRequestRepository.summarizeByStatus();
+    }
+
+    private Map<String, Long> countRowsByEnumName(List<Object[]> rows) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        rows.forEach(row -> counts.put(((Enum<?>) row[0]).name(), ((Number) row[1]).longValue()));
+        return counts;
     }
 
     private <T> Map<String, Long> countBy(List<T> items, Function<T, String> mapper) {

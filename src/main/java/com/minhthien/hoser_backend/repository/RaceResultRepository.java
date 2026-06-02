@@ -4,6 +4,8 @@ import com.minhthien.hoser_backend.entity.RaceResult;
 import com.minhthien.hoser_backend.enums.RacePayoutStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -19,6 +21,21 @@ public interface RaceResultRepository extends JpaRepository<RaceResult, Long> {
 
     @EntityGraph(attributePaths = {"race", "participant", "owner", "horse", "jockey"})
     List<RaceResult> findByPayoutStatusOrderByFinalizedAtAscIdAsc(RacePayoutStatus payoutStatus);
+
+    @EntityGraph(attributePaths = {"race", "participant", "owner", "horse", "jockey"})
+    List<RaceResult> findByJockeyId(Long jockeyId);
+
+    long countByJockeyId(Long jockeyId);
+
+    @Query("""
+            select count(rr)
+            from RaceResult rr
+            where rr.jockey.id = :jockeyId
+              and rr.race.resultFinalizedAt is not null
+            """)
+    long countCompletedByJockeyId(@Param("jockeyId") Long jockeyId);
+
+    long countByJockeyIdAndRank(Long jockeyId, Integer rank);
 
     @EntityGraph(attributePaths = {"race", "participant", "owner", "horse", "jockey"})
     Optional<RaceResult> findByParticipantId(Long participantId);
