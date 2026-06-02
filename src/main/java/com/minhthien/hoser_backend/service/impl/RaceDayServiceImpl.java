@@ -105,9 +105,10 @@ public class RaceDayServiceImpl implements RaceDayService {
                 raceId, invitation.getHorse().getId(), activeStatuses)) {
             throw new BadRequestException("Horse is already registered for this race");
         }
-        if (raceRegistrationRepository.existsActiveHorseRegistrationOnDay(invitation.getHorse().getId(),
-                activeStatuses, tournament.getStartAt(), tournament.getEndAt())) {
-            throw new BadRequestException("Horse can only join one race per tournament day");
+        LocalDateTime raceStartAt = race.getScheduledStartAt();
+        if (raceRegistrationRepository.existsActiveHorseRegistrationWithinWindow(invitation.getHorse().getId(),
+                activeStatuses, raceStartAt.minusHours(24), raceStartAt.plusHours(24))) {
+            throw new BadRequestException("Horse can only join one race within a 24-hour period");
         }
         if (raceRegistrationRepository.existsActiveJockeyOverlap(invitation.getJockey().getId(),
                 activeStatuses, race.getScheduledStartAt(), race.getScheduledEndAt())) {

@@ -15,6 +15,10 @@ public class RaceResponse {
     private Long tournamentId;
     private String name;
     private String distance;
+    private Long raceTrackId;
+    private String raceTrackName;
+    private String raceTrackLocationKey;
+    private String raceTrackAddress;
     private LocalDateTime scheduledStartAt;
     private LocalDateTime scheduledEndAt;
     private Integer minParticipants;

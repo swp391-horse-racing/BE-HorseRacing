@@ -25,6 +25,10 @@ public class TournamentRequest {
     @Size(max = 255, message = "Location must be at most 255 characters")
     private String location;
 
+    @NotBlank(message = "Location key is required")
+    @Size(max = 50, message = "Location key must be at most 50 characters")
+    private String locationKey;
+
     @Size(max = 500, message = "Banner URL must be at most 500 characters")
     private String bannerUrl;
 

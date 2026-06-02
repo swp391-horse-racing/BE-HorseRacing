@@ -435,6 +435,7 @@ class AllApiSmokeTest {
                   "name": "Smoke Tournament",
                   "description": "Smoke tournament",
                   "location": "Ho Chi Minh City",
+                  "locationKey": "HCM",
                   "bannerUrl": "https://cdn.example/tournaments/smoke-banner.jpg",
                   "registrationOpenAt": "2026-06-01T08:00:00",
                   "registrationCloseAt": "2026-06-02T08:00:00",

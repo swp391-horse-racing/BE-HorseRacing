@@ -96,7 +96,7 @@ class Phase7RaceRegistrationServiceTest {
         when(jockeyInvitationRepository.findById(50L)).thenReturn(Optional.of(invitation));
         when(raceRegistrationRepository.existsByRaceIdAndHorseIdAndStatusIn(eq(10L), eq(100L), any()))
                 .thenReturn(false);
-        when(raceRegistrationRepository.existsActiveHorseRegistrationOnDay(eq(100L), any(), any(), any()))
+        when(raceRegistrationRepository.existsActiveHorseRegistrationWithinWindow(eq(100L), any(), any(), any()))
                 .thenReturn(false);
         when(raceRegistrationRepository.existsActiveJockeyOverlap(eq(2L), any(), any(), any()))
                 .thenReturn(false);
@@ -118,6 +118,11 @@ class Phase7RaceRegistrationServiceTest {
         verify(walletService).creditAdmin(eq(ENTRY_FEE), eq(WalletTransactionType.ENTRY_FEE),
                 eq("RACE_REGISTRATION"), eq("70"), eq("race-registration:70:entry-admin-credit"),
                 eq(null), eq("Race entry fee received"));
+        verify(raceRegistrationRepository).existsActiveHorseRegistrationWithinWindow(
+                eq(100L),
+                eq(List.of(RaceRegistrationStatus.PENDING, RaceRegistrationStatus.APPROVED)),
+                eq(LocalDateTime.of(2026, 6, 15, 10, 0)),
+                eq(LocalDateTime.of(2026, 6, 17, 10, 0)));
     }
 
     @Test
@@ -133,7 +138,7 @@ class Phase7RaceRegistrationServiceTest {
         when(jockeyInvitationRepository.findById(50L)).thenReturn(Optional.of(invitation));
         when(raceRegistrationRepository.existsByRaceIdAndHorseIdAndStatusIn(eq(10L), eq(100L), any()))
                 .thenReturn(false);
-        when(raceRegistrationRepository.existsActiveHorseRegistrationOnDay(eq(100L), any(), any(), any()))
+        when(raceRegistrationRepository.existsActiveHorseRegistrationWithinWindow(eq(100L), any(), any(), any()))
                 .thenReturn(false);
         when(raceRegistrationRepository.existsActiveJockeyOverlap(eq(2L), any(), any(), any()))
                 .thenReturn(false);
@@ -160,7 +165,7 @@ class Phase7RaceRegistrationServiceTest {
         when(jockeyInvitationRepository.findById(50L)).thenReturn(Optional.of(invitation));
         when(raceRegistrationRepository.existsByRaceIdAndHorseIdAndStatusIn(eq(10L), eq(100L), any()))
                 .thenReturn(false);
-        when(raceRegistrationRepository.existsActiveHorseRegistrationOnDay(eq(100L), any(), any(), any()))
+        when(raceRegistrationRepository.existsActiveHorseRegistrationWithinWindow(eq(100L), any(), any(), any()))
                 .thenReturn(false);
         when(raceRegistrationRepository.existsActiveJockeyOverlap(eq(2L), any(), any(), any()))
                 .thenReturn(false);
@@ -178,6 +183,36 @@ class Phase7RaceRegistrationServiceTest {
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Wallet balance is insufficient");
         verify(walletService, never()).creditAdmin(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void registerForRaceRejectsHorseWithActiveRegistrationInsideTwentyFourHourWindow() {
+        RaceDayServiceImpl service = service();
+        User owner = user(1L, "owner", UserRole.OWNER);
+        User jockey = user(2L, "jockey", UserRole.JOCKEY);
+        Race race = race(ENTRY_FEE);
+        JockeyInvitation invitation = acceptedInvitation(owner, jockey);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+        when(jockeyInvitationRepository.findById(50L)).thenReturn(Optional.of(invitation));
+        when(raceRegistrationRepository.existsByRaceIdAndHorseIdAndStatusIn(eq(10L), eq(100L), any()))
+                .thenReturn(false);
+        when(raceRegistrationRepository.existsActiveHorseRegistrationWithinWindow(eq(100L), any(), any(), any()))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> service.registerForRace(1L, 10L, registrationRequest()))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Horse can only join one race within a 24-hour period");
+
+        verify(raceRegistrationRepository).existsActiveHorseRegistrationWithinWindow(
+                eq(100L),
+                eq(List.of(RaceRegistrationStatus.PENDING, RaceRegistrationStatus.APPROVED)),
+                eq(LocalDateTime.of(2026, 6, 15, 10, 0)),
+                eq(LocalDateTime.of(2026, 6, 17, 10, 0)));
+        verify(raceRegistrationRepository, never()).existsActiveJockeyOverlap(any(), any(), any(), any());
+        verify(raceRegistrationRepository, never()).save(any());
+        verify(walletService, never()).debit(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

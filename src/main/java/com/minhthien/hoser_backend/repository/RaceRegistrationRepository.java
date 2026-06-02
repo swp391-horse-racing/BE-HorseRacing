@@ -30,13 +30,13 @@ public interface RaceRegistrationRepository extends JpaRepository<RaceRegistrati
             from RaceRegistration rr
             where rr.horse.id = :horseId
               and rr.status in :statuses
-              and rr.race.tournament.startAt < :dayEnd
-              and rr.race.tournament.endAt > :dayStart
+              and rr.race.scheduledStartAt > :windowStart
+              and rr.race.scheduledStartAt < :windowEnd
             """)
-    boolean existsActiveHorseRegistrationOnDay(@Param("horseId") Long horseId,
-                                               @Param("statuses") Collection<RaceRegistrationStatus> statuses,
-                                               @Param("dayStart") LocalDateTime dayStart,
-                                               @Param("dayEnd") LocalDateTime dayEnd);
+    boolean existsActiveHorseRegistrationWithinWindow(@Param("horseId") Long horseId,
+                                                      @Param("statuses") Collection<RaceRegistrationStatus> statuses,
+                                                      @Param("windowStart") LocalDateTime windowStart,
+                                                      @Param("windowEnd") LocalDateTime windowEnd);
 
     @Query("""
             select count(rr) > 0

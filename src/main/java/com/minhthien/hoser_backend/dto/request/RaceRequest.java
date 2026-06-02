@@ -24,6 +24,9 @@ public class RaceRequest {
     @Size(max = 80, message = "Race distance must be at most 80 characters")
     private String distance;
 
+    @NotNull(message = "Race track id is required")
+    private Long raceTrackId;
+
     @NotNull(message = "Race start time is required")
     private LocalDateTime scheduledStartAt;
 

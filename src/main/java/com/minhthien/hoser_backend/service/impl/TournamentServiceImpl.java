@@ -13,6 +13,7 @@ import com.minhthien.hoser_backend.entity.AdminAuditLog;
 import com.minhthien.hoser_backend.entity.JockeyChallengePrize;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RacePrize;
+import com.minhthien.hoser_backend.entity.RaceTrack;
 import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.RaceStatus;
@@ -22,6 +23,7 @@ import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
+import com.minhthien.hoser_backend.repository.RaceTrackRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
@@ -48,6 +50,7 @@ public class TournamentServiceImpl implements TournamentService {
     private final UserRepository userRepository;
     private final AdminAuditLogRepository adminAuditLogRepository;
     private final CloudinaryUploadService cloudinaryUploadService;
+    private final RaceTrackRepository raceTrackRepository;
 
     @Override
     @Transactional
@@ -110,7 +113,7 @@ public class TournamentServiceImpl implements TournamentService {
         Tournament tournament = requireTournament(tournamentId);
         requireConfigEditable(tournament);
 
-        Race race = mapRace(request);
+        Race race = mapRace(request, tournament);
         race.setTournament(tournament);
         tournament.getRaces().add(race);
         tournament.setUpdatedBy(admin.getUsername());
@@ -128,7 +131,7 @@ public class TournamentServiceImpl implements TournamentService {
         Tournament tournament = requireTournament(tournamentId);
         requireConfigEditable(tournament);
 
-        tournament.replaceRaces(mapRaces(requests));
+        tournament.replaceRaces(mapRaces(tournament, requests));
         tournament.setUpdatedBy(admin.getUsername());
         validateBaseTournament(tournament);
         validateConfiguredRaces(tournament);
@@ -223,6 +226,7 @@ public class TournamentServiceImpl implements TournamentService {
         tournament.setName(request.getName());
         tournament.setDescription(request.getDescription());
         tournament.setLocation(request.getLocation());
+        tournament.setLocationKey(normalizeLocationKey(request.getLocationKey()));
         tournament.setBannerUrl(request.getBannerUrl());
         tournament.setRegistrationOpenAt(request.getRegistrationOpenAt());
         tournament.setRegistrationCloseAt(request.getRegistrationCloseAt());
@@ -250,6 +254,9 @@ public class TournamentServiceImpl implements TournamentService {
         }
         if (request.getLocation() != null) {
             tournament.setLocation(request.getLocation());
+        }
+        if (request.getLocationKey() != null) {
+            tournament.setLocationKey(normalizeLocationKey(request.getLocationKey()));
         }
         if (request.getBannerUrl() != null) {
             tournament.setBannerUrl(request.getBannerUrl());
@@ -326,19 +333,20 @@ public class TournamentServiceImpl implements TournamentService {
         tournament.replaceJockeyChallengePrizes(newPrizes);
     }
 
-    private List<Race> mapRaces(List<RaceRequest> requests) {
+    private List<Race> mapRaces(Tournament tournament, List<RaceRequest> requests) {
         if (requests == null) {
             return List.of();
         }
         return requests.stream()
-                .map(this::mapRace)
+                .map(request -> mapRace(request, tournament))
                 .toList();
     }
 
-    private Race mapRace(RaceRequest request) {
+    private Race mapRace(RaceRequest request, Tournament tournament) {
         Race race = Race.builder()
                 .name(request.getName())
                 .distance(request.getDistance())
+                .raceTrack(requireRaceTrackForTournament(request.getRaceTrackId(), tournament))
                 .scheduledStartAt(request.getScheduledStartAt())
                 .scheduledEndAt(request.getScheduledEndAt())
                 .minParticipants(request.getMinParticipants())
@@ -389,6 +397,9 @@ public class TournamentServiceImpl implements TournamentService {
         if (!hasText(request.getLocation())) {
             throw new BadRequestException("Location is required");
         }
+        if (!hasText(request.getLocationKey())) {
+            throw new BadRequestException("Location key is required");
+        }
         validateTimeWindow(request.getRegistrationOpenAt(), request.getRegistrationCloseAt(),
                 request.getStartAt(), request.getEndAt(), request.getCheckInDeadlineAt());
         validateTeamLimits(request.getMinTeams(), request.getMaxTeams());
@@ -400,6 +411,9 @@ public class TournamentServiceImpl implements TournamentService {
         }
         if (!hasText(tournament.getLocation())) {
             throw new BadRequestException("Location is required");
+        }
+        if (!hasText(tournament.getLocationKey())) {
+            throw new BadRequestException("Location key is required");
         }
         validateTimeWindow(tournament.getRegistrationOpenAt(), tournament.getRegistrationCloseAt(),
                 tournament.getStartAt(), tournament.getEndAt(), tournament.getCheckInDeadlineAt());
@@ -438,6 +452,10 @@ public class TournamentServiceImpl implements TournamentService {
         if (!hasText(race.getDistance())) {
             throw new BadRequestException("Race distance is required");
         }
+        if (race.getRaceTrack() == null) {
+            throw new BadRequestException("Race track is required");
+        }
+        validateRaceTrackForTournament(race.getRaceTrack(), tournament);
         if (race.getScheduledStartAt() == null || race.getScheduledEndAt() == null) {
             throw new BadRequestException("Race schedule is required");
         }
@@ -576,6 +594,28 @@ public class TournamentServiceImpl implements TournamentService {
         return referee;
     }
 
+    private RaceTrack requireRaceTrackForTournament(Long raceTrackId, Tournament tournament) {
+        if (raceTrackId == null) {
+            throw new BadRequestException("Race track id is required");
+        }
+        RaceTrack track = raceTrackRepository.findById(raceTrackId)
+                .orElseThrow(() -> new ResourceNotFoundException("RaceTrack", "id", raceTrackId));
+        validateRaceTrackForTournament(track, tournament);
+        return track;
+    }
+
+    private void validateRaceTrackForTournament(RaceTrack track, Tournament tournament) {
+        if (!Boolean.TRUE.equals(track.getActive())) {
+            throw new BadRequestException("Race track is inactive");
+        }
+        String tournamentLocationKey = normalizeLocationKey(tournament.getLocationKey());
+        String trackLocationKey = normalizeLocationKey(track.getLocationKey());
+        if (!hasText(tournamentLocationKey) || !hasText(trackLocationKey)
+                || !tournamentLocationKey.equals(trackLocationKey)) {
+            throw new BadRequestException("Race track does not belong to tournament location");
+        }
+    }
+
     private void requireConfigEditable(Tournament tournament) {
         if (tournament.getStatus() != TournamentStatus.DRAFT && tournament.getStatus() != TournamentStatus.PUBLISHED) {
             throw new BadRequestException("Only draft or published tournaments can be updated");
@@ -588,6 +628,7 @@ public class TournamentServiceImpl implements TournamentService {
                 .name(tournament.getName())
                 .description(tournament.getDescription())
                 .location(tournament.getLocation())
+                .locationKey(tournament.getLocationKey())
                 .bannerUrl(tournament.getBannerUrl())
                 .registrationOpenAt(tournament.getRegistrationOpenAt())
                 .registrationCloseAt(tournament.getRegistrationCloseAt())
@@ -625,11 +666,16 @@ public class TournamentServiceImpl implements TournamentService {
 
     public RaceResponse mapRace(Race race) {
         User referee = race.getReferee();
+        RaceTrack track = race.getRaceTrack();
         return RaceResponse.builder()
                 .id(race.getId())
                 .tournamentId(race.getTournament() == null ? null : race.getTournament().getId())
                 .name(race.getName())
                 .distance(race.getDistance())
+                .raceTrackId(track == null ? null : track.getId())
+                .raceTrackName(track == null ? null : track.getName())
+                .raceTrackLocationKey(track == null ? null : track.getLocationKey())
+                .raceTrackAddress(track == null ? null : track.getAddress())
                 .scheduledStartAt(race.getScheduledStartAt())
                 .scheduledEndAt(race.getScheduledEndAt())
                 .minParticipants(race.getMinParticipants())
@@ -688,6 +734,10 @@ public class TournamentServiceImpl implements TournamentService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private String normalizeLocationKey(String value) {
+        return value == null ? null : value.trim().toUpperCase();
     }
 
     private boolean isPublicStatus(TournamentStatus status) {

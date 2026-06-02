@@ -175,6 +175,7 @@ Tournament:
   "name": "Summer Cup",
   "description": "Giai dua mua he",
   "location": "Ho Chi Minh City",
+  "locationKey": "HCM",
   "bannerUrl": "https://cdn.example/summer-cup.jpg",
   "registrationOpenAt": "2026-06-01T08:00:00",
   "registrationCloseAt": "2026-06-02T08:00:00",
@@ -199,6 +200,7 @@ Race:
 {
   "name": "Heat 1",
   "distance": "1200m",
+  "raceTrackId": 1,
   "scheduledStartAt": "2026-06-03T09:00:00",
   "scheduledEndAt": "2026-06-03T09:20:00",
   "minParticipants": 1,
@@ -438,6 +440,10 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 | TOUR-16 | GET | `/api/v1/tournaments/{id}` | Public | path `id` | Detail public tournament |
 | TOUR-17 | GET | `/api/v1/tournaments/{id}/races` | Public | path `id` | Public race list |
 | TOUR-18 | GET | `/api/v1/tournaments/{id}/leaderboard` | Public | path `id` | Leaderboard |
+| TOUR-19 | GET | `/api/v1/admin/race-tracks` | ADMIN | query `locationKey`, `active` optional | List race tracks |
+| TOUR-20 | POST | `/api/v1/admin/race-tracks` | ADMIN | `RaceTrackRequest` | Tao race track |
+| TOUR-21 | PUT | `/api/v1/admin/race-tracks/{id}` | ADMIN | `RaceTrackRequest` | Cap nhat race track |
+| TOUR-22 | PUT | `/api/v1/admin/race-tracks/{id}/active` | ADMIN | query `active` | Bat/tat race track |
 
 ### Race Day
 
