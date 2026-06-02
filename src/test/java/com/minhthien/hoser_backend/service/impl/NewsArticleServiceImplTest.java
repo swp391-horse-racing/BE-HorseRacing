@@ -2,6 +2,7 @@ package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.dto.request.NewsArticleRequest;
 import com.minhthien.hoser_backend.dto.request.NewsArticleUpdateRequest;
+import com.minhthien.hoser_backend.dto.response.NewsArticleSummaryResponse;
 import com.minhthien.hoser_backend.entity.AdminAuditLog;
 import com.minhthien.hoser_backend.entity.NewsArticle;
 import com.minhthien.hoser_backend.entity.User;
@@ -142,9 +143,11 @@ class NewsArticleServiceImplTest {
     @Test
     void publicNewsListUsesFeaturedAndNewestOrdering() {
         NewsArticleServiceImpl service = service();
-        NewsArticle featured = article(1L, "Featured", true, LocalDateTime.of(2026, 5, 21, 8, 0));
-        NewsArticle newest = article(2L, "Newest", false, LocalDateTime.of(2026, 5, 22, 8, 0));
-        when(newsArticleRepository.findAllByOrderByFeaturedDescPublishedAtDescCreatedAtDesc())
+        NewsArticleSummaryResponse featured = articleSummary(1L, "Featured", true,
+                LocalDateTime.of(2026, 5, 21, 8, 0));
+        NewsArticleSummaryResponse newest = articleSummary(2L, "Newest", false,
+                LocalDateTime.of(2026, 5, 22, 8, 0));
+        when(newsArticleRepository.findAllSummariesOrderByFeaturedDescPublishedAtDescCreatedAtDesc())
                 .thenReturn(List.of(featured, newest));
 
         var response = service.getPublicNews(null, null);
@@ -155,9 +158,11 @@ class NewsArticleServiceImplTest {
     @Test
     void allPublicNewsUsesFeaturedAndNewestOrdering() {
         NewsArticleServiceImpl service = service();
-        NewsArticle featured = article(1L, "Featured", true, LocalDateTime.of(2026, 5, 21, 8, 0));
-        NewsArticle newest = article(2L, "Newest", false, LocalDateTime.of(2026, 5, 22, 8, 0));
-        when(newsArticleRepository.findAllByOrderByFeaturedDescPublishedAtDescCreatedAtDesc())
+        NewsArticleSummaryResponse featured = articleSummary(1L, "Featured", true,
+                LocalDateTime.of(2026, 5, 21, 8, 0));
+        NewsArticleSummaryResponse newest = articleSummary(2L, "Newest", false,
+                LocalDateTime.of(2026, 5, 22, 8, 0));
+        when(newsArticleRepository.findAllSummariesOrderByFeaturedDescPublishedAtDescCreatedAtDesc())
                 .thenReturn(List.of(featured, newest));
 
         var response = service.getAllPublicNews();
@@ -200,6 +205,23 @@ class NewsArticleServiceImplTest {
                 .category("Su kien")
                 .featured(featured)
                 .publishedAt(publishedAt)
+                .createdBy("admin")
+                .updatedBy("admin")
+                .build();
+    }
+
+    private NewsArticleSummaryResponse articleSummary(Long id, String title, boolean featured,
+                                                      LocalDateTime publishedAt) {
+        return NewsArticleSummaryResponse.builder()
+                .id(id)
+                .title(title)
+                .summary("Summary")
+                .category("Su kien")
+                .imageUrl("https://cdn.example/news.jpg")
+                .featured(featured)
+                .publishedAt(publishedAt)
+                .createdAt(publishedAt)
+                .updatedAt(publishedAt)
                 .createdBy("admin")
                 .updatedBy("admin")
                 .build();

@@ -6,6 +6,7 @@ import com.minhthien.hoser_backend.dto.request.NewsArticleUpdateRequest;
 import com.minhthien.hoser_backend.dto.request.NewsArticleUpdateMultipartRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
 import com.minhthien.hoser_backend.dto.response.NewsArticleResponse;
+import com.minhthien.hoser_backend.dto.response.NewsArticleSummaryResponse;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.service.NewsArticleService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -71,7 +72,7 @@ public class NewsArticleController {
     }
 
     @GetMapping("/admin/news")
-    public ResponseEntity<ApiResponse<List<NewsArticleResponse>>> getAdminNews() {
+    public ResponseEntity<ApiResponse<List<NewsArticleSummaryResponse>>> getAdminNews() {
         return ResponseEntity.ok(ApiResponse.success(newsArticleService.getAdminNews()));
     }
 
@@ -81,14 +82,14 @@ public class NewsArticleController {
     }
 
     @GetMapping("/news")
-    public ResponseEntity<ApiResponse<List<NewsArticleResponse>>> getPublicNews(
+    public ResponseEntity<ApiResponse<List<NewsArticleSummaryResponse>>> getPublicNews(
             @RequestParam(required = false) Boolean featured,
             @RequestParam(required = false) String category) {
         return ResponseEntity.ok(ApiResponse.success(newsArticleService.getPublicNews(featured, category)));
     }
 
     @GetMapping("/news/all")
-    public ResponseEntity<ApiResponse<List<NewsArticleResponse>>> getAllPublicNews() {
+    public ResponseEntity<ApiResponse<List<NewsArticleSummaryResponse>>> getAllPublicNews() {
         return ResponseEntity.ok(ApiResponse.success(newsArticleService.getAllPublicNews()));
     }
 

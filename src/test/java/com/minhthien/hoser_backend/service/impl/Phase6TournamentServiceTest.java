@@ -17,6 +17,8 @@ import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
+import com.minhthien.hoser_backend.repository.RaceParticipantRepository;
+import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.RaceTrackRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
@@ -57,6 +59,12 @@ class Phase6TournamentServiceTest {
 
     @Mock
     private RaceTrackRepository raceTrackRepository;
+
+    @Mock
+    private RaceParticipantRepository raceParticipantRepository;
+
+    @Mock
+    private RaceRepository raceRepository;
 
     @Test
     void adminCreatesDraftRaceDayWithChallengeConfigAndNoRequiredRaces() {
@@ -416,16 +424,69 @@ class Phase6TournamentServiceTest {
     void publicTournamentRacesRejectDraftTournamentAsNotFound() {
         TournamentServiceImpl service = service();
         Tournament tournament = tournament(TournamentStatus.DRAFT);
-        when(tournamentRepository.findById(10L)).thenReturn(Optional.of(tournament));
+        when(tournamentRepository.findDetailById(10L)).thenReturn(Optional.of(tournament));
 
         assertThatThrownBy(() -> service.getPublicTournamentRaces(10L))
                 .isInstanceOf(com.minhthien.hoser_backend.exception.ResourceNotFoundException.class)
                 .hasMessage("Tournament not found with id: '10'");
     }
 
+    @Test
+    void publicTournamentListReturnsSummaryWithoutLoadingRaceDetails() {
+        TournamentServiceImpl service = service();
+        Tournament tournament = tournament(TournamentStatus.PUBLISHED);
+
+        when(tournamentRepository.findByStatusInOrderByStartAtAsc(any())).thenReturn(List.of(tournament));
+
+        var response = service.getPublicTournaments();
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).getId()).isEqualTo(10L);
+        assertThat(response.get(0).getName()).isEqualTo("Summer Race Day");
+        verify(raceRepository, never()).findByTournamentIdOrderByScheduledStartAtAsc(any());
+        verify(raceParticipantRepository, never()).countByRaceIds(any());
+    }
+
+    @Test
+    void adminTournamentListReturnsSummaryWithoutLoadingRaceDetails() {
+        TournamentServiceImpl service = service();
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+
+        when(tournamentRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(tournament));
+
+        var response = service.getAdminTournaments(null);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).getId()).isEqualTo(10L);
+        assertThat(response.get(0).getStatus()).isEqualTo(TournamentStatus.DRAFT);
+        verify(raceRepository, never()).findByTournamentIdOrderByScheduledStartAtAsc(any());
+        verify(raceParticipantRepository, never()).countByRaceIds(any());
+    }
+
+    @Test
+    void publicTournamentDetailUsesBatchedParticipantCounts() {
+        TournamentServiceImpl service = service();
+        Tournament tournament = tournament(TournamentStatus.PUBLISHED);
+        List<Race> races = tournament.getRaces();
+        races.get(0).setId(101L);
+        races.get(1).setId(102L);
+
+        when(tournamentRepository.findDetailById(10L)).thenReturn(Optional.of(tournament));
+        when(raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(10L)).thenReturn(races);
+        when(raceParticipantRepository.countByRaceIds(List.of(101L, 102L)))
+                .thenReturn(List.<Object[]>of(new Object[]{101L, 3L}));
+
+        var response = service.getPublicTournament(10L);
+
+        assertThat(response.getRaces()).hasSize(2);
+        assertThat(response.getRaces().get(0).getParticipantCount()).isEqualTo(3);
+        assertThat(response.getRaces().get(1).getParticipantCount()).isZero();
+        verify(raceParticipantRepository).countByRaceIds(List.of(101L, 102L));
+    }
+
     private TournamentServiceImpl service() {
         return new TournamentServiceImpl(tournamentRepository, userRepository, adminAuditLogRepository,
-                cloudinaryUploadService, raceTrackRepository);
+                cloudinaryUploadService, raceTrackRepository, raceParticipantRepository, raceRepository);
     }
 
     private TournamentRequest request() {

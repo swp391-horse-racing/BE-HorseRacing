@@ -14,7 +14,7 @@ import java.util.List;
 
 @Repository
 public interface RaceRepository extends JpaRepository<Race, Long> {
-    @EntityGraph(attributePaths = {"tournament", "referee", "prizes"})
+    @EntityGraph(attributePaths = {"tournament", "referee", "raceTrack", "prizes"})
     List<Race> findByTournamentIdOrderByScheduledStartAtAsc(Long tournamentId);
 
     List<Race> findByRefereeIdOrderByScheduledStartAtAsc(Long refereeId);

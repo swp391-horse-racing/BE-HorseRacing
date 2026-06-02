@@ -9,6 +9,7 @@ import com.minhthien.hoser_backend.dto.response.JockeyChallengePrizeResponse;
 import com.minhthien.hoser_backend.dto.response.RacePrizeResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
+import com.minhthien.hoser_backend.dto.response.TournamentSummaryResponse;
 import com.minhthien.hoser_backend.entity.AdminAuditLog;
 import com.minhthien.hoser_backend.entity.JockeyChallengePrize;
 import com.minhthien.hoser_backend.entity.Race;
@@ -23,12 +24,16 @@ import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
+import com.minhthien.hoser_backend.repository.RaceParticipantRepository;
+import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.RaceTrackRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import com.minhthien.hoser_backend.service.TournamentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -38,7 +43,10 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.Collections;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -51,15 +59,31 @@ public class TournamentServiceImpl implements TournamentService {
     private final AdminAuditLogRepository adminAuditLogRepository;
     private final CloudinaryUploadService cloudinaryUploadService;
     private final RaceTrackRepository raceTrackRepository;
+    private final RaceParticipantRepository raceParticipantRepository;
+    private final RaceRepository raceRepository;
 
     @Override
     @Transactional
+    @CacheEvict(value = {
+            "adminTournamentSummaries",
+            "publicTournamentSummaries",
+            "adminTournamentDetails",
+            "publicTournamentDetails",
+            "publicTournamentRaces"
+    }, allEntries = true)
     public TournamentResponse createTournament(Long adminId, TournamentRequest request) {
         return createTournament(adminId, request, null);
     }
 
     @Override
     @Transactional
+    @CacheEvict(value = {
+            "adminTournamentSummaries",
+            "publicTournamentSummaries",
+            "adminTournamentDetails",
+            "publicTournamentDetails",
+            "publicTournamentRaces"
+    }, allEntries = true)
     public TournamentResponse createTournament(Long adminId, TournamentRequest request, MultipartFile banner) {
         User admin = requireAdmin(adminId);
         validateBaseRequest(request);
@@ -78,12 +102,26 @@ public class TournamentServiceImpl implements TournamentService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {
+            "adminTournamentSummaries",
+            "publicTournamentSummaries",
+            "adminTournamentDetails",
+            "publicTournamentDetails",
+            "publicTournamentRaces"
+    }, allEntries = true)
     public TournamentResponse updateTournament(Long adminId, Long tournamentId, TournamentUpdateRequest request) {
         return updateTournament(adminId, tournamentId, request, null);
     }
 
     @Override
     @Transactional
+    @CacheEvict(value = {
+            "adminTournamentSummaries",
+            "publicTournamentSummaries",
+            "adminTournamentDetails",
+            "publicTournamentDetails",
+            "publicTournamentRaces"
+    }, allEntries = true)
     public TournamentResponse updateTournament(Long adminId, Long tournamentId, TournamentUpdateRequest request,
                                                MultipartFile banner) {
         User admin = requireAdmin(adminId);
@@ -105,6 +143,13 @@ public class TournamentServiceImpl implements TournamentService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {
+            "adminTournamentSummaries",
+            "publicTournamentSummaries",
+            "adminTournamentDetails",
+            "publicTournamentDetails",
+            "publicTournamentRaces"
+    }, allEntries = true)
     public TournamentResponse addTournamentRace(Long adminId, Long tournamentId, RaceRequest request) {
         User admin = requireAdmin(adminId);
         if (request == null) {
@@ -126,6 +171,13 @@ public class TournamentServiceImpl implements TournamentService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {
+            "adminTournamentSummaries",
+            "publicTournamentSummaries",
+            "adminTournamentDetails",
+            "publicTournamentDetails",
+            "publicTournamentRaces"
+    }, allEntries = true)
     public TournamentResponse replaceTournamentRaces(Long adminId, Long tournamentId, List<RaceRequest> requests) {
         User admin = requireAdmin(adminId);
         Tournament tournament = requireTournament(tournamentId);
@@ -142,18 +194,39 @@ public class TournamentServiceImpl implements TournamentService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {
+            "adminTournamentSummaries",
+            "publicTournamentSummaries",
+            "adminTournamentDetails",
+            "publicTournamentDetails",
+            "publicTournamentRaces"
+    }, allEntries = true)
     public TournamentResponse openRegistration(Long adminId, Long tournamentId) {
         return updateTournamentStatus(adminId, tournamentId, TournamentStatus.OPEN_REGISTRATION);
     }
 
     @Override
     @Transactional
+    @CacheEvict(value = {
+            "adminTournamentSummaries",
+            "publicTournamentSummaries",
+            "adminTournamentDetails",
+            "publicTournamentDetails",
+            "publicTournamentRaces"
+    }, allEntries = true)
     public TournamentResponse closeRegistration(Long adminId, Long tournamentId) {
         return updateTournamentStatus(adminId, tournamentId, TournamentStatus.REGISTRATION_CLOSED);
     }
 
     @Override
     @Transactional
+    @CacheEvict(value = {
+            "adminTournamentSummaries",
+            "publicTournamentSummaries",
+            "adminTournamentDetails",
+            "publicTournamentDetails",
+            "publicTournamentRaces"
+    }, allEntries = true)
     public TournamentResponse updateTournamentStatus(Long adminId, Long tournamentId, TournamentStatus status) {
         User admin = requireAdmin(adminId);
         if (status == null) {
@@ -181,44 +254,54 @@ public class TournamentServiceImpl implements TournamentService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TournamentResponse> getAdminTournaments(TournamentStatus status) {
+    @Cacheable(value = "adminTournamentSummaries", key = "#status == null ? 'ALL' : #status.name()")
+    public List<TournamentSummaryResponse> getAdminTournaments(TournamentStatus status) {
         List<Tournament> tournaments = status == null
                 ? tournamentRepository.findAllByOrderByCreatedAtDesc()
                 : tournamentRepository.findByStatusOrderByCreatedAtDesc(status);
-        return tournaments.stream().map(this::mapToResponse).toList();
+        return tournaments.stream().map(this::mapToSummaryResponse).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = "adminTournamentDetails", key = "#tournamentId")
     public TournamentResponse getAdminTournament(Long tournamentId) {
-        return mapToResponse(requireTournament(tournamentId));
+        Tournament tournament = requireTournamentDetail(tournamentId);
+        List<Race> races = raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(tournamentId);
+        return mapToResponse(tournament, races, participantCountsFor(races));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<TournamentResponse> getPublicTournaments() {
+    @Cacheable(value = "publicTournamentSummaries", key = "'ALL'")
+    public List<TournamentSummaryResponse> getPublicTournaments() {
         return tournamentRepository.findByStatusInOrderByStartAtAsc(publicStatuses()).stream()
-                .map(this::mapToResponse)
+                .map(this::mapToSummaryResponse)
                 .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = "publicTournamentDetails", key = "#tournamentId")
     public TournamentResponse getPublicTournament(Long tournamentId) {
-        Tournament tournament = requireTournament(tournamentId);
+        Tournament tournament = requireTournamentDetail(tournamentId);
         if (!isPublicStatus(tournament.getStatus())) {
             throw new ResourceNotFoundException("Tournament", "id", tournamentId);
         }
-        return mapToResponse(tournament);
+        List<Race> races = raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(tournamentId);
+        return mapToResponse(tournament, races, participantCountsFor(races));
     }
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = "publicTournamentRaces", key = "#tournamentId")
     public List<RaceResponse> getPublicTournamentRaces(Long tournamentId) {
         Tournament tournament = requirePublicTournament(tournamentId);
-        return tournament.getRaces().stream()
+        List<Race> races = raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(tournamentId);
+        Map<Long, Integer> participantCounts = participantCountsFor(races);
+        return races.stream()
                 .sorted(Comparator.comparing(Race::getScheduledStartAt))
-                .map(this::mapRace)
+                .map(race -> mapRace(race, participantCounts))
                 .toList();
     }
 
@@ -569,11 +652,16 @@ public class TournamentServiceImpl implements TournamentService {
     }
 
     private Tournament requirePublicTournament(Long tournamentId) {
-        Tournament tournament = requireTournament(tournamentId);
+        Tournament tournament = requireTournamentDetail(tournamentId);
         if (!isPublicStatus(tournament.getStatus())) {
             throw new ResourceNotFoundException("Tournament", "id", tournamentId);
         }
         return tournament;
+    }
+
+    private Tournament requireTournamentDetail(Long tournamentId) {
+        return tournamentRepository.findDetailById(tournamentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tournament", "id", tournamentId));
     }
 
     private User requireAdmin(Long adminId) {
@@ -623,6 +711,15 @@ public class TournamentServiceImpl implements TournamentService {
     }
 
     public TournamentResponse mapToResponse(Tournament tournament) {
+        return mapToResponse(tournament, participantCountsFor(tournament.getRaces()));
+    }
+
+    private TournamentResponse mapToResponse(Tournament tournament, Map<Long, Integer> participantCounts) {
+        return mapToResponse(tournament, tournament.getRaces(), participantCounts);
+    }
+
+    private TournamentResponse mapToResponse(Tournament tournament, List<Race> races,
+                                             Map<Long, Integer> participantCounts) {
         return TournamentResponse.builder()
                 .id(tournament.getId())
                 .name(tournament.getName())
@@ -649,9 +746,9 @@ public class TournamentServiceImpl implements TournamentService {
                 .finalizedAt(tournament.getFinalizedAt())
                 .finalizedBy(tournament.getFinalizedBy())
                 .pendingComplaintCountAtFinalize(tournament.getPendingComplaintCountAtFinalize())
-                .races(tournament.getRaces().stream()
+                .races(races.stream()
                         .sorted(Comparator.comparing(Race::getScheduledStartAt))
-                        .map(this::mapRace)
+                        .map(race -> mapRace(race, participantCounts))
                         .toList())
                 .jockeyChallengePrizes(tournament.getJockeyChallengePrizes().stream()
                         .sorted(Comparator.comparing(JockeyChallengePrize::getRank))
@@ -664,7 +761,31 @@ public class TournamentServiceImpl implements TournamentService {
                 .build();
     }
 
+    private TournamentSummaryResponse mapToSummaryResponse(Tournament tournament) {
+        return TournamentSummaryResponse.builder()
+                .id(tournament.getId())
+                .name(tournament.getName())
+                .description(tournament.getDescription())
+                .location(tournament.getLocation())
+                .locationKey(tournament.getLocationKey())
+                .bannerUrl(tournament.getBannerUrl())
+                .registrationOpenAt(tournament.getRegistrationOpenAt())
+                .registrationCloseAt(tournament.getRegistrationCloseAt())
+                .startAt(tournament.getStartAt())
+                .endAt(tournament.getEndAt())
+                .minTeams(tournament.getMinTeams())
+                .maxTeams(tournament.getMaxTeams())
+                .status(tournament.getStatus())
+                .publishedAt(tournament.getPublishedAt())
+                .openedRegistrationAt(tournament.getOpenedRegistrationAt())
+                .build();
+    }
+
     public RaceResponse mapRace(Race race) {
+        return mapRace(race, Collections.emptyMap());
+    }
+
+    private RaceResponse mapRace(Race race, Map<Long, Integer> participantCounts) {
         User referee = race.getReferee();
         RaceTrack track = race.getRaceTrack();
         return RaceResponse.builder()
@@ -691,10 +812,28 @@ public class TournamentServiceImpl implements TournamentService {
                         .sorted(Comparator.comparing(RacePrize::getRank))
                         .map(this::mapRacePrize)
                         .toList())
-                .participantCount(race.getParticipants() == null ? 0 : race.getParticipants().size())
+                .participantCount(participantCounts.getOrDefault(race.getId(), 0))
                 .createdAt(race.getCreatedAt())
                 .updatedAt(race.getUpdatedAt())
                 .build();
+    }
+
+    private Map<Long, Integer> participantCountsFor(List<Race> races) {
+        if (races == null || races.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<Long> raceIds = races.stream()
+                .map(Race::getId)
+                .filter(id -> id != null)
+                .toList();
+        if (raceIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return raceParticipantRepository.countByRaceIds(raceIds).stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> Math.toIntExact((Long) row[1])
+                ));
     }
 
     private RacePrizeResponse mapRacePrize(RacePrize prize) {

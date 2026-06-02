@@ -17,7 +17,8 @@ import java.util.List;
         name = "tournaments",
         indexes = {
                 @Index(name = "idx_tournaments_status", columnList = "status"),
-                @Index(name = "idx_tournaments_start_at", columnList = "start_at")
+                @Index(name = "idx_tournaments_start_at", columnList = "start_at"),
+                @Index(name = "idx_tournaments_status_start_at", columnList = "status, start_at")
         }
 )
 @Data

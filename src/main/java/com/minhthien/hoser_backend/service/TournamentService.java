@@ -5,6 +5,7 @@ import com.minhthien.hoser_backend.dto.request.TournamentRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
+import com.minhthien.hoser_backend.dto.response.TournamentSummaryResponse;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -34,11 +35,11 @@ public interface TournamentService {
 
     TournamentResponse updateTournamentStatus(Long adminId, Long tournamentId, TournamentStatus status);
 
-    List<TournamentResponse> getAdminTournaments(TournamentStatus status);
+    List<TournamentSummaryResponse> getAdminTournaments(TournamentStatus status);
 
     TournamentResponse getAdminTournament(Long tournamentId);
 
-    List<TournamentResponse> getPublicTournaments();
+    List<TournamentSummaryResponse> getPublicTournaments();
 
     TournamentResponse getPublicTournament(Long tournamentId);
 

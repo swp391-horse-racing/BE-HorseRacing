@@ -3,6 +3,7 @@ package com.minhthien.hoser_backend.service.impl;
 import com.minhthien.hoser_backend.dto.request.NewsArticleRequest;
 import com.minhthien.hoser_backend.dto.request.NewsArticleUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.NewsArticleResponse;
+import com.minhthien.hoser_backend.dto.response.NewsArticleSummaryResponse;
 import com.minhthien.hoser_backend.entity.AdminAuditLog;
 import com.minhthien.hoser_backend.entity.NewsArticle;
 import com.minhthien.hoser_backend.entity.User;
@@ -16,6 +17,8 @@ import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import com.minhthien.hoser_backend.service.NewsArticleService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -36,12 +39,14 @@ public class NewsArticleServiceImpl implements NewsArticleService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {"adminNewsSummaries", "publicNewsSummaries", "newsDetails"}, allEntries = true)
     public NewsArticleResponse createNews(Long adminId, NewsArticleRequest request) {
         return createNews(adminId, request, null);
     }
 
     @Override
     @Transactional
+    @CacheEvict(value = {"adminNewsSummaries", "publicNewsSummaries", "newsDetails"}, allEntries = true)
     public NewsArticleResponse createNews(Long adminId, NewsArticleRequest request, MultipartFile image) {
         User admin = requireAdmin(adminId);
         validateCreateRequest(request);
@@ -60,12 +65,14 @@ public class NewsArticleServiceImpl implements NewsArticleService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {"adminNewsSummaries", "publicNewsSummaries", "newsDetails"}, allEntries = true)
     public NewsArticleResponse updateNews(Long adminId, Long newsId, NewsArticleUpdateRequest request) {
         return updateNews(adminId, newsId, request, null);
     }
 
     @Override
     @Transactional
+    @CacheEvict(value = {"adminNewsSummaries", "publicNewsSummaries", "newsDetails"}, allEntries = true)
     public NewsArticleResponse updateNews(Long adminId, Long newsId, NewsArticleUpdateRequest request,
                                           MultipartFile image) {
         User admin = requireAdmin(adminId);
@@ -85,6 +92,7 @@ public class NewsArticleServiceImpl implements NewsArticleService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {"adminNewsSummaries", "publicNewsSummaries", "newsDetails"}, allEntries = true)
     public void deleteNews(Long adminId, Long newsId) {
         User admin = requireAdmin(adminId);
         NewsArticle article = requireNews(newsId);
@@ -94,46 +102,46 @@ public class NewsArticleServiceImpl implements NewsArticleService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<NewsArticleResponse> getAdminNews() {
-        return newsArticleRepository.findAllByOrderByFeaturedDescPublishedAtDescCreatedAtDesc().stream()
-                .map(this::mapToResponse)
-                .toList();
+    @Cacheable(value = "adminNewsSummaries", key = "'ALL'")
+    public List<NewsArticleSummaryResponse> getAdminNews() {
+        return newsArticleRepository.findAllSummariesOrderByFeaturedDescPublishedAtDescCreatedAtDesc();
     }
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = "newsDetails", key = "'admin:' + #newsId")
     public NewsArticleResponse getAdminNews(Long newsId) {
         return mapToResponse(requireNews(newsId));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<NewsArticleResponse> getAllPublicNews() {
-        return newsArticleRepository.findAllByOrderByFeaturedDescPublishedAtDescCreatedAtDesc().stream()
-                .map(this::mapToResponse)
-                .toList();
+    @Cacheable(value = "publicNewsSummaries", key = "'ALL'")
+    public List<NewsArticleSummaryResponse> getAllPublicNews() {
+        return newsArticleRepository.findAllSummariesOrderByFeaturedDescPublishedAtDescCreatedAtDesc();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<NewsArticleResponse> getPublicNews(Boolean featured, String category) {
-        List<NewsArticle> articles;
+    @Cacheable(value = "publicNewsSummaries",
+            key = "'featured=' + (#featured == null ? 'ALL' : #featured.toString()) + ',category=' + (#category == null ? 'ALL' : #category.trim().toLowerCase())")
+    public List<NewsArticleSummaryResponse> getPublicNews(Boolean featured, String category) {
         if (hasText(category) && featured != null) {
-            articles = newsArticleRepository
-                    .findByCategoryIgnoreCaseAndFeaturedOrderByPublishedAtDescCreatedAtDesc(category.trim(), featured);
+            return newsArticleRepository
+                    .findSummaryByCategoryIgnoreCaseAndFeaturedOrderByPublishedAtDescCreatedAtDesc(
+                            category.trim(), featured);
         } else if (hasText(category)) {
-            articles = newsArticleRepository
-                    .findByCategoryIgnoreCaseOrderByFeaturedDescPublishedAtDescCreatedAtDesc(category.trim());
+            return newsArticleRepository
+                    .findSummaryByCategoryIgnoreCaseOrderByFeaturedDescPublishedAtDescCreatedAtDesc(category.trim());
         } else if (featured != null) {
-            articles = newsArticleRepository.findByFeaturedOrderByPublishedAtDescCreatedAtDesc(featured);
-        } else {
-            articles = newsArticleRepository.findAllByOrderByFeaturedDescPublishedAtDescCreatedAtDesc();
+            return newsArticleRepository.findSummaryByFeaturedOrderByPublishedAtDescCreatedAtDesc(featured);
         }
-        return articles.stream().map(this::mapToResponse).toList();
+        return newsArticleRepository.findAllSummariesOrderByFeaturedDescPublishedAtDescCreatedAtDesc();
     }
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = "newsDetails", key = "'public:' + #newsId")
     public NewsArticleResponse getPublicNews(Long newsId) {
         return mapToResponse(requireNews(newsId));
     }

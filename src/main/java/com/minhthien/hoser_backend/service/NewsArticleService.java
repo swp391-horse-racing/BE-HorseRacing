@@ -3,6 +3,7 @@ package com.minhthien.hoser_backend.service;
 import com.minhthien.hoser_backend.dto.request.NewsArticleRequest;
 import com.minhthien.hoser_backend.dto.request.NewsArticleUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.NewsArticleResponse;
+import com.minhthien.hoser_backend.dto.response.NewsArticleSummaryResponse;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -18,13 +19,13 @@ public interface NewsArticleService {
 
     void deleteNews(Long adminId, Long newsId);
 
-    List<NewsArticleResponse> getAdminNews();
+    List<NewsArticleSummaryResponse> getAdminNews();
 
     NewsArticleResponse getAdminNews(Long newsId);
 
-    List<NewsArticleResponse> getAllPublicNews();
+    List<NewsArticleSummaryResponse> getAllPublicNews();
 
-    List<NewsArticleResponse> getPublicNews(Boolean featured, String category);
+    List<NewsArticleSummaryResponse> getPublicNews(Boolean featured, String category);
 
     NewsArticleResponse getPublicNews(Long newsId);
 }

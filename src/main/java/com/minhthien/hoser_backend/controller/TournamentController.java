@@ -10,6 +10,7 @@ import com.minhthien.hoser_backend.dto.response.TournamentFinalizationResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentLeaderboardResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentPayoutResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
+import com.minhthien.hoser_backend.dto.response.TournamentSummaryResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentStatisticsResponse;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
@@ -122,7 +123,7 @@ public class TournamentController {
     }
 
     @GetMapping("/admin/tournaments")
-    public ResponseEntity<ApiResponse<List<TournamentResponse>>> getAdminTournaments(
+    public ResponseEntity<ApiResponse<List<TournamentSummaryResponse>>> getAdminTournaments(
             @RequestParam(required = false) TournamentStatus status) {
         return ResponseEntity.ok(ApiResponse.success(tournamentService.getAdminTournaments(status)));
     }
@@ -149,7 +150,7 @@ public class TournamentController {
     }
 
     @GetMapping("/tournaments")
-    public ResponseEntity<ApiResponse<List<TournamentResponse>>> getPublicTournaments() {
+    public ResponseEntity<ApiResponse<List<TournamentSummaryResponse>>> getPublicTournaments() {
         return ResponseEntity.ok(ApiResponse.success(tournamentService.getPublicTournaments()));
     }
 

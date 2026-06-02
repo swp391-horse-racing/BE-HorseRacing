@@ -3,8 +3,11 @@ package com.minhthien.hoser_backend.repository;
 import com.minhthien.hoser_backend.entity.RaceParticipant;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,4 +26,12 @@ public interface RaceParticipantRepository extends JpaRepository<RaceParticipant
     boolean existsByRaceIdAndGateNumberAndIdNot(Long raceId, Integer gateNumber, Long id);
 
     long countByRaceTournamentId(Long tournamentId);
+
+    @Query("""
+            select rp.race.id, count(rp)
+            from RaceParticipant rp
+            where rp.race.id in :raceIds
+            group by rp.race.id
+            """)
+    List<Object[]> countByRaceIds(@Param("raceIds") Collection<Long> raceIds);
 }

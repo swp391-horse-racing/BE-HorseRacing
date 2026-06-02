@@ -22,7 +22,11 @@ import java.time.LocalDateTime;
         indexes = {
                 @Index(name = "idx_news_articles_featured", columnList = "featured"),
                 @Index(name = "idx_news_articles_category", columnList = "category"),
-                @Index(name = "idx_news_articles_published_at", columnList = "published_at")
+                @Index(name = "idx_news_articles_published_at", columnList = "published_at"),
+                @Index(name = "idx_news_articles_featured_published_created",
+                        columnList = "featured, published_at, created_at"),
+                @Index(name = "idx_news_articles_category_featured_published_created",
+                        columnList = "category, featured, published_at, created_at")
         }
 )
 @Data

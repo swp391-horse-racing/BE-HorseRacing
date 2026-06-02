@@ -436,8 +436,8 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 | TOUR-12 | GET | `/api/v1/admin/tournaments/{id}` | ADMIN | path `id` | Detail admin tournament |
 | TOUR-13 | GET | `/api/v1/admin/tournaments/{id}/statistics` | ADMIN | path `id` | Statistics |
 | TOUR-14 | GET | `/api/v1/admin/tournaments/{id}/payouts` | ADMIN | path `id` | Payout list |
-| TOUR-15 | GET | `/api/v1/tournaments` | Public | none | List public tournaments |
-| TOUR-16 | GET | `/api/v1/tournaments/{id}` | Public | path `id` | Detail public tournament |
+| TOUR-15 | GET | `/api/v1/tournaments` | Public | none | List public tournament summaries, khong include races/prizes |
+| TOUR-16 | GET | `/api/v1/tournaments/{id}` | Public | path `id` | Detail public tournament include races/prizes |
 | TOUR-17 | GET | `/api/v1/tournaments/{id}/races` | Public | path `id` | Public race list |
 | TOUR-18 | GET | `/api/v1/tournaments/{id}/leaderboard` | Public | path `id` | Leaderboard |
 | TOUR-19 | GET | `/api/v1/admin/race-tracks` | ADMIN | query `locationKey`, `active` optional | List race tracks |
