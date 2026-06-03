@@ -15,12 +15,12 @@ import java.util.List;
 
 @Repository
 public interface RaceRepository extends JpaRepository<Race, Long> {
-    @EntityGraph(attributePaths = {"tournament", "referee", "raceTrack", "prizes"})
+    @EntityGraph(attributePaths = {"tournament", "referee", "prizes"})
     List<Race> findByTournamentIdOrderByScheduledStartAtAsc(Long tournamentId);
 
     List<Race> findByRefereeIdOrderByScheduledStartAtAsc(Long refereeId);
 
-    @EntityGraph(attributePaths = {"tournament", "referee", "raceTrack"})
+    @EntityGraph(attributePaths = {"tournament", "referee"})
     List<Race> findByRefereeIdOrderByScheduledStartAtAsc(Long refereeId, Pageable pageable);
 
     List<Race> findByTournamentIdAndStatusIn(Long tournamentId, Collection<RaceStatus> statuses);
@@ -29,17 +29,17 @@ public interface RaceRepository extends JpaRepository<Race, Long> {
 
     long countByScheduledStartAtBetween(LocalDateTime startAt, LocalDateTime endAt);
 
-    @EntityGraph(attributePaths = {"tournament", "referee", "raceTrack"})
+    @EntityGraph(attributePaths = {"tournament", "referee"})
     List<Race> findByScheduledStartAtGreaterThanEqualOrderByScheduledStartAtAsc(LocalDateTime startAt, Pageable pageable);
 
-    @EntityGraph(attributePaths = {"tournament", "referee", "raceTrack"})
+    @EntityGraph(attributePaths = {"tournament", "referee"})
     List<Race> findByScheduledStartAtBetweenOrderByScheduledStartAtAsc(
             LocalDateTime startAt,
             LocalDateTime endAt,
             Pageable pageable
     );
 
-    @EntityGraph(attributePaths = {"tournament", "referee", "raceTrack"})
+    @EntityGraph(attributePaths = {"tournament", "referee"})
     List<Race> findByStatusAndScheduledStartAtBetweenOrderByScheduledStartAtAsc(
             RaceStatus status,
             LocalDateTime startAt,

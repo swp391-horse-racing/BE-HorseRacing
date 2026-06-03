@@ -27,6 +27,8 @@ public interface TournamentService {
 
     TournamentResponse addTournamentRace(Long adminId, Long tournamentId, RaceRequest request);
 
+    TournamentResponse updateTournamentRace(Long adminId, Long raceId, RaceRequest request);
+
     TournamentResponse replaceTournamentRaces(Long adminId, Long tournamentId, List<RaceRequest> requests);
 
     TournamentResponse openRegistration(Long adminId, Long tournamentId);

@@ -39,9 +39,6 @@ public class Tournament {
     @Column(nullable = false, length = 255)
     private String location;
 
-    @Column(name = "location_key", length = 50)
-    private String locationKey;
-
     @Column(name = "banner_url", length = 500)
     private String bannerUrl;
 
@@ -167,7 +164,6 @@ public class Tournament {
         if (updatedBy == null || updatedBy.isBlank()) {
             updatedBy = createdBy;
         }
-        locationKey = normalizeLocationKey(locationKey);
     }
 
     @PreUpdate
@@ -176,7 +172,6 @@ public class Tournament {
         if (updatedBy == null || updatedBy.isBlank()) {
             updatedBy = "SYSTEM";
         }
-        locationKey = normalizeLocationKey(locationKey);
     }
 
     public void replaceRaces(List<Race> newRaces) {
@@ -199,7 +194,4 @@ public class Tournament {
         }
     }
 
-    private String normalizeLocationKey(String value) {
-        return value == null ? null : value.trim().toUpperCase();
-    }
 }

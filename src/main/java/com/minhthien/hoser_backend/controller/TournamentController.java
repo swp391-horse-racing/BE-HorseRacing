@@ -80,6 +80,15 @@ public class TournamentController {
                 tournamentService.addTournamentRace(currentUser.getId(), id, request)));
     }
 
+    @PutMapping("/admin/races/{raceId}")
+    public ResponseEntity<ApiResponse<TournamentResponse>> updateTournamentRace(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long raceId,
+            @Valid @RequestBody RaceRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Tournament race updated",
+                tournamentService.updateTournamentRace(currentUser.getId(), raceId, request)));
+    }
+
     @PutMapping("/admin/tournaments/{id}/races")
     public ResponseEntity<ApiResponse<TournamentResponse>> replaceTournamentRaces(
             @AuthenticationPrincipal User currentUser,

@@ -557,16 +557,11 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     private RaceResponse mapRace(Race race) {
-        RaceTrack track = race.getRaceTrack();
         return RaceResponse.builder()
                 .id(race.getId())
                 .tournamentId(race.getTournament().getId())
                 .name(race.getName())
                 .distance(race.getDistance())
-                .raceTrackId(track == null ? null : track.getId())
-                .raceTrackName(track == null ? null : track.getName())
-                .raceTrackLocationKey(track == null ? null : track.getLocationKey())
-                .raceTrackAddress(track == null ? null : track.getAddress())
                 .scheduledStartAt(race.getScheduledStartAt())
                 .scheduledEndAt(race.getScheduledEndAt())
                 .minParticipants(race.getMinParticipants())

@@ -175,7 +175,6 @@ Tournament:
   "name": "Summer Cup",
   "description": "Giai dua mua he",
   "location": "Ho Chi Minh City",
-  "locationKey": "HCM",
   "bannerUrl": "https://cdn.example/summer-cup.jpg",
   "registrationOpenAt": "2026-06-01T08:00:00",
   "registrationCloseAt": "2026-06-02T08:00:00",
@@ -200,7 +199,6 @@ Race:
 {
   "name": "Heat 1",
   "distance": "1200m",
-  "raceTrackId": 1,
   "scheduledStartAt": "2026-06-03T09:00:00",
   "scheduledEndAt": "2026-06-03T09:20:00",
   "minParticipants": 1,
@@ -427,23 +425,20 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 | TOUR-03 | POST | `/api/v1/admin/tournaments` | ADMIN | `TournamentRequest` | Tao tournament DRAFT |
 | TOUR-04 | PUT | `/api/v1/admin/tournaments/{id}` | ADMIN | `TournamentUpdateRequest` | Cap nhat tournament |
 | TOUR-05 | POST | `/api/v1/admin/tournaments/{id}/races` | ADMIN | `RaceRequest` | Them race |
-| TOUR-06 | PUT | `/api/v1/admin/tournaments/{id}/races` | ADMIN | array `RaceRequest` | Replace races |
-| TOUR-07 | PUT | `/api/v1/admin/tournaments/{id}/status` | ADMIN | query `status` | Doi status |
-| TOUR-08 | PUT | `/api/v1/admin/tournaments/{id}/open-registration` | ADMIN | none | Status OPEN_REGISTRATION |
-| TOUR-09 | PUT | `/api/v1/admin/tournaments/{id}/close-registration` | ADMIN | none | Status REGISTRATION_CLOSED |
-| TOUR-10 | PUT | `/api/v1/admin/tournaments/{id}/finalize` | ADMIN | none | Tournament COMPLETED, payout |
-| TOUR-11 | GET | `/api/v1/admin/tournaments` | ADMIN | query `status` optional | List admin tournaments |
-| TOUR-12 | GET | `/api/v1/admin/tournaments/{id}` | ADMIN | path `id` | Detail admin tournament |
-| TOUR-13 | GET | `/api/v1/admin/tournaments/{id}/statistics` | ADMIN | path `id` | Statistics |
-| TOUR-14 | GET | `/api/v1/admin/tournaments/{id}/payouts` | ADMIN | path `id` | Payout list |
-| TOUR-15 | GET | `/api/v1/tournaments` | Public | none | List public tournament summaries, khong include races/prizes |
-| TOUR-16 | GET | `/api/v1/tournaments/{id}` | Public | path `id` | Detail public tournament include races/prizes |
-| TOUR-17 | GET | `/api/v1/tournaments/{id}/races` | Public | path `id` | Public race list |
-| TOUR-18 | GET | `/api/v1/tournaments/{id}/leaderboard` | Public | path `id` | Leaderboard |
-| TOUR-19 | GET | `/api/v1/admin/race-tracks` | ADMIN | query `locationKey`, `active` optional | List race tracks |
-| TOUR-20 | POST | `/api/v1/admin/race-tracks` | ADMIN | `RaceTrackRequest` | Tao race track |
-| TOUR-21 | PUT | `/api/v1/admin/race-tracks/{id}` | ADMIN | `RaceTrackRequest` | Cap nhat race track |
-| TOUR-22 | PUT | `/api/v1/admin/race-tracks/{id}/active` | ADMIN | query `active` | Bat/tat race track |
+| TOUR-06 | PUT | `/api/v1/admin/races/{raceId}` | ADMIN | `RaceRequest` | Cap nhat race theo race id |
+| TOUR-07 | PUT | `/api/v1/admin/tournaments/{id}/races` | ADMIN | array `RaceRequest` | Replace races |
+| TOUR-08 | PUT | `/api/v1/admin/tournaments/{id}/status` | ADMIN | query `status` | Doi status |
+| TOUR-09 | PUT | `/api/v1/admin/tournaments/{id}/open-registration` | ADMIN | none | Status OPEN_REGISTRATION |
+| TOUR-10 | PUT | `/api/v1/admin/tournaments/{id}/close-registration` | ADMIN | none | Status REGISTRATION_CLOSED |
+| TOUR-11 | PUT | `/api/v1/admin/tournaments/{id}/finalize` | ADMIN | none | Tournament COMPLETED, payout |
+| TOUR-12 | GET | `/api/v1/admin/tournaments` | ADMIN | query `status` optional | List admin tournaments |
+| TOUR-13 | GET | `/api/v1/admin/tournaments/{id}` | ADMIN | path `id` | Detail admin tournament |
+| TOUR-14 | GET | `/api/v1/admin/tournaments/{id}/statistics` | ADMIN | path `id` | Statistics |
+| TOUR-15 | GET | `/api/v1/admin/tournaments/{id}/payouts` | ADMIN | path `id` | Payout list |
+| TOUR-16 | GET | `/api/v1/tournaments` | Public | none | List public tournament summaries, khong include races/prizes |
+| TOUR-17 | GET | `/api/v1/tournaments/{id}` | Public | path `id` | Detail public tournament include races/prizes |
+| TOUR-18 | GET | `/api/v1/tournaments/{id}/races` | Public | path `id` | Public race list |
+| TOUR-19 | GET | `/api/v1/tournaments/{id}/leaderboard` | Public | path `id` | Leaderboard |
 
 ### Race Day
 

@@ -9,7 +9,6 @@ import com.minhthien.hoser_backend.entity.AdminAuditLog;
 import com.minhthien.hoser_backend.entity.JockeyChallengePrize;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RacePrize;
-import com.minhthien.hoser_backend.entity.RaceTrack;
 import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
@@ -19,7 +18,6 @@ import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
 import com.minhthien.hoser_backend.repository.RaceParticipantRepository;
 import com.minhthien.hoser_backend.repository.RaceRepository;
-import com.minhthien.hoser_backend.repository.RaceTrackRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
@@ -56,9 +54,6 @@ class Phase6TournamentServiceTest {
 
     @Mock
     private CloudinaryUploadService cloudinaryUploadService;
-
-    @Mock
-    private RaceTrackRepository raceTrackRepository;
 
     @Mock
     private RaceParticipantRepository raceParticipantRepository;
@@ -170,14 +165,12 @@ class Phase6TournamentServiceTest {
 
         when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
         when(tournamentRepository.findById(10L)).thenReturn(Optional.of(tournament));
-        when(raceTrackRepository.findById(30L)).thenReturn(Optional.of(raceTrack("HCM", true)));
         when(tournamentRepository.save(any(Tournament.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = service.addTournamentRace(9L, 10L, race("1000m Sprint", 0, 45));
 
         assertThat(response.getRaces()).hasSize(1);
         assertThat(response.getRaces().get(0).getName()).isEqualTo("1000m Sprint");
-        assertThat(response.getRaces().get(0).getRaceTrackId()).isEqualTo(30L);
 
         ArgumentCaptor<AdminAuditLog> auditCaptor = ArgumentCaptor.forClass(AdminAuditLog.class);
         verify(adminAuditLogRepository).save(auditCaptor.capture());
@@ -185,35 +178,46 @@ class Phase6TournamentServiceTest {
     }
 
     @Test
-    void addTournamentRaceRejectsTrackOutsideTournamentLocation() {
+    void adminUpdatesRaceByRaceId() {
         TournamentServiceImpl service = service();
         User admin = user(9L, "admin", UserRole.ADMIN);
         Tournament tournament = tournament(TournamentStatus.DRAFT);
-        tournament.replaceRaces(List.of());
+        Race race = tournament.getRaces().get(0);
+        race.setId(101L);
+        RaceRequest request = race("1200m Sprint Updated", 10, 55);
+        request.setEntryFee(new BigDecimal("25000.00"));
 
         when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
-        when(tournamentRepository.findById(10L)).thenReturn(Optional.of(tournament));
-        when(raceTrackRepository.findById(30L)).thenReturn(Optional.of(raceTrack("HN", true)));
+        when(raceRepository.findById(101L)).thenReturn(Optional.of(race));
+        when(tournamentRepository.save(any(Tournament.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertThatThrownBy(() -> service.addTournamentRace(9L, 10L, race("1000m Sprint", 0, 45)))
-                .isInstanceOf(BadRequestException.class)
-                .hasMessage("Race track does not belong to tournament location");
+        var response = service.updateTournamentRace(9L, 101L, request);
+
+        assertThat(response.getRaces()).hasSize(2);
+        assertThat(response.getRaces().get(0).getName()).isEqualTo("1200m Sprint Updated");
+        assertThat(response.getRaces().get(0).getEntryFee()).isEqualByComparingTo("25000.00");
+        assertThat(response.getRaces().get(0).getPrizes()).hasSize(2);
+
+        ArgumentCaptor<AdminAuditLog> auditCaptor = ArgumentCaptor.forClass(AdminAuditLog.class);
+        verify(adminAuditLogRepository).save(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().getAction()).isEqualTo("TOURNAMENT_RACE_UPDATED");
     }
 
     @Test
-    void addTournamentRaceRejectsInactiveTrack() {
+    void updateRaceRejectsScheduleOutsideTournamentWindow() {
         TournamentServiceImpl service = service();
         User admin = user(9L, "admin", UserRole.ADMIN);
         Tournament tournament = tournament(TournamentStatus.DRAFT);
-        tournament.replaceRaces(List.of());
+        Race race = tournament.getRaces().get(0);
+        race.setId(101L);
 
         when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
-        when(tournamentRepository.findById(10L)).thenReturn(Optional.of(tournament));
-        when(raceTrackRepository.findById(30L)).thenReturn(Optional.of(raceTrack("HCM", false)));
+        when(raceRepository.findById(101L)).thenReturn(Optional.of(race));
 
-        assertThatThrownBy(() -> service.addTournamentRace(9L, 10L, race("1000m Sprint", 0, 45)))
+        assertThatThrownBy(() -> service.updateTournamentRace(9L, 101L,
+                race("Late Sprint", 60 * 30, 60 * 31)))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessage("Race track is inactive");
+                .hasMessage("Race schedule must be within tournament time window");
     }
 
     @Test
@@ -396,7 +400,6 @@ class Phase6TournamentServiceTest {
 
         when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
         when(tournamentRepository.findById(10L)).thenReturn(Optional.of(tournament));
-        when(raceTrackRepository.findById(30L)).thenReturn(Optional.of(raceTrack("HCM", true)));
 
         assertThatThrownBy(() -> service.replaceTournamentRaces(9L, 10L,
                 List.of(race("Sprint", 0, 45), race("Sprint", 0, 60))))
@@ -412,7 +415,6 @@ class Phase6TournamentServiceTest {
 
         when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
         when(tournamentRepository.findById(10L)).thenReturn(Optional.of(tournament));
-        when(raceTrackRepository.findById(30L)).thenReturn(Optional.of(raceTrack("HCM", true)));
 
         assertThatThrownBy(() -> service.replaceTournamentRaces(9L, 10L,
                 List.of(race("Late Sprint", 60 * 30, 60 * 31))))
@@ -486,7 +488,7 @@ class Phase6TournamentServiceTest {
 
     private TournamentServiceImpl service() {
         return new TournamentServiceImpl(tournamentRepository, userRepository, adminAuditLogRepository,
-                cloudinaryUploadService, raceTrackRepository, raceParticipantRepository, raceRepository);
+                cloudinaryUploadService, raceParticipantRepository, raceRepository);
     }
 
     private TournamentRequest request() {
@@ -495,7 +497,6 @@ class Phase6TournamentServiceTest {
         request.setName("Summer Race Day");
         request.setDescription("Race day tournament");
         request.setLocation("Ho Chi Minh City");
-        request.setLocationKey("HCM");
         request.setRegistrationOpenAt(base);
         request.setRegistrationCloseAt(base.plusDays(10));
         request.setStartAt(base.plusDays(15));
@@ -519,7 +520,6 @@ class Phase6TournamentServiceTest {
         RaceRequest request = new RaceRequest();
         request.setName(name);
         request.setDistance(name.split(" ")[0]);
-        request.setRaceTrackId(30L);
         request.setScheduledStartAt(start);
         request.setScheduledEndAt(LocalDateTime.of(2026, 6, 16, 9, 0).plusMinutes(endOffsetMinutes));
         request.setMinParticipants(2);
@@ -540,7 +540,6 @@ class Phase6TournamentServiceTest {
                 .id(10L)
                 .name("Summer Race Day")
                 .location("Ho Chi Minh City")
-                .locationKey("HCM")
                 .registrationOpenAt(LocalDateTime.of(2026, 6, 1, 9, 0))
                 .registrationCloseAt(LocalDateTime.of(2026, 6, 10, 9, 0))
                 .startAt(LocalDateTime.of(2026, 6, 16, 9, 0))
@@ -571,7 +570,6 @@ class Phase6TournamentServiceTest {
         Race race = Race.builder()
                 .name(name)
                 .distance(name.split(" ")[0])
-                .raceTrack(raceTrack("HCM", true))
                 .scheduledStartAt(LocalDateTime.of(2026, 6, 16, 9, 0).plusMinutes(startOffsetMinutes))
                 .scheduledEndAt(LocalDateTime.of(2026, 6, 16, 9, 0).plusMinutes(endOffsetMinutes))
                 .minParticipants(2)
@@ -583,17 +581,6 @@ class Phase6TournamentServiceTest {
                 RacePrize.builder().rank(2).amount(new BigDecimal("500000.00")).build()
         ));
         return race;
-    }
-
-    private RaceTrack raceTrack(String locationKey, boolean active) {
-        return RaceTrack.builder()
-                .id(30L)
-                .name(locationKey + " Main Track")
-                .locationKey(locationKey)
-                .locationName(locationKey)
-                .address(locationKey + " address")
-                .active(active)
-                .build();
     }
 
     private User user(Long id, String username, UserRole role) {

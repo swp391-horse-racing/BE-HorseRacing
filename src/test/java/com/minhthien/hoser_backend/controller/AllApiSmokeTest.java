@@ -435,7 +435,6 @@ class AllApiSmokeTest {
                   "name": "Smoke Tournament",
                   "description": "Smoke tournament",
                   "location": "Ho Chi Minh City",
-                  "locationKey": "HCM",
                   "bannerUrl": "https://cdn.example/tournaments/smoke-banner.jpg",
                   "registrationOpenAt": "2026-06-01T08:00:00",
                   "registrationCloseAt": "2026-06-02T08:00:00",
@@ -454,6 +453,18 @@ class AllApiSmokeTest {
         assertNonServerError(multipartPut("/api/v1/admin/tournaments/999999/banner")
                 .file(new MockMultipartFile("banner", "banner.jpg", "image/jpeg", "img".getBytes()))
                 .header("Authorization", bearer(adminToken)));
+        assertNonServerError(putJson("/api/v1/admin/races/999999", adminToken, """
+                {
+                  "name": "Smoke Race Update",
+                  "distance": "1200m",
+                  "scheduledStartAt": "2026-06-03T09:00:00",
+                  "scheduledEndAt": "2026-06-03T09:30:00",
+                  "minParticipants": 2,
+                  "maxParticipants": 8,
+                  "entryFee": 0,
+                  "prizes": []
+                }
+                """));
     }
 
     private void exerciseRaceSchedulingApis() throws Exception {
