@@ -32,4 +32,8 @@ public interface BetMarketRepository extends JpaRepository<BetMarket, Long> {
                                                                          Collection<BetMarketStatus> statuses);
 
     boolean existsByRaceIdAndStatusIn(Long raceId, Collection<BetMarketStatus> statuses);
+
+    boolean existsByRaceId(Long raceId);
+
+    boolean existsByRaceTournamentId(Long tournamentId);
 }

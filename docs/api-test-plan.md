@@ -380,10 +380,11 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 | HORSE-04 | GET | `/api/v1/owner/horses/{id}` | OWNER | path `id` | Detail ngua cua owner |
 | HORSE-05 | GET | `/api/v1/horses/{id}` | Public | path `id` | Detail ngua xem duoc |
 | HORSE-06 | PUT | `/api/v1/owner/horses/{id}` | OWNER | multipart horse update | Cap nhat ngua |
-| HORSE-07 | GET | `/api/v1/admin/horses` | ADMIN | query `status`, default `PENDING` | List ngua theo status |
-| HORSE-08 | PUT | `/api/v1/admin/horses/{id}/approve` | ADMIN | none | Ngua APPROVED |
-| HORSE-09 | PUT | `/api/v1/admin/horses/{id}/reject` | ADMIN | `AdminReviewRequest` | Ngua REJECTED |
-| HORSE-10 | PUT | `/api/v1/admin/horses/{id}/suspend` | ADMIN | `AdminReviewRequest` | Ngua SUSPENDED |
+| HORSE-07 | DELETE | `/api/v1/owner/horses/{id}` | OWNER | path `id` | Xoa ngua PENDING/REJECTED chua co activity |
+| HORSE-08 | GET | `/api/v1/admin/horses` | ADMIN | query `status`, default `PENDING` | List ngua theo status |
+| HORSE-09 | PUT | `/api/v1/admin/horses/{id}/approve` | ADMIN | none | Ngua APPROVED |
+| HORSE-10 | PUT | `/api/v1/admin/horses/{id}/reject` | ADMIN | `AdminReviewRequest` | Ngua REJECTED |
+| HORSE-11 | PUT | `/api/v1/admin/horses/{id}/suspend` | ADMIN | `AdminReviewRequest` | Ngua SUSPENDED |
 | JOCK-01 | GET | `/api/v1/jockey/profile` | JOCKEY | none | Profile jockey hien tai |
 | JOCK-02 | PUT | `/api/v1/jockey/profile` | JOCKEY | multipart profile update | Cap nhat profile |
 | JOCK-03 | GET | `/api/v1/jockeys/available` | Public | none | List jockey available |
@@ -424,21 +425,23 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 | TOUR-02 | PUT | `/api/v1/admin/tournaments/{id}/banner` | ADMIN | multipart `banner` | Cap nhat banner |
 | TOUR-03 | POST | `/api/v1/admin/tournaments` | ADMIN | `TournamentRequest` | Tao tournament DRAFT |
 | TOUR-04 | PUT | `/api/v1/admin/tournaments/{id}` | ADMIN | `TournamentUpdateRequest` | Cap nhat tournament |
-| TOUR-05 | POST | `/api/v1/admin/tournaments/{id}/races` | ADMIN | `RaceRequest` | Them race |
-| TOUR-06 | PUT | `/api/v1/admin/races/{raceId}` | ADMIN | `RaceRequest` | Cap nhat race theo race id |
-| TOUR-07 | PUT | `/api/v1/admin/tournaments/{id}/races` | ADMIN | array `RaceRequest` | Replace races |
-| TOUR-08 | PUT | `/api/v1/admin/tournaments/{id}/status` | ADMIN | query `status` | Doi status |
-| TOUR-09 | PUT | `/api/v1/admin/tournaments/{id}/open-registration` | ADMIN | none | Status OPEN_REGISTRATION |
-| TOUR-10 | PUT | `/api/v1/admin/tournaments/{id}/close-registration` | ADMIN | none | Status REGISTRATION_CLOSED |
-| TOUR-11 | PUT | `/api/v1/admin/tournaments/{id}/finalize` | ADMIN | none | Tournament COMPLETED, payout |
-| TOUR-12 | GET | `/api/v1/admin/tournaments` | ADMIN | query `status` optional | List admin tournaments |
-| TOUR-13 | GET | `/api/v1/admin/tournaments/{id}` | ADMIN | path `id` | Detail admin tournament |
-| TOUR-14 | GET | `/api/v1/admin/tournaments/{id}/statistics` | ADMIN | path `id` | Statistics |
-| TOUR-15 | GET | `/api/v1/admin/tournaments/{id}/payouts` | ADMIN | path `id` | Payout list |
-| TOUR-16 | GET | `/api/v1/tournaments` | Public | none | List public tournament summaries, khong include races/prizes |
-| TOUR-17 | GET | `/api/v1/tournaments/{id}` | Public | path `id` | Detail public tournament include races/prizes |
-| TOUR-18 | GET | `/api/v1/tournaments/{id}/races` | Public | path `id` | Public race list |
-| TOUR-19 | GET | `/api/v1/tournaments/{id}/leaderboard` | Public | path `id` | Leaderboard |
+| TOUR-05 | DELETE | `/api/v1/admin/tournaments/{id}` | ADMIN | path `id` | Xoa tournament DRAFT chua co activity |
+| TOUR-06 | POST | `/api/v1/admin/tournaments/{id}/races` | ADMIN | `RaceRequest` | Them race |
+| TOUR-07 | PUT | `/api/v1/admin/races/{raceId}` | ADMIN | `RaceRequest` | Cap nhat race theo race id |
+| TOUR-08 | DELETE | `/api/v1/admin/races/{raceId}` | ADMIN | path `raceId` | Xoa race DRAFT chua co activity |
+| TOUR-09 | PUT | `/api/v1/admin/tournaments/{id}/races` | ADMIN | array `RaceRequest` | Replace races |
+| TOUR-10 | PUT | `/api/v1/admin/tournaments/{id}/status` | ADMIN | query `status` | Doi status |
+| TOUR-11 | PUT | `/api/v1/admin/tournaments/{id}/open-registration` | ADMIN | none | Status OPEN_REGISTRATION |
+| TOUR-12 | PUT | `/api/v1/admin/tournaments/{id}/close-registration` | ADMIN | none | Status REGISTRATION_CLOSED |
+| TOUR-13 | PUT | `/api/v1/admin/tournaments/{id}/finalize` | ADMIN | none | Tournament COMPLETED, payout |
+| TOUR-14 | GET | `/api/v1/admin/tournaments` | ADMIN | query `status` optional | List admin tournaments |
+| TOUR-15 | GET | `/api/v1/admin/tournaments/{id}` | ADMIN | path `id` | Detail admin tournament |
+| TOUR-16 | GET | `/api/v1/admin/tournaments/{id}/statistics` | ADMIN | path `id` | Statistics |
+| TOUR-17 | GET | `/api/v1/admin/tournaments/{id}/payouts` | ADMIN | path `id` | Payout list |
+| TOUR-18 | GET | `/api/v1/tournaments` | Public | none | List public tournament summaries, khong include races/prizes |
+| TOUR-19 | GET | `/api/v1/tournaments/{id}` | Public | path `id` | Detail public tournament include races/prizes |
+| TOUR-20 | GET | `/api/v1/tournaments/{id}/races` | Public | path `id` | Public race list |
+| TOUR-21 | GET | `/api/v1/tournaments/{id}/leaderboard` | Public | path `id` | Leaderboard |
 
 ### Race Day
 

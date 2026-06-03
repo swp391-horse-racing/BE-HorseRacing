@@ -16,8 +16,14 @@ import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
+import com.minhthien.hoser_backend.repository.BetMarketRepository;
+import com.minhthien.hoser_backend.repository.BetRepository;
+import com.minhthien.hoser_backend.repository.JockeyChallengeResultRepository;
+import com.minhthien.hoser_backend.repository.RaceComplaintRepository;
 import com.minhthien.hoser_backend.repository.RaceParticipantRepository;
+import com.minhthien.hoser_backend.repository.RaceRegistrationRepository;
 import com.minhthien.hoser_backend.repository.RaceRepository;
+import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
@@ -60,6 +66,24 @@ class Phase6TournamentServiceTest {
 
     @Mock
     private RaceRepository raceRepository;
+
+    @Mock
+    private RaceRegistrationRepository raceRegistrationRepository;
+
+    @Mock
+    private BetMarketRepository betMarketRepository;
+
+    @Mock
+    private BetRepository betRepository;
+
+    @Mock
+    private RaceResultRepository raceResultRepository;
+
+    @Mock
+    private RaceComplaintRepository raceComplaintRepository;
+
+    @Mock
+    private JockeyChallengeResultRepository jockeyChallengeResultRepository;
 
     @Test
     void adminCreatesDraftRaceDayWithChallengeConfigAndNoRequiredRaces() {
@@ -218,6 +242,110 @@ class Phase6TournamentServiceTest {
                 race("Late Sprint", 60 * 30, 60 * 31)))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Race schedule must be within tournament time window");
+    }
+
+    @Test
+    void adminDeletesDraftTournamentWithoutActivity() {
+        TournamentServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(tournamentRepository.findById(10L)).thenReturn(Optional.of(tournament));
+
+        service.deleteTournament(9L, 10L);
+
+        verify(tournamentRepository).delete(tournament);
+        ArgumentCaptor<AdminAuditLog> auditCaptor = ArgumentCaptor.forClass(AdminAuditLog.class);
+        verify(adminAuditLogRepository).save(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().getAction()).isEqualTo("TOURNAMENT_DELETED");
+    }
+
+    @Test
+    void deleteTournamentRejectsNonDraftTournament() {
+        TournamentServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        Tournament tournament = tournament(TournamentStatus.PUBLISHED);
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(tournamentRepository.findById(10L)).thenReturn(Optional.of(tournament));
+
+        assertThatThrownBy(() -> service.deleteTournament(9L, 10L))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Only draft tournaments can be deleted");
+
+        verify(tournamentRepository, never()).delete(any());
+    }
+
+    @Test
+    void deleteTournamentRejectsTournamentWithRegistrationActivity() {
+        TournamentServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(tournamentRepository.findById(10L)).thenReturn(Optional.of(tournament));
+        when(raceRegistrationRepository.existsByRaceTournamentId(10L)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.deleteTournament(9L, 10L))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Cannot delete tournament with race activity");
+
+        verify(tournamentRepository, never()).delete(any());
+    }
+
+    @Test
+    void adminDeletesDraftRaceByRaceId() {
+        TournamentServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race race = tournament.getRaces().get(0);
+        race.setId(101L);
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(raceRepository.findById(101L)).thenReturn(Optional.of(race));
+        when(tournamentRepository.save(any(Tournament.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.deleteTournamentRace(9L, 101L);
+
+        assertThat(response.getRaces()).extracting("id").doesNotContain(101L);
+        ArgumentCaptor<AdminAuditLog> auditCaptor = ArgumentCaptor.forClass(AdminAuditLog.class);
+        verify(adminAuditLogRepository).save(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().getAction()).isEqualTo("TOURNAMENT_RACE_DELETED");
+    }
+
+    @Test
+    void deleteRaceRejectsNonDraftRace() {
+        TournamentServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race race = tournament.getRaces().get(0);
+        race.setId(101L);
+        race.setStatus(com.minhthien.hoser_backend.enums.RaceStatus.SCHEDULED);
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(raceRepository.findById(101L)).thenReturn(Optional.of(race));
+
+        assertThatThrownBy(() -> service.deleteTournamentRace(9L, 101L))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Only draft races can be deleted");
+    }
+
+    @Test
+    void deleteRaceRejectsRaceWithRegistrationActivity() {
+        TournamentServiceImpl service = service();
+        User admin = user(9L, "admin", UserRole.ADMIN);
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race race = tournament.getRaces().get(0);
+        race.setId(101L);
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(raceRepository.findById(101L)).thenReturn(Optional.of(race));
+        when(raceRegistrationRepository.existsByRaceId(101L)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.deleteTournamentRace(9L, 101L))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Cannot delete race with registrations or results");
     }
 
     @Test
@@ -488,7 +616,9 @@ class Phase6TournamentServiceTest {
 
     private TournamentServiceImpl service() {
         return new TournamentServiceImpl(tournamentRepository, userRepository, adminAuditLogRepository,
-                cloudinaryUploadService, raceParticipantRepository, raceRepository);
+                cloudinaryUploadService, raceParticipantRepository, raceRepository, raceRegistrationRepository,
+                betMarketRepository, betRepository, raceResultRepository, raceComplaintRepository,
+                jockeyChallengeResultRepository);
     }
 
     private TournamentRequest request() {

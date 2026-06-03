@@ -28,4 +28,6 @@ public interface JockeyInvitationRepository extends JpaRepository<JockeyInvitati
             Long jockeyId,
             Collection<AssignmentStatus> statuses
     );
+
+    boolean existsByHorseId(Long horseId);
 }

@@ -22,6 +22,9 @@ import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.HorseRepository;
 import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
 import com.minhthien.hoser_backend.repository.JockeyProfileRepository;
+import com.minhthien.hoser_backend.repository.RaceParticipantRepository;
+import com.minhthien.hoser_backend.repository.RaceRegistrationRepository;
+import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
@@ -52,6 +55,15 @@ class Phase4Phase5ServiceTest {
 
     @Mock
     private JockeyInvitationRepository jockeyInvitationRepository;
+
+    @Mock
+    private RaceRegistrationRepository raceRegistrationRepository;
+
+    @Mock
+    private RaceParticipantRepository raceParticipantRepository;
+
+    @Mock
+    private RaceResultRepository raceResultRepository;
 
     @Mock
     private UserRepository userRepository;
@@ -189,6 +201,68 @@ class Phase4Phase5ServiceTest {
         assertThat(response.getDocumentUrl()).isEqualTo("https://cdn.example/existing-vet.pdf");
         assertThat(response.getStatus()).isEqualTo(HorseStatus.PENDING);
         assertThat(response.getReviewReason()).isNull();
+    }
+
+    @Test
+    void ownerDeletesPendingHorseWithoutActivity() {
+        HorseServiceImpl horseService = horseService();
+        User owner = user(1L, "owner-one", UserRole.OWNER);
+        Horse horse = horse(100L, owner, HorseStatus.PENDING);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
+        when(horseRepository.findByIdAndOwnerId(100L, 1L)).thenReturn(Optional.of(horse));
+
+        horseService.deleteHorse(1L, 100L);
+
+        verify(horseRepository).delete(horse);
+    }
+
+    @Test
+    void ownerCannotDeleteAnotherOwnersHorse() {
+        HorseServiceImpl horseService = horseService();
+        User owner = user(1L, "owner-one", UserRole.OWNER);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
+        when(horseRepository.findByIdAndOwnerId(100L, 1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> horseService.deleteHorse(1L, 100L))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Horse not found");
+
+        verify(horseRepository, never()).delete(any());
+    }
+
+    @Test
+    void ownerCannotDeleteApprovedHorse() {
+        HorseServiceImpl horseService = horseService();
+        User owner = user(1L, "owner-one", UserRole.OWNER);
+        Horse horse = horse(100L, owner, HorseStatus.APPROVED);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
+        when(horseRepository.findByIdAndOwnerId(100L, 1L)).thenReturn(Optional.of(horse));
+
+        assertThatThrownBy(() -> horseService.deleteHorse(1L, 100L))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Only pending or rejected horses can be deleted");
+
+        verify(horseRepository, never()).delete(any());
+    }
+
+    @Test
+    void ownerCannotDeleteHorseWithInvitationActivity() {
+        HorseServiceImpl horseService = horseService();
+        User owner = user(1L, "owner-one", UserRole.OWNER);
+        Horse horse = horse(100L, owner, HorseStatus.REJECTED);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
+        when(horseRepository.findByIdAndOwnerId(100L, 1L)).thenReturn(Optional.of(horse));
+        when(jockeyInvitationRepository.existsByHorseId(100L)).thenReturn(true);
+
+        assertThatThrownBy(() -> horseService.deleteHorse(1L, 100L))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Cannot delete horse with activity history");
+
+        verify(horseRepository, never()).delete(any());
     }
 
     @Test
@@ -585,7 +659,9 @@ class Phase4Phase5ServiceTest {
     }
 
     private HorseServiceImpl horseService() {
-        return new HorseServiceImpl(horseRepository, userRepository, cloudinaryUploadService);
+        return new HorseServiceImpl(horseRepository, userRepository, cloudinaryUploadService,
+                jockeyInvitationRepository, raceRegistrationRepository, raceParticipantRepository,
+                raceResultRepository);
     }
 
     private JockeyProfileServiceImpl jockeyProfileService() {

@@ -357,6 +357,8 @@ class AllApiSmokeTest {
                 .param("gender", "MALE")
                 .param("color", "Bay")
                 .header("Authorization", bearer(ownerToken)));
+        assertNonServerError(delete("/api/v1/owner/horses/999999")
+                .header("Authorization", bearer(ownerToken)));
         assertOk(get("/api/v1/admin/horses").header("Authorization", bearer(adminToken)));
         assertOk(put("/api/v1/admin/horses/" + horseId + "/approve")
                 .header("Authorization", bearer(adminToken)));
@@ -465,6 +467,10 @@ class AllApiSmokeTest {
                   "prizes": []
                 }
                 """));
+        assertNonServerError(delete("/api/v1/admin/races/999999")
+                .header("Authorization", bearer(adminToken)));
+        assertNonServerError(delete("/api/v1/admin/tournaments/999999")
+                .header("Authorization", bearer(adminToken)));
     }
 
     private void exerciseRaceSchedulingApis() throws Exception {

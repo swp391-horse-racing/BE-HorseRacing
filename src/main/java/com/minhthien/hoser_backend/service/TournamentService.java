@@ -21,6 +21,8 @@ public interface TournamentService {
     TournamentResponse updateTournament(Long adminId, Long tournamentId, TournamentUpdateRequest request,
                                         MultipartFile banner);
 
+    void deleteTournament(Long adminId, Long tournamentId);
+
     String uploadTournamentBanner(Long adminId, MultipartFile banner);
 
     TournamentResponse updateTournamentBanner(Long adminId, Long tournamentId, MultipartFile banner);
@@ -28,6 +30,8 @@ public interface TournamentService {
     TournamentResponse addTournamentRace(Long adminId, Long tournamentId, RaceRequest request);
 
     TournamentResponse updateTournamentRace(Long adminId, Long raceId, RaceRequest request);
+
+    TournamentResponse deleteTournamentRace(Long adminId, Long raceId);
 
     TournamentResponse replaceTournamentRaces(Long adminId, Long tournamentId, List<RaceRequest> requests);
 

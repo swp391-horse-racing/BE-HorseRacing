@@ -30,4 +30,8 @@ public interface RaceComplaintRepository extends JpaRepository<RaceComplaint, Lo
     long countByRaceTournamentIdAndStatus(Long tournamentId, RaceComplaintStatus status);
 
     long countByStatus(RaceComplaintStatus status);
+
+    boolean existsByRaceId(Long raceId);
+
+    boolean existsByRaceTournamentId(Long tournamentId);
 }

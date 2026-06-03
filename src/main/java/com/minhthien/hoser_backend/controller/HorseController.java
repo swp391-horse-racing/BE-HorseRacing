@@ -69,6 +69,14 @@ public class HorseController {
                 horseService.updateHorse(currentUser.getId(), id, request, request.getImage(), request.getDocument())));
     }
 
+    @DeleteMapping("/owner/horses/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteHorse(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        horseService.deleteHorse(currentUser.getId(), id);
+        return ResponseEntity.ok(ApiResponse.success("Horse deleted", null));
+    }
+
     @GetMapping("/admin/horses")
     public ResponseEntity<ApiResponse<List<HorseResponse>>> getAdminHorses(
             @RequestParam(required = false, defaultValue = "PENDING") HorseStatus status) {

@@ -71,6 +71,14 @@ public class TournamentController {
                 tournamentService.updateTournament(currentUser.getId(), id, request)));
     }
 
+    @DeleteMapping("/admin/tournaments/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteTournament(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        tournamentService.deleteTournament(currentUser.getId(), id);
+        return ResponseEntity.ok(ApiResponse.success("Tournament deleted", null));
+    }
+
     @PostMapping("/admin/tournaments/{id}/races")
     public ResponseEntity<ApiResponse<TournamentResponse>> addTournamentRace(
             @AuthenticationPrincipal User currentUser,
@@ -87,6 +95,14 @@ public class TournamentController {
             @Valid @RequestBody RaceRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Tournament race updated",
                 tournamentService.updateTournamentRace(currentUser.getId(), raceId, request)));
+    }
+
+    @DeleteMapping("/admin/races/{raceId}")
+    public ResponseEntity<ApiResponse<TournamentResponse>> deleteTournamentRace(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long raceId) {
+        return ResponseEntity.ok(ApiResponse.success("Tournament race deleted",
+                tournamentService.deleteTournamentRace(currentUser.getId(), raceId)));
     }
 
     @PutMapping("/admin/tournaments/{id}/races")

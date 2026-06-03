@@ -12,6 +12,10 @@ import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.HorseRepository;
+import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
+import com.minhthien.hoser_backend.repository.RaceParticipantRepository;
+import com.minhthien.hoser_backend.repository.RaceRegistrationRepository;
+import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import com.minhthien.hoser_backend.service.HorseService;
@@ -32,6 +36,10 @@ public class HorseServiceImpl implements HorseService {
     private final HorseRepository horseRepository;
     private final UserRepository userRepository;
     private final CloudinaryUploadService cloudinaryUploadService;
+    private final JockeyInvitationRepository jockeyInvitationRepository;
+    private final RaceRegistrationRepository raceRegistrationRepository;
+    private final RaceParticipantRepository raceParticipantRepository;
+    private final RaceResultRepository raceResultRepository;
 
     @Override
     @Transactional
@@ -114,6 +122,22 @@ public class HorseServiceImpl implements HorseService {
         horse.setReviewedAt(null);
         horse.setUpdatedBy(owner.getUsername());
         return mapToResponse(horseRepository.save(horse));
+    }
+
+    @Override
+    @Transactional
+    public void deleteHorse(Long ownerId, Long horseId) {
+        User owner = requireUser(ownerId);
+        requireRole(owner, UserRole.OWNER, "Only owners can manage horses");
+        Horse horse = horseRepository.findByIdAndOwnerId(horseId, ownerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Horse", "id", horseId));
+        if (horse.getStatus() != HorseStatus.PENDING && horse.getStatus() != HorseStatus.REJECTED) {
+            throw new BadRequestException("Only pending or rejected horses can be deleted");
+        }
+        if (hasHorseActivity(horseId)) {
+            throw new BadRequestException("Cannot delete horse with activity history");
+        }
+        horseRepository.delete(horse);
     }
 
     @Override
@@ -225,6 +249,13 @@ public class HorseServiceImpl implements HorseService {
     private Horse requireHorse(Long horseId) {
         return horseRepository.findById(horseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Horse", "id", horseId));
+    }
+
+    private boolean hasHorseActivity(Long horseId) {
+        return jockeyInvitationRepository.existsByHorseId(horseId)
+                || raceRegistrationRepository.existsByHorseId(horseId)
+                || raceParticipantRepository.existsByHorseId(horseId)
+                || raceResultRepository.existsByHorseId(horseId);
     }
 
     private User requireUser(Long userId) {

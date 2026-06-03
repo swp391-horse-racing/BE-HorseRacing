@@ -41,4 +41,8 @@ public interface RaceResultRepository extends JpaRepository<RaceResult, Long> {
     Optional<RaceResult> findByParticipantId(Long participantId);
 
     boolean existsByRaceId(Long raceId);
+
+    boolean existsByRaceTournamentId(Long tournamentId);
+
+    boolean existsByHorseId(Long horseId);
 }

@@ -25,6 +25,12 @@ public interface RaceParticipantRepository extends JpaRepository<RaceParticipant
 
     boolean existsByRaceIdAndGateNumberAndIdNot(Long raceId, Integer gateNumber, Long id);
 
+    boolean existsByRaceId(Long raceId);
+
+    boolean existsByRaceTournamentId(Long tournamentId);
+
+    boolean existsByHorseId(Long horseId);
+
     long countByRaceTournamentId(Long tournamentId);
 
     @Query("""

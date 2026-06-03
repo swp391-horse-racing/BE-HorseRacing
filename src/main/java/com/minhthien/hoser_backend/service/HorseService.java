@@ -22,6 +22,8 @@ public interface HorseService {
 
     HorseResponse updateHorse(Long ownerId, Long horseId, HorseUpdateRequest request, MultipartFile image, MultipartFile document);
 
+    void deleteHorse(Long ownerId, Long horseId);
+
     List<HorseResponse> getAdminHorses(HorseStatus status);
 
     HorseResponse approveHorse(Long horseId, Long adminId);

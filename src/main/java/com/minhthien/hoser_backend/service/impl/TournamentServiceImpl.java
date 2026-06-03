@@ -23,8 +23,14 @@ import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
+import com.minhthien.hoser_backend.repository.BetMarketRepository;
+import com.minhthien.hoser_backend.repository.BetRepository;
+import com.minhthien.hoser_backend.repository.JockeyChallengeResultRepository;
+import com.minhthien.hoser_backend.repository.RaceComplaintRepository;
 import com.minhthien.hoser_backend.repository.RaceParticipantRepository;
+import com.minhthien.hoser_backend.repository.RaceRegistrationRepository;
 import com.minhthien.hoser_backend.repository.RaceRepository;
+import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
@@ -58,6 +64,12 @@ public class TournamentServiceImpl implements TournamentService {
     private final CloudinaryUploadService cloudinaryUploadService;
     private final RaceParticipantRepository raceParticipantRepository;
     private final RaceRepository raceRepository;
+    private final RaceRegistrationRepository raceRegistrationRepository;
+    private final BetMarketRepository betMarketRepository;
+    private final BetRepository betRepository;
+    private final RaceResultRepository raceResultRepository;
+    private final RaceComplaintRepository raceComplaintRepository;
+    private final JockeyChallengeResultRepository jockeyChallengeResultRepository;
 
     @Override
     @Transactional
@@ -147,6 +159,28 @@ public class TournamentServiceImpl implements TournamentService {
             "publicTournamentDetails",
             "publicTournamentRaces"
     }, allEntries = true)
+    public void deleteTournament(Long adminId, Long tournamentId) {
+        User admin = requireAdmin(adminId);
+        Tournament tournament = requireTournament(tournamentId);
+        if (tournament.getStatus() != TournamentStatus.DRAFT) {
+            throw new BadRequestException("Only draft tournaments can be deleted");
+        }
+        if (hasTournamentActivity(tournamentId)) {
+            throw new BadRequestException("Cannot delete tournament with race activity");
+        }
+        recordAudit(admin, "TOURNAMENT_DELETED", tournament, "Tournament deleted");
+        tournamentRepository.delete(tournament);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = {
+            "adminTournamentSummaries",
+            "publicTournamentSummaries",
+            "adminTournamentDetails",
+            "publicTournamentDetails",
+            "publicTournamentRaces"
+    }, allEntries = true)
     public TournamentResponse addTournamentRace(Long adminId, Long tournamentId, RaceRequest request) {
         User admin = requireAdmin(adminId);
         if (request == null) {
@@ -190,6 +224,34 @@ public class TournamentServiceImpl implements TournamentService {
         validateConfiguredRaces(tournament);
         Tournament saved = tournamentRepository.save(tournament);
         recordAudit(admin, "TOURNAMENT_RACE_UPDATED", saved, "Race updated: " + raceId);
+        return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = {
+            "adminTournamentSummaries",
+            "publicTournamentSummaries",
+            "adminTournamentDetails",
+            "publicTournamentDetails",
+            "publicTournamentRaces"
+    }, allEntries = true)
+    public TournamentResponse deleteTournamentRace(Long adminId, Long raceId) {
+        User admin = requireAdmin(adminId);
+        Race race = requireRace(raceId);
+        Tournament tournament = race.getTournament();
+        requireConfigEditable(tournament);
+        if (race.getStatus() != RaceStatus.DRAFT) {
+            throw new BadRequestException("Only draft races can be deleted");
+        }
+        if (hasRaceActivity(raceId)) {
+            throw new BadRequestException("Cannot delete race with registrations or results");
+        }
+
+        tournament.getRaces().removeIf(existing -> existing.getId() != null && existing.getId().equals(raceId));
+        tournament.setUpdatedBy(admin.getUsername());
+        Tournament saved = tournamentRepository.save(tournament);
+        recordAudit(admin, "TOURNAMENT_RACE_DELETED", saved, "Race deleted: " + raceId);
         return mapToResponse(saved);
     }
 
@@ -707,6 +769,25 @@ public class TournamentServiceImpl implements TournamentService {
     private Race requireRace(Long raceId) {
         return raceRepository.findById(raceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Race", "id", raceId));
+    }
+
+    private boolean hasTournamentActivity(Long tournamentId) {
+        return raceRegistrationRepository.existsByRaceTournamentId(tournamentId)
+                || raceParticipantRepository.existsByRaceTournamentId(tournamentId)
+                || betMarketRepository.existsByRaceTournamentId(tournamentId)
+                || betRepository.existsByRaceTournamentId(tournamentId)
+                || raceResultRepository.existsByRaceTournamentId(tournamentId)
+                || raceComplaintRepository.existsByRaceTournamentId(tournamentId)
+                || jockeyChallengeResultRepository.existsByTournamentId(tournamentId);
+    }
+
+    private boolean hasRaceActivity(Long raceId) {
+        return raceRegistrationRepository.existsByRaceId(raceId)
+                || raceParticipantRepository.existsByRaceId(raceId)
+                || betMarketRepository.existsByRaceId(raceId)
+                || betRepository.existsByRaceId(raceId)
+                || raceResultRepository.existsByRaceId(raceId)
+                || raceComplaintRepository.existsByRaceId(raceId);
     }
 
     private void requireConfigEditable(Tournament tournament) {

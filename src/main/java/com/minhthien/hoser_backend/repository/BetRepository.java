@@ -26,6 +26,10 @@ public interface BetRepository extends JpaRepository<Bet, Long> {
             "participant.jockey", "user"})
     List<Bet> findByRaceIdAndStatusIn(Long raceId, Collection<BetStatus> statuses);
 
+    boolean existsByRaceId(Long raceId);
+
+    boolean existsByRaceTournamentId(Long tournamentId);
+
     @Query("""
             select b.status, count(b)
             from Bet b
