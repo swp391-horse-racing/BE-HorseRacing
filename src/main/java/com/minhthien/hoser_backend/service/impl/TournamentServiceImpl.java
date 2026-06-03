@@ -328,6 +328,9 @@ public class TournamentServiceImpl implements TournamentService {
         if (status == TournamentStatus.PUBLISHED && tournament.getPublishedAt() == null) {
             tournament.setPublishedAt(LocalDateTime.now());
         }
+        if (status == TournamentStatus.PUBLISHED) {
+            scheduleDraftRaces(tournament);
+        }
         if (status == TournamentStatus.OPEN_REGISTRATION && tournament.getOpenedRegistrationAt() == null) {
             tournament.setOpenedRegistrationAt(LocalDateTime.now());
         }
@@ -517,11 +520,20 @@ public class TournamentServiceImpl implements TournamentService {
                 .maxParticipants(request.getMaxParticipants())
                 .entryFee(defaultZero(request.getEntryFee()))
                 .referee(request.getRefereeId() == null ? null : requireReferee(request.getRefereeId()))
-                .status(RaceStatus.SCHEDULED)
+                .status(RaceStatus.DRAFT)
                 .note(request.getNote())
                 .build();
         race.replacePrizes(mapRacePrizes(request.getPrizes()));
         return race;
+    }
+
+    private void scheduleDraftRaces(Tournament tournament) {
+        if (tournament.getRaces() == null) {
+            return;
+        }
+        tournament.getRaces().stream()
+                .filter(race -> race.getStatus() == RaceStatus.DRAFT)
+                .forEach(race -> race.setStatus(RaceStatus.SCHEDULED));
     }
 
     private void applyRaceRequest(Race race, RaceRequest request) {
@@ -534,7 +546,7 @@ public class TournamentServiceImpl implements TournamentService {
         race.setEntryFee(defaultZero(request.getEntryFee()));
         race.setReferee(request.getRefereeId() == null ? null : requireReferee(request.getRefereeId()));
         race.setNote(request.getNote());
-        race.replacePrizes(mapRacePrizes(request.getPrizes()));
+        race.syncPrizes(mapRacePrizes(request.getPrizes()));
     }
 
     private List<RacePrize> mapRacePrizes(List<RacePrizeRequest> requests) {

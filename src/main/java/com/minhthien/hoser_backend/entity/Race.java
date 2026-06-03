@@ -10,7 +10,10 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 @Entity
 @Table(
@@ -122,5 +125,34 @@ public class Race {
                 prizes.add(prize);
             });
         }
+    }
+
+    public void syncPrizes(List<RacePrize> newPrizes) {
+        Set<Integer> requestedRanks = new HashSet<>();
+        if (newPrizes != null) {
+            newPrizes.forEach(newPrize -> {
+                if (!requestedRanks.add(newPrize.getRank())) {
+                    newPrize.setRace(this);
+                    prizes.add(newPrize);
+                    return;
+                }
+
+                RacePrize existingPrize = prizes.stream()
+                        .filter(prize -> Objects.equals(prize.getRank(), newPrize.getRank()))
+                        .findFirst()
+                        .orElse(null);
+
+                if (existingPrize == null) {
+                    newPrize.setRace(this);
+                    prizes.add(newPrize);
+                    return;
+                }
+
+                existingPrize.setAmount(newPrize.getAmount());
+                existingPrize.setItemName(newPrize.getItemName());
+                existingPrize.setNote(newPrize.getNote());
+            });
+        }
+        prizes.removeIf(prize -> !requestedRanks.contains(prize.getRank()));
     }
 }
