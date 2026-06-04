@@ -13,7 +13,6 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class FinanceSettingsResponse {
-    private BigDecimal jockeyHireTaxPercent;
     private BigDecimal betWinningTaxPercent;
     private Boolean bettingEnabled;
     private LocalDateTime createdAt;

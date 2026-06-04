@@ -7,7 +7,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -55,22 +54,6 @@ public class JockeyInvitation {
 
     @Column(length = 1000)
     private String responseNote;
-
-    @Column(precision = 19, scale = 2)
-    private BigDecimal hirePrice;
-
-    @Column(precision = 5, scale = 2)
-    private BigDecimal taxPercent;
-
-    @Column(precision = 19, scale = 2)
-    private BigDecimal taxAmount;
-
-    @Column(precision = 19, scale = 2)
-    private BigDecimal jockeyPayoutAmount;
-
-    private LocalDateTime fundsHeldAt;
-
-    private LocalDateTime paidAt;
 
     private LocalDateTime respondedAt;
 

@@ -70,7 +70,6 @@ public class HorseTeamServiceImpl implements HorseTeamService {
                 .jockeyUsername(invitation.getJockey().getUsername())
                 .jockeyProfileId(invitation.getJockeyProfile().getId())
                 .jockeyFullName(invitation.getJockeyProfile().getUser().getFullName())
-                .hirePrice(invitation.getHirePrice())
                 .acceptedAt(invitation.getRespondedAt())
                 .build();
     }

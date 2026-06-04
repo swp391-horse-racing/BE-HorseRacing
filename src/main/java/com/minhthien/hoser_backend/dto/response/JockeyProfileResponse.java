@@ -22,7 +22,6 @@ public class JockeyProfileResponse {
     private Integer experienceYears;
     private BigDecimal heightCm;
     private BigDecimal weightKg;
-    private BigDecimal hirePrice;
     private String bio;
     private String awards;
     private String achievements;

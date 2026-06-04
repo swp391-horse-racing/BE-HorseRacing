@@ -6,7 +6,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -25,12 +24,6 @@ public class JockeyInvitationResponse {
     private AssignmentStatus status;
     private String message;
     private String responseNote;
-    private BigDecimal hirePrice;
-    private BigDecimal taxPercent;
-    private BigDecimal taxAmount;
-    private BigDecimal jockeyPayoutAmount;
-    private LocalDateTime fundsHeldAt;
-    private LocalDateTime paidAt;
     private LocalDateTime respondedAt;
     private LocalDateTime cancelledAt;
     private LocalDateTime createdAt;

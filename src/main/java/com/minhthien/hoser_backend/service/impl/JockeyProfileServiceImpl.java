@@ -150,12 +150,10 @@ public class JockeyProfileServiceImpl implements JockeyProfileService {
     }
 
     private void applyRequest(JockeyProfile profile, JockeyProfileRequest request) {
-        requireHirePrice(request.getHirePrice());
         profile.setLicenseNumber(request.getLicenseNumber());
         profile.setExperienceYears(request.getExperienceYears());
         profile.setHeightCm(request.getHeightCm());
         profile.setWeightKg(request.getWeightKg());
-        profile.setHirePrice(request.getHirePrice());
         profile.setBio(request.getBio());
         profile.setAwards(request.getAwards());
         profile.setSpecialties(request.getSpecialties());
@@ -173,10 +171,6 @@ public class JockeyProfileServiceImpl implements JockeyProfileService {
         }
         if (request.getWeightKg() != null) {
             profile.setWeightKg(request.getWeightKg());
-        }
-        if (request.getHirePrice() != null) {
-            requireHirePrice(request.getHirePrice());
-            profile.setHirePrice(request.getHirePrice());
         }
         if (request.getBio() != null) {
             profile.setBio(request.getBio());
@@ -214,12 +208,6 @@ public class JockeyProfileServiceImpl implements JockeyProfileService {
     private void requireUniqueLicenseNumber(String licenseNumber, Long jockeyId) {
         if (jockeyProfileRepository.existsByLicenseNumberAndUserIdNot(licenseNumber, jockeyId)) {
             throw new DuplicateResourceException("License number already exists");
-        }
-    }
-
-    private void requireHirePrice(java.math.BigDecimal hirePrice) {
-        if (hirePrice == null || hirePrice.compareTo(java.math.BigDecimal.ZERO) <= 0) {
-            throw new BadRequestException("Hire price must be greater than zero");
         }
     }
 
@@ -274,7 +262,6 @@ public class JockeyProfileServiceImpl implements JockeyProfileService {
                 .experienceYears(profile.getExperienceYears())
                 .heightCm(profile.getHeightCm())
                 .weightKg(profile.getWeightKg())
-                .hirePrice(profile.getHirePrice())
                 .bio(profile.getBio())
                 .awards(profile.getAwards())
                 .achievements(profile.getAchievements())

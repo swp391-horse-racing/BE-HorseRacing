@@ -12,8 +12,6 @@ public interface FinanceSettingsService {
 
     FinanceSettingsResponse updateFinanceSettings(FinanceSettingsRequest request, String updatedBy);
 
-    BigDecimal getJockeyHireTaxPercent();
-
     BigDecimal getBetWinningTaxPercent();
 
     boolean isBettingEnabled();

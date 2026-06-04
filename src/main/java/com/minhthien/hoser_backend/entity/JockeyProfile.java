@@ -46,9 +46,6 @@ public class JockeyProfile {
     @Column(precision = 8, scale = 2)
     private BigDecimal weightKg;
 
-    @Column(precision = 19, scale = 2)
-    private BigDecimal hirePrice;
-
     @Column(length = 1000)
     private String bio;
 

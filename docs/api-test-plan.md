@@ -93,7 +93,7 @@ Kiem tra chung cho moi API:
 
 Owner multipart: `stableName`, `experienceYears`, `address`, `bio`, `verificationDocument`.
 
-Jockey multipart: `licenseNumber`, `experienceYears`, `heightCm`, `weightKg`, `hirePrice`, `bio`, `awards`, `specialties`, `avatar`, `achievements`, `licenseDocument`.
+Jockey multipart: `licenseNumber`, `experienceYears`, `heightCm`, `weightKg`, `bio`, `awards`, `specialties`, `avatar`, `achievements`, `licenseDocument`.
 
 Spectator JSON:
 
@@ -350,8 +350,8 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 | ADM-07 | PUT | `/api/v1/admin/users/{userId}/role` | ADMIN | `{ "role": "OWNER" }` | Role duoc cap nhat |
 | ADM-08 | GET | `/api/v1/admin/payout-debts` | ADMIN | none | Tong hop no payout |
 | AUD-01 | GET | `/api/v1/admin/audit-logs` | ADMIN | query `referenceType`, `referenceId` optional | List audit log |
-| FIN-01 | GET | `/api/v1/admin/finance-settings` | ADMIN | none | Tra setting hien tai, gom `jockeyHireTaxPercent`, `betWinningTaxPercent`, `bettingEnabled` |
-| FIN-02 | PUT | `/api/v1/admin/finance-settings` | ADMIN | `{ "jockeyHireTaxPercent": 10.00, "betWinningTaxPercent": 10.00, "bettingEnabled": true }` | Setting doi |
+| FIN-01 | GET | `/api/v1/admin/finance-settings` | ADMIN | none | Tra setting hien tai, gom `betWinningTaxPercent`, `bettingEnabled` |
+| FIN-02 | PUT | `/api/v1/admin/finance-settings` | ADMIN | `{ "betWinningTaxPercent": 10.00, "bettingEnabled": true }` | Setting doi |
 | FIN-03 | GET | `/api/v1/admin/finance-settings/race-prize-shares` | ADMIN | none | Tra cau hinh chia giai |
 | FIN-04 | PUT | `/api/v1/admin/finance-settings/race-prize-shares` | ADMIN | `RacePrizeShareSettingsRequest` | Cap nhat ty le chia giai |
 

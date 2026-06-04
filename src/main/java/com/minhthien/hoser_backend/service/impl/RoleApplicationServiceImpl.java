@@ -31,7 +31,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -86,7 +85,6 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
         User user = requireUser(userId);
         requireCanSubmit(user, UserRole.JOCKEY);
         requireUniqueJockeyLicense(request.getLicenseNumber(), userId);
-        requireHirePrice(request.getHirePrice());
 
         JockeyProfile profile = jockeyProfileRepository.findByUserId(userId)
                 .orElseGet(() -> JockeyProfile.builder()
@@ -97,7 +95,6 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
         profile.setExperienceYears(request.getExperienceYears());
         profile.setHeightCm(request.getHeightCm());
         profile.setWeightKg(request.getWeightKg());
-        profile.setHirePrice(request.getHirePrice());
         profile.setBio(request.getBio());
         profile.setAwards(request.getAwards());
         profile.setSpecialties(request.getSpecialties());
@@ -567,12 +564,6 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
         }
     }
 
-    private void requireHirePrice(BigDecimal hirePrice) {
-        if (hirePrice == null || hirePrice.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BadRequestException("Hire price must be greater than zero");
-        }
-    }
-
     private JockeyStatus toJockeyStatus(RoleApprovalStatus status) {
         if (status == null) {
             return null;
@@ -687,7 +678,6 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
                 .experienceYears(profile.getExperienceYears())
                 .heightCm(profile.getHeightCm())
                 .weightKg(profile.getWeightKg())
-                .hirePrice(profile.getHirePrice())
                 .bio(profile.getBio())
                 .awards(profile.getAwards())
                 .achievements(profile.getAchievements())

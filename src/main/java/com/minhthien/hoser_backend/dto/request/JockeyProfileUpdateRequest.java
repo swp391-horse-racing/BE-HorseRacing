@@ -1,7 +1,6 @@
 package com.minhthien.hoser_backend.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -20,9 +19,6 @@ public class JockeyProfileUpdateRequest {
     private BigDecimal heightCm;
 
     private BigDecimal weightKg;
-
-    @DecimalMin(value = "0.01", message = "Hire price must be greater than zero")
-    private BigDecimal hirePrice;
 
     @Size(max = 1000, message = "Bio must be at most 1000 characters")
     private String bio;

@@ -20,17 +20,13 @@ import com.minhthien.hoser_backend.repository.HorseRepository;
 import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
 import com.minhthien.hoser_backend.repository.JockeyProfileRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
-import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.JockeyInvitationService;
 import com.minhthien.hoser_backend.service.NotificationService;
-import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
@@ -39,7 +35,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class JockeyInvitationServiceImpl implements JockeyInvitationService {
     private static final String JOCKEY_INVITATION_REFERENCE = "JOCKEY_INVITATION";
-    private static final BigDecimal ONE_HUNDRED = new BigDecimal("100.00");
 
     private static final Set<AssignmentStatus> ACTIVE_STATUSES = Set.of(
             AssignmentStatus.PENDING,
@@ -50,8 +45,6 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
     private final HorseRepository horseRepository;
     private final JockeyProfileRepository jockeyProfileRepository;
     private final UserRepository userRepository;
-    private final WalletService walletService;
-    private final FinanceSettingsService financeSettingsService;
     private NotificationService notificationService;
 
     @Autowired(required = false)
@@ -82,11 +75,6 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
             throw new DuplicateResourceException("Active invitation already exists for this horse and jockey");
         }
 
-        BigDecimal hirePrice = requireHirePrice(profile);
-        BigDecimal taxPercent = financeSettingsService.getJockeyHireTaxPercent();
-        BigDecimal taxAmount = calculateTaxAmount(hirePrice, taxPercent);
-        BigDecimal jockeyPayoutAmount = hirePrice.subtract(taxAmount);
-
         JockeyInvitation invitation = JockeyInvitation.builder()
                 .owner(owner)
                 .jockey(jockey)
@@ -94,16 +82,9 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
                 .jockeyProfile(profile)
                 .status(AssignmentStatus.PENDING)
                 .message(request.getMessage())
-                .hirePrice(hirePrice)
-                .taxPercent(taxPercent)
-                .taxAmount(taxAmount)
-                .jockeyPayoutAmount(jockeyPayoutAmount)
                 .createdBy(owner.getUsername())
                 .updatedBy(owner.getUsername())
                 .build();
-        invitation = jockeyInvitationRepository.save(invitation);
-        holdHireFee(invitation);
-        invitation.setFundsHeldAt(LocalDateTime.now());
         invitation = jockeyInvitationRepository.save(invitation);
         notify(invitation.getJockey(), NotificationType.INVITATION_CREATED,
                 "New jockey invitation",
@@ -158,7 +139,6 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
             throw new BadRequestException("Only pending invitations can be cancelled");
         }
 
-        releaseHireFee(invitation, "Jockey invitation cancelled");
         invitation.setStatus(AssignmentStatus.CANCELLED);
         invitation.setCancelledAt(LocalDateTime.now());
         invitation.setUpdatedBy(owner.getUsername());
@@ -200,11 +180,9 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         requirePending(invitation);
         requireStillEligible(invitation);
 
-        captureAndDistributeHireFee(invitation);
         invitation.setStatus(AssignmentStatus.ACCEPTED);
         invitation.setResponseNote(resolveNote(request));
         invitation.setRespondedAt(LocalDateTime.now());
-        invitation.setPaidAt(LocalDateTime.now());
         invitation.setUpdatedBy(jockey.getUsername());
         invitation = jockeyInvitationRepository.save(invitation);
         notify(invitation.getOwner(), NotificationType.INVITATION_ACCEPTED,
@@ -223,7 +201,6 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         requireInvitationOwner(invitation, jockeyId);
         requirePending(invitation);
 
-        releaseHireFee(invitation, "Jockey invitation rejected");
         invitation.setStatus(AssignmentStatus.REJECTED);
         invitation.setResponseNote(resolveNote(request));
         invitation.setRespondedAt(LocalDateTime.now());
@@ -272,102 +249,6 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         return request == null ? null : request.getNote();
     }
 
-    private BigDecimal requireHirePrice(JockeyProfile profile) {
-        BigDecimal hirePrice = profile.getHirePrice();
-        if (hirePrice == null || hirePrice.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BadRequestException("Jockey hire price must be configured before invitation");
-        }
-        return hirePrice;
-    }
-
-    private BigDecimal calculateTaxAmount(BigDecimal hirePrice, BigDecimal taxPercent) {
-        return hirePrice.multiply(taxPercent)
-                .divide(ONE_HUNDRED, 2, RoundingMode.HALF_UP);
-    }
-
-    private void holdHireFee(JockeyInvitation invitation) {
-        walletService.hold(
-                invitation.getOwner().getId(),
-                invitation.getHirePrice(),
-                com.minhthien.hoser_backend.enums.WalletTransactionType.JOCKEY_HIRE,
-                JOCKEY_INVITATION_REFERENCE,
-                invitation.getId().toString(),
-                idempotencyKey(invitation, "hold"),
-                hireMetadata(invitation),
-                "Hold jockey hire fee"
-        );
-    }
-
-    private void releaseHireFee(JockeyInvitation invitation, String note) {
-        requireHeldHireFee(invitation);
-        walletService.release(
-                invitation.getOwner().getId(),
-                invitation.getHirePrice(),
-                com.minhthien.hoser_backend.enums.WalletTransactionType.JOCKEY_HIRE,
-                JOCKEY_INVITATION_REFERENCE,
-                invitation.getId().toString(),
-                idempotencyKey(invitation, "release"),
-                hireMetadata(invitation),
-                note
-        );
-    }
-
-    private void captureAndDistributeHireFee(JockeyInvitation invitation) {
-        requireHeldHireFee(invitation);
-        walletService.capture(
-                invitation.getOwner().getId(),
-                invitation.getHirePrice(),
-                com.minhthien.hoser_backend.enums.WalletTransactionType.JOCKEY_HIRE,
-                JOCKEY_INVITATION_REFERENCE,
-                invitation.getId().toString(),
-                idempotencyKey(invitation, "capture"),
-                hireMetadata(invitation),
-                "Capture jockey hire fee"
-        );
-        walletService.credit(
-                invitation.getJockey().getId(),
-                invitation.getJockeyPayoutAmount(),
-                com.minhthien.hoser_backend.enums.WalletTransactionType.JOCKEY_PAYOUT,
-                JOCKEY_INVITATION_REFERENCE,
-                invitation.getId().toString(),
-                idempotencyKey(invitation, "jockey-payout"),
-                hireMetadata(invitation),
-                "Jockey hire payout"
-        );
-        if (invitation.getTaxAmount() != null && invitation.getTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
-            walletService.creditAdmin(
-                    invitation.getTaxAmount(),
-                    com.minhthien.hoser_backend.enums.WalletTransactionType.JOCKEY_HIRE_TAX,
-                    JOCKEY_INVITATION_REFERENCE,
-                    invitation.getId().toString(),
-                    idempotencyKey(invitation, "admin-tax"),
-                    hireMetadata(invitation),
-                    "Jockey hire tax"
-            );
-        }
-    }
-
-    private void requireHeldHireFee(JockeyInvitation invitation) {
-        if (invitation.getFundsHeldAt() == null || invitation.getHirePrice() == null
-                || invitation.getHirePrice().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BadRequestException("Jockey invitation has no held hire payment");
-        }
-        if (invitation.getPaidAt() != null) {
-            throw new BadRequestException("Jockey invitation has already been paid");
-        }
-    }
-
-    private String idempotencyKey(JockeyInvitation invitation, String action) {
-        return "jockey-invitation:" + invitation.getId() + ":" + action;
-    }
-
-    private String hireMetadata(JockeyInvitation invitation) {
-        return "hirePrice=" + invitation.getHirePrice()
-                + ";taxPercent=" + invitation.getTaxPercent()
-                + ";taxAmount=" + invitation.getTaxAmount()
-                + ";jockeyPayoutAmount=" + invitation.getJockeyPayoutAmount();
-    }
-
     private JockeyInvitation requireInvitation(Long invitationId) {
         return jockeyInvitationRepository.findById(invitationId)
                 .orElseThrow(() -> new ResourceNotFoundException("JockeyInvitation", "id", invitationId));
@@ -397,12 +278,6 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
                 .status(invitation.getStatus())
                 .message(invitation.getMessage())
                 .responseNote(invitation.getResponseNote())
-                .hirePrice(invitation.getHirePrice())
-                .taxPercent(invitation.getTaxPercent())
-                .taxAmount(invitation.getTaxAmount())
-                .jockeyPayoutAmount(invitation.getJockeyPayoutAmount())
-                .fundsHeldAt(invitation.getFundsHeldAt())
-                .paidAt(invitation.getPaidAt())
                 .respondedAt(invitation.getRespondedAt())
                 .cancelledAt(invitation.getCancelledAt())
                 .createdAt(invitation.getCreatedAt())
