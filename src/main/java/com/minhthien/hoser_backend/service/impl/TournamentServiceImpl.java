@@ -328,7 +328,7 @@ public class TournamentServiceImpl implements TournamentService {
         if (status == TournamentStatus.PUBLISHED && tournament.getPublishedAt() == null) {
             tournament.setPublishedAt(LocalDateTime.now());
         }
-        syncPreRaceStatuses(tournament, status);
+        TournamentStatusSync.syncPreRaceStatuses(tournament, status);
         if (status == TournamentStatus.OPEN_REGISTRATION && tournament.getOpenedRegistrationAt() == null) {
             tournament.setOpenedRegistrationAt(LocalDateTime.now());
         }
@@ -523,36 +523,6 @@ public class TournamentServiceImpl implements TournamentService {
                 .build();
         race.replacePrizes(mapRacePrizes(request.getPrizes()));
         return race;
-    }
-
-    private void syncPreRaceStatuses(Tournament tournament, TournamentStatus tournamentStatus) {
-        if (tournament.getRaces() == null) {
-            return;
-        }
-        RaceStatus raceStatus = preRaceStatusFor(tournamentStatus);
-        if (raceStatus == null) {
-            return;
-        }
-        tournament.getRaces().stream()
-                .filter(race -> isPreRaceStatus(race.getStatus()))
-                .forEach(race -> race.setStatus(raceStatus));
-    }
-
-    private RaceStatus preRaceStatusFor(TournamentStatus tournamentStatus) {
-        return switch (tournamentStatus) {
-            case DRAFT -> RaceStatus.DRAFT;
-            case PUBLISHED -> RaceStatus.PUBLISHED;
-            case OPEN_REGISTRATION -> RaceStatus.OPEN_REGISTRATION;
-            case REGISTRATION_CLOSED -> RaceStatus.REGISTRATION_CLOSED;
-            default -> null;
-        };
-    }
-
-    private boolean isPreRaceStatus(RaceStatus status) {
-        return status == RaceStatus.DRAFT
-                || status == RaceStatus.PUBLISHED
-                || status == RaceStatus.OPEN_REGISTRATION
-                || status == RaceStatus.REGISTRATION_CLOSED;
     }
 
     private void applyRaceRequest(Race race, RaceRequest request) {

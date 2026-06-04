@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -17,6 +18,14 @@ public interface TournamentRepository extends JpaRepository<Tournament, Long> {
     List<Tournament> findByStatusOrderByCreatedAtDesc(TournamentStatus status);
 
     List<Tournament> findByStatusInOrderByStartAtAsc(Collection<TournamentStatus> statuses);
+
+    @EntityGraph(attributePaths = {"races"})
+    List<Tournament> findByStatusAndRegistrationOpenAtLessThanEqualOrderByRegistrationOpenAtAsc(
+            TournamentStatus status, LocalDateTime registrationOpenAt);
+
+    @EntityGraph(attributePaths = {"races"})
+    List<Tournament> findByStatusAndRegistrationCloseAtLessThanEqualOrderByRegistrationCloseAtAsc(
+            TournamentStatus status, LocalDateTime registrationCloseAt);
 
     long countByStatus(TournamentStatus status);
 
