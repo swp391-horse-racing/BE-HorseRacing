@@ -70,6 +70,9 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         if (profile.getStatus() != JockeyStatus.APPROVED) {
             throw new BadRequestException("Jockey profile must be approved before invitation");
         }
+        if (jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED)) {
+            throw new BadRequestException("Jockey already accepted another invitation");
+        }
         if (jockeyInvitationRepository.existsByHorseIdAndJockeyIdAndStatusIn(
                 horse.getId(), jockey.getId(), ACTIVE_STATUSES)) {
             throw new DuplicateResourceException("Active invitation already exists for this horse and jockey");
@@ -82,6 +85,10 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
                 .jockeyProfile(profile)
                 .status(AssignmentStatus.PENDING)
                 .message(request.getMessage())
+<<<<<<< HEAD
+=======
+                .remunerationAmount(request.getRemunerationAmount())
+>>>>>>> d0bbdcc (add loi moi)
                 .createdBy(owner.getUsername())
                 .updatedBy(owner.getUsername())
                 .build();
@@ -185,6 +192,7 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         invitation.setRespondedAt(LocalDateTime.now());
         invitation.setUpdatedBy(jockey.getUsername());
         invitation = jockeyInvitationRepository.save(invitation);
+        cancelOtherPendingInvitations(invitation, jockey);
         notify(invitation.getOwner(), NotificationType.INVITATION_ACCEPTED,
                 "Jockey invitation accepted",
                 invitation.getJockey().getUsername() + " accepted your invitation",
@@ -211,6 +219,26 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
                 invitation.getJockey().getUsername() + " rejected your invitation",
                 invitation);
         return mapToResponse(invitation);
+    }
+
+    private void cancelOtherPendingInvitations(JockeyInvitation acceptedInvitation, User jockey) {
+        LocalDateTime now = LocalDateTime.now();
+        List<JockeyInvitation> otherPendingInvitations =
+                jockeyInvitationRepository.findByJockeyIdAndStatusAndIdNotOrderByCreatedAtDesc(
+                        jockey.getId(), AssignmentStatus.PENDING, acceptedInvitation.getId());
+        for (JockeyInvitation invitation : otherPendingInvitations) {
+            invitation.setStatus(AssignmentStatus.CANCELLED);
+            invitation.setResponseNote("Jockey accepted another invitation");
+            invitation.setCancelledAt(now);
+            invitation.setUpdatedBy(jockey.getUsername());
+        }
+        List<JockeyInvitation> cancelledInvitations = jockeyInvitationRepository.saveAll(otherPendingInvitations);
+        for (JockeyInvitation invitation : cancelledInvitations) {
+            notify(invitation.getOwner(), NotificationType.INVITATION_CANCELLED,
+                    "Jockey invitation cancelled",
+                    invitation.getJockey().getUsername() + " accepted another invitation",
+                    invitation);
+        }
     }
 
     private void notify(User recipient, NotificationType type, String title, String message,
@@ -278,6 +306,10 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
                 .status(invitation.getStatus())
                 .message(invitation.getMessage())
                 .responseNote(invitation.getResponseNote())
+<<<<<<< HEAD
+=======
+                .remunerationAmount(invitation.getRemunerationAmount())
+>>>>>>> d0bbdcc (add loi moi)
                 .respondedAt(invitation.getRespondedAt())
                 .cancelledAt(invitation.getCancelledAt())
                 .createdAt(invitation.getCreatedAt())

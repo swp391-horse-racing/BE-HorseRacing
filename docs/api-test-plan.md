@@ -127,6 +127,7 @@ Jockey invitation:
 {
   "horseId": 1,
   "jockeyId": 2,
+  "remunerationAmount": 500000.00,
   "message": "Moi ban tham gia doi dua"
 }
 ```
@@ -397,7 +398,7 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 | INV-05 | PUT | `/api/v1/owner/jockey-invitations/{id}/cancel` | OWNER | none | Loi moi CANCELLED |
 | INV-06 | GET | `/api/v1/jockey/invitations` | JOCKEY | none | List loi moi cua jockey |
 | INV-07 | GET | `/api/v1/jockey/invitations/{id}` | JOCKEY | path `id` | Detail loi moi cua jockey |
-| INV-08 | PUT | `/api/v1/jockey/invitations/{id}/accept` | JOCKEY | optional `InvitationDecisionRequest` | Loi moi ACCEPTED |
+| INV-08 | PUT | `/api/v1/jockey/invitations/{id}/accept` | JOCKEY | optional `InvitationDecisionRequest` | Loi moi ACCEPTED, cac loi moi PENDING khac cua jockey thanh CANCELLED |
 | INV-09 | PUT | `/api/v1/jockey/invitations/{id}/reject` | JOCKEY | optional `InvitationDecisionRequest` | Loi moi REJECTED |
 | TEAM-01 | GET | `/api/v1/owner/horse-teams/eligible` | OWNER | none | List team horse/jockey eligible |
 | TEAM-02 | GET | `/api/v1/admin/tournaments/{id}/eligible-horse-teams` | ADMIN | path `id` | List team eligible cho tournament |

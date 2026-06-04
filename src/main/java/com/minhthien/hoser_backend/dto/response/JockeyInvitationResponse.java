@@ -24,6 +24,10 @@ public class JockeyInvitationResponse {
     private AssignmentStatus status;
     private String message;
     private String responseNote;
+<<<<<<< HEAD
+=======
+    private BigDecimal remunerationAmount;
+>>>>>>> d0bbdcc (add loi moi)
     private LocalDateTime respondedAt;
     private LocalDateTime cancelledAt;
     private LocalDateTime createdAt;
