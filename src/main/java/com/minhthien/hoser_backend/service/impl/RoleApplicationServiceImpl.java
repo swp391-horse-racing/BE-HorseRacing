@@ -564,13 +564,12 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
         }
     }
 
-<<<<<<< HEAD
-=======
+
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
     }
 
->>>>>>> d0bbdcc (add loi moi)
+
     private JockeyStatus toJockeyStatus(RoleApprovalStatus status) {
         if (status == null) {
             return null;

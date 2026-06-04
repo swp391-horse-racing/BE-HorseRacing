@@ -85,10 +85,7 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
                 .jockeyProfile(profile)
                 .status(AssignmentStatus.PENDING)
                 .message(request.getMessage())
-<<<<<<< HEAD
-=======
                 .remunerationAmount(request.getRemunerationAmount())
->>>>>>> d0bbdcc (add loi moi)
                 .createdBy(owner.getUsername())
                 .updatedBy(owner.getUsername())
                 .build();
@@ -306,10 +303,7 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
                 .status(invitation.getStatus())
                 .message(invitation.getMessage())
                 .responseNote(invitation.getResponseNote())
-<<<<<<< HEAD
-=======
                 .remunerationAmount(invitation.getRemunerationAmount())
->>>>>>> d0bbdcc (add loi moi)
                 .respondedAt(invitation.getRespondedAt())
                 .cancelledAt(invitation.getCancelledAt())
                 .createdAt(invitation.getCreatedAt())

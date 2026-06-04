@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -32,6 +33,8 @@ public class JockeyProfileResponse {
     private String reviewReason;
     private Long reviewedBy;
     private LocalDateTime reviewedAt;
+    private JockeyDetailPerformanceResponse performance;
+    private List<JockeyRaceHistoryResponse> raceHistory;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

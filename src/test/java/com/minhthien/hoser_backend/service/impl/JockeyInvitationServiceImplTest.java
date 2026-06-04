@@ -21,11 +21,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-<<<<<<< HEAD
-=======
+
 import java.math.BigDecimal;
 import java.util.List;
->>>>>>> d0bbdcc (add loi moi)
+
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -56,24 +55,14 @@ class JockeyInvitationServiceImplTest {
         User jockey = jockey();
         Horse horse = horse(owner);
         JockeyProfile profile = profile(jockey);
-<<<<<<< HEAD
-        JockeyInvitationRequest request = new JockeyInvitationRequest();
-        request.setHorseId(horse.getId());
-        request.setJockeyId(jockey.getId());
-        request.setMessage("Please join my horse team");
-=======
         JockeyInvitationRequest request = invitationRequest(horse, jockey, "500000.00");
->>>>>>> d0bbdcc (add loi moi)
 
         when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
         when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
         when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
-<<<<<<< HEAD
-=======
         when(jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED))
                 .thenReturn(false);
->>>>>>> d0bbdcc (add loi moi)
         when(jockeyInvitationRepository.existsByHorseIdAndJockeyIdAndStatusIn(
                 eq(horse.getId()), eq(jockey.getId()), anyCollection())).thenReturn(false);
         when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
@@ -86,19 +75,11 @@ class JockeyInvitationServiceImplTest {
 
         assertEquals(AssignmentStatus.PENDING, response.getStatus());
         assertEquals("Please join my horse team", response.getMessage());
-<<<<<<< HEAD
-=======
         assertEquals(new BigDecimal("500000.00"), response.getRemunerationAmount());
->>>>>>> d0bbdcc (add loi moi)
         verify(jockeyInvitationRepository).save(any(JockeyInvitation.class));
     }
 
     @Test
-<<<<<<< HEAD
-    void acceptInvitationOnlyMarksInvitationAccepted() {
-        User jockey = jockey();
-        JockeyInvitation invitation = pendingInvitation(owner(), jockey);
-=======
     void acceptInvitationMarksSelectedAcceptedAndCancelsOtherPendingInvitations() {
         User jockey = jockey();
         JockeyInvitation invitation = pendingInvitation(owner(), jockey);
@@ -107,33 +88,26 @@ class JockeyInvitationServiceImplTest {
         JockeyInvitation alreadyRejected = pendingInvitation(owner(6L, "rejected-owner"), jockey);
         alreadyRejected.setId(12L);
         alreadyRejected.setStatus(AssignmentStatus.REJECTED);
->>>>>>> d0bbdcc (add loi moi)
         InvitationDecisionRequest request = new InvitationDecisionRequest();
         request.setNote("Accepted");
 
         when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
         when(jockeyInvitationRepository.findById(invitation.getId())).thenReturn(Optional.of(invitation));
         when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> invocation.getArgument(0));
-<<<<<<< HEAD
-=======
         when(jockeyInvitationRepository.findByJockeyIdAndStatusAndIdNotOrderByCreatedAtDesc(
                 jockey.getId(), AssignmentStatus.PENDING, invitation.getId())).thenReturn(List.of(otherPending));
         when(jockeyInvitationRepository.saveAll(anyCollection())).thenAnswer(invocation -> invocation.getArgument(0));
->>>>>>> d0bbdcc (add loi moi)
 
         JockeyInvitationResponse response = service.acceptInvitation(jockey.getId(), invitation.getId(), request);
 
         assertEquals(AssignmentStatus.ACCEPTED, response.getStatus());
         assertEquals("Accepted", response.getResponseNote());
         assertNotNull(response.getRespondedAt());
-<<<<<<< HEAD
-=======
         assertEquals(AssignmentStatus.CANCELLED, otherPending.getStatus());
         assertEquals("Jockey accepted another invitation", otherPending.getResponseNote());
         assertNotNull(otherPending.getCancelledAt());
         assertEquals(AssignmentStatus.REJECTED, alreadyRejected.getStatus());
         verify(jockeyInvitationRepository).saveAll(List.of(otherPending));
->>>>>>> d0bbdcc (add loi moi)
     }
 
     @Test
@@ -169,8 +143,6 @@ class JockeyInvitationServiceImplTest {
         assertNotNull(response.getCancelledAt());
     }
 
-<<<<<<< HEAD
-=======
     @Test
     void createInvitationRejectsJockeyWhoAlreadyAcceptedAnotherInvitation() {
         User owner = owner();
@@ -219,7 +191,6 @@ class JockeyInvitationServiceImplTest {
         assertEquals(new BigDecimal("800000.00"), response.getRemunerationAmount());
     }
 
->>>>>>> d0bbdcc (add loi moi)
     private JockeyInvitation pendingInvitation(User owner, User jockey) {
         Horse horse = horse(owner);
         return JockeyInvitation.builder()
@@ -230,19 +201,11 @@ class JockeyInvitationServiceImplTest {
                 .jockeyProfile(profile(jockey))
                 .status(AssignmentStatus.PENDING)
                 .message("Invite")
-<<<<<<< HEAD
-=======
                 .remunerationAmount(new BigDecimal("500000.00"))
->>>>>>> d0bbdcc (add loi moi)
                 .build();
     }
 
     private User owner() {
-<<<<<<< HEAD
-        return User.builder()
-                .id(1L)
-                .username("owner")
-=======
         return owner(1L, "owner");
     }
 
@@ -250,7 +213,6 @@ class JockeyInvitationServiceImplTest {
         return User.builder()
                 .id(id)
                 .username(username)
->>>>>>> d0bbdcc (add loi moi)
                 .role(UserRole.OWNER)
                 .build();
     }
@@ -279,8 +241,6 @@ class JockeyInvitationServiceImplTest {
                 .status(JockeyStatus.APPROVED)
                 .build();
     }
-<<<<<<< HEAD
-=======
 
     private JockeyInvitationRequest invitationRequest(Horse horse, User jockey, String remunerationAmount) {
         JockeyInvitationRequest request = new JockeyInvitationRequest();
@@ -290,5 +250,4 @@ class JockeyInvitationServiceImplTest {
         request.setRemunerationAmount(new BigDecimal(remunerationAmount));
         return request;
     }
->>>>>>> d0bbdcc (add loi moi)
 }

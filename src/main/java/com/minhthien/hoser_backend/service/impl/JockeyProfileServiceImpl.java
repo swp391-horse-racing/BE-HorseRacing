@@ -3,8 +3,14 @@ package com.minhthien.hoser_backend.service.impl;
 import com.minhthien.hoser_backend.dto.request.AdminReviewRequest;
 import com.minhthien.hoser_backend.dto.request.JockeyProfileRequest;
 import com.minhthien.hoser_backend.dto.request.JockeyProfileUpdateRequest;
+import com.minhthien.hoser_backend.dto.response.JockeyDetailPerformanceResponse;
 import com.minhthien.hoser_backend.dto.response.JockeyProfileResponse;
+import com.minhthien.hoser_backend.dto.response.JockeyRaceHistoryResponse;
+import com.minhthien.hoser_backend.entity.Horse;
 import com.minhthien.hoser_backend.entity.JockeyProfile;
+import com.minhthien.hoser_backend.entity.Race;
+import com.minhthien.hoser_backend.entity.RaceResult;
+import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.JockeyStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
@@ -13,6 +19,7 @@ import com.minhthien.hoser_backend.exception.DuplicateResourceException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.JockeyProfileRepository;
+import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import com.minhthien.hoser_backend.service.JockeyProfileService;
@@ -21,8 +28,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +47,7 @@ public class JockeyProfileServiceImpl implements JockeyProfileService {
     private final JockeyProfileRepository jockeyProfileRepository;
     private final UserRepository userRepository;
     private final CloudinaryUploadService cloudinaryUploadService;
+    private final RaceResultRepository raceResultRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -253,9 +267,13 @@ public class JockeyProfileServiceImpl implements JockeyProfileService {
     }
 
     private JockeyProfileResponse mapToResponse(JockeyProfile profile) {
+        Long jockeyId = profile.getUser().getId();
+        List<RaceResult> results = jockeyId == null
+                ? List.of()
+                : raceResultRepository.findByJockeyIdOrderByRaceScheduledStartAtDesc(jockeyId);
         return JockeyProfileResponse.builder()
                 .id(profile.getId())
-                .userId(profile.getUser().getId())
+                .userId(jockeyId)
                 .username(profile.getUser().getUsername())
                 .fullName(profile.getUser().getFullName())
                 .licenseNumber(profile.getLicenseNumber())
@@ -272,8 +290,59 @@ public class JockeyProfileServiceImpl implements JockeyProfileService {
                 .reviewReason(profile.getReviewReason())
                 .reviewedBy(profile.getReviewedBy())
                 .reviewedAt(profile.getReviewedAt())
+                .performance(mapPerformance(results))
+                .raceHistory(results.stream().map(this::mapRaceHistory).toList())
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
+                .build();
+    }
+
+    private JockeyDetailPerformanceResponse mapPerformance(List<RaceResult> results) {
+        int totalRaces = results.size();
+        int wins = Math.toIntExact(results.stream()
+                .filter(result -> Integer.valueOf(1).equals(result.getRank()))
+                .count());
+        Map<String, Long> rankCounts = results.stream()
+                .map(RaceResult::getRank)
+                .filter(rank -> rank != null)
+                .collect(Collectors.groupingBy(
+                        String::valueOf,
+                        LinkedHashMap::new,
+                        Collectors.counting()
+                ));
+        return JockeyDetailPerformanceResponse.builder()
+                .totalRaces(totalRaces)
+                .wins(wins)
+                .winRate(calculateWinRate(wins, totalRaces))
+                .rankCounts(Collections.unmodifiableMap(rankCounts))
+                .build();
+    }
+
+    private BigDecimal calculateWinRate(int wins, int totalRaces) {
+        if (totalRaces == 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return BigDecimal.valueOf(wins)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(totalRaces), 2, RoundingMode.HALF_UP);
+    }
+
+    private JockeyRaceHistoryResponse mapRaceHistory(RaceResult result) {
+        Race race = result.getRace();
+        Tournament tournament = race.getTournament();
+        Horse horse = result.getHorse();
+        return JockeyRaceHistoryResponse.builder()
+                .tournamentId(tournament.getId())
+                .tournamentName(tournament.getName())
+                .raceId(race.getId())
+                .raceName(race.getName())
+                .scheduledStartAt(race.getScheduledStartAt())
+                .horseId(horse.getId())
+                .horseName(horse.getName())
+                .rank(result.getRank())
+                .status(result.getStatus())
+                .finishTimeMillis(result.getFinishTimeMillis())
+                .finalizedAt(result.getFinalizedAt())
                 .build();
     }
 }
