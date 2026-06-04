@@ -3,8 +3,13 @@ package com.minhthien.hoser_backend.service.impl;
 import com.minhthien.hoser_backend.dto.request.AdminReviewRequest;
 import com.minhthien.hoser_backend.dto.request.HorseRequest;
 import com.minhthien.hoser_backend.dto.request.HorseUpdateRequest;
+import com.minhthien.hoser_backend.dto.response.HorsePerformanceResponse;
+import com.minhthien.hoser_backend.dto.response.HorseRaceHistoryResponse;
 import com.minhthien.hoser_backend.dto.response.HorseResponse;
 import com.minhthien.hoser_backend.entity.Horse;
+import com.minhthien.hoser_backend.entity.Race;
+import com.minhthien.hoser_backend.entity.RaceResult;
+import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.HorseStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
@@ -24,8 +29,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -274,6 +285,9 @@ public class HorseServiceImpl implements HorseService {
     }
 
     private HorseResponse mapToResponse(Horse horse) {
+        List<RaceResult> results = horse.getId() == null
+                ? List.of()
+                : raceResultRepository.findByHorseIdOrderByRaceScheduledStartAtDesc(horse.getId());
         return HorseResponse.builder()
                 .id(horse.getId())
                 .ownerId(horse.getOwner().getId())
@@ -291,8 +305,56 @@ public class HorseServiceImpl implements HorseService {
                 .reviewReason(horse.getReviewReason())
                 .reviewedBy(horse.getReviewedBy())
                 .reviewedAt(horse.getReviewedAt())
+                .performance(mapPerformance(results))
+                .raceHistory(results.stream().map(this::mapRaceHistory).toList())
                 .createdAt(horse.getCreatedAt())
                 .updatedAt(horse.getUpdatedAt())
+                .build();
+    }
+
+    private HorsePerformanceResponse mapPerformance(List<RaceResult> results) {
+        int totalRaces = results.size();
+        int wins = Math.toIntExact(results.stream()
+                .filter(result -> Integer.valueOf(1).equals(result.getRank()))
+                .count());
+        Map<String, Long> rankCounts = results.stream()
+                .map(RaceResult::getRank)
+                .filter(rank -> rank != null)
+                .collect(Collectors.groupingBy(
+                        String::valueOf,
+                        LinkedHashMap::new,
+                        Collectors.counting()
+                ));
+        return HorsePerformanceResponse.builder()
+                .totalRaces(totalRaces)
+                .wins(wins)
+                .winRate(calculateWinRate(wins, totalRaces))
+                .rankCounts(Collections.unmodifiableMap(rankCounts))
+                .build();
+    }
+
+    private BigDecimal calculateWinRate(int wins, int totalRaces) {
+        if (totalRaces == 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return BigDecimal.valueOf(wins)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(totalRaces), 2, RoundingMode.HALF_UP);
+    }
+
+    private HorseRaceHistoryResponse mapRaceHistory(RaceResult result) {
+        Race race = result.getRace();
+        Tournament tournament = race.getTournament();
+        return HorseRaceHistoryResponse.builder()
+                .tournamentId(tournament.getId())
+                .tournamentName(tournament.getName())
+                .raceId(race.getId())
+                .raceName(race.getName())
+                .scheduledStartAt(race.getScheduledStartAt())
+                .rank(result.getRank())
+                .status(result.getStatus())
+                .finishTimeMillis(result.getFinishTimeMillis())
+                .finalizedAt(result.getFinalizedAt())
                 .build();
     }
 }

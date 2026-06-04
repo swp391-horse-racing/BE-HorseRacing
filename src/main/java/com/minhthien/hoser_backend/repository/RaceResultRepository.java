@@ -25,6 +25,9 @@ public interface RaceResultRepository extends JpaRepository<RaceResult, Long> {
     @EntityGraph(attributePaths = {"race", "participant", "owner", "horse", "jockey"})
     List<RaceResult> findByJockeyId(Long jockeyId);
 
+    @EntityGraph(attributePaths = {"race", "race.tournament", "participant", "owner", "horse", "jockey"})
+    List<RaceResult> findByHorseIdOrderByRaceScheduledStartAtDesc(Long horseId);
+
     long countByJockeyId(Long jockeyId);
 
     @Query("""
