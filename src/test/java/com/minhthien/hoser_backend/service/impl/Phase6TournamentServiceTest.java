@@ -110,7 +110,7 @@ class Phase6TournamentServiceTest {
     }
 
     @Test
-    void publishTournamentSchedulesDraftRaces() {
+    void publishTournamentPublishesDraftRaces() {
         Tournament tournament = tournament(TournamentStatus.DRAFT);
         Race draftRace = race(10L, tournament, RaceStatus.DRAFT, "Draft race");
         tournament.getRaces().add(draftRace);
@@ -118,12 +118,29 @@ class Phase6TournamentServiceTest {
 
         TournamentResponse response = service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.PUBLISHED);
 
-        assertEquals(RaceStatus.SCHEDULED, draftRace.getStatus());
-        assertEquals(RaceStatus.SCHEDULED, response.getRaces().get(0).getStatus());
+        assertEquals(RaceStatus.PUBLISHED, draftRace.getStatus());
+        assertEquals(RaceStatus.PUBLISHED, response.getRaces().get(0).getStatus());
     }
 
     @Test
-    void publishTournamentDoesNotChangeCancelledRace() {
+    void registrationStatusesSyncToPreRaceStatuses() {
+        Tournament tournament = tournament(TournamentStatus.PUBLISHED);
+        Race race = race(10L, tournament, RaceStatus.PUBLISHED, "Race");
+        tournament.getRaces().add(race);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse openResponse = service.updateTournamentStatus(
+                ADMIN_ID, 3L, TournamentStatus.OPEN_REGISTRATION);
+        TournamentResponse closedResponse = service.updateTournamentStatus(
+                ADMIN_ID, 3L, TournamentStatus.REGISTRATION_CLOSED);
+
+        assertEquals(RaceStatus.REGISTRATION_CLOSED, race.getStatus());
+        assertEquals(RaceStatus.OPEN_REGISTRATION, openResponse.getRaces().get(0).getStatus());
+        assertEquals(RaceStatus.REGISTRATION_CLOSED, closedResponse.getRaces().get(0).getStatus());
+    }
+
+    @Test
+    void tournamentStatusSyncDoesNotChangeCancelledRace() {
         Tournament tournament = tournament(TournamentStatus.DRAFT);
         Race draftRace = race(10L, tournament, RaceStatus.DRAFT, "Draft race");
         Race cancelledRace = race(11L, tournament, RaceStatus.CANCELLED, "Cancelled race");
@@ -132,9 +149,9 @@ class Phase6TournamentServiceTest {
 
         TournamentResponse response = service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.PUBLISHED);
 
-        assertEquals(RaceStatus.SCHEDULED, draftRace.getStatus());
+        assertEquals(RaceStatus.PUBLISHED, draftRace.getStatus());
         assertEquals(RaceStatus.CANCELLED, cancelledRace.getStatus());
-        assertEquals(RaceStatus.SCHEDULED, response.getRaces().get(0).getStatus());
+        assertEquals(RaceStatus.PUBLISHED, response.getRaces().get(0).getStatus());
         assertEquals(RaceStatus.CANCELLED, response.getRaces().get(1).getStatus());
     }
 

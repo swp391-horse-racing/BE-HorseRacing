@@ -244,13 +244,18 @@ public class RaceDayServiceImpl implements RaceDayService {
         requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can schedule tournaments");
         Tournament tournament = tournamentRepository.findById(tournamentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tournament", "id", tournamentId));
-        if (tournament.getStatus() != TournamentStatus.OPEN_REGISTRATION
-                && tournament.getStatus() != TournamentStatus.REGISTRATION_CLOSED) {
-            throw new BadRequestException("Only open or registration-closed tournaments can be scheduled");
+        if (tournament.getStatus() != TournamentStatus.REGISTRATION_CLOSED) {
+            throw new BadRequestException("Tournament registration must be closed before scheduling");
         }
         List<Race> races = raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(tournamentId);
         if (races.isEmpty()) {
             throw new BadRequestException("Tournament must have races before scheduling");
+        }
+        List<Race> schedulableRaces = races.stream()
+                .filter(race -> race.getStatus() != RaceStatus.CANCELLED)
+                .toList();
+        if (schedulableRaces.isEmpty()) {
+            throw new BadRequestException("Tournament has no active races to schedule");
         }
         long participantCount = raceParticipantRepository.countByRaceTournamentId(tournamentId);
         if (participantCount < tournament.getMinTeams()) {
@@ -259,13 +264,13 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (participantCount > tournament.getMaxTeams()) {
             throw new BadRequestException("Tournament exceeds maximum team limit");
         }
-        races.forEach(this::validateRaceReadyForSchedule);
-        validateJockeyScheduleAcrossTournament(races);
+        schedulableRaces.forEach(this::validateRaceReadyForSchedule);
+        validateJockeyScheduleAcrossTournament(schedulableRaces);
         tournament.setStatus(TournamentStatus.SCHEDULED);
-        races.forEach(race -> race.setStatus(RaceStatus.SCHEDULED));
+        schedulableRaces.forEach(race -> race.setStatus(RaceStatus.SCHEDULED));
         Tournament saved = tournamentRepository.save(tournament);
-        races.forEach(this::sendRaceScheduledEmails);
-        races.forEach(this::publishRaceScheduled);
+        schedulableRaces.forEach(this::sendRaceScheduledEmails);
+        schedulableRaces.forEach(this::publishRaceScheduled);
         return tournamentService.mapToResponse(saved);
     }
 
@@ -339,8 +344,8 @@ public class RaceDayServiceImpl implements RaceDayService {
     public RaceResponse cancelRace(Long adminId, Long raceId, RaceCancellationRequest request) {
         requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can cancel races");
         Race race = requireRace(raceId);
-        if (race.getStatus() != RaceStatus.DRAFT && race.getStatus() != RaceStatus.SCHEDULED) {
-            throw new BadRequestException("Only draft or scheduled races can be cancelled");
+        if (!canCancelRace(race.getStatus())) {
+            throw new BadRequestException("Only pre-race or scheduled races can be cancelled");
         }
         raceRegistrationRepository.findByRaceIdOrderByCreatedAtDesc(raceId).stream()
                 .filter(registration -> registration.getStatus() == RaceRegistrationStatus.PENDING
@@ -599,7 +604,8 @@ public class RaceDayServiceImpl implements RaceDayService {
             return getJockeyChallengeStandings(tournamentId);
         }
         List<Race> unfinished = raceRepository.findByTournamentIdAndStatusIn(tournamentId,
-                List.of(RaceStatus.DRAFT, RaceStatus.SCHEDULED, RaceStatus.ONGOING));
+                List.of(RaceStatus.DRAFT, RaceStatus.PUBLISHED, RaceStatus.OPEN_REGISTRATION,
+                        RaceStatus.REGISTRATION_CLOSED, RaceStatus.SCHEDULED, RaceStatus.ONGOING));
         if (!unfinished.isEmpty()) {
             throw new BadRequestException("All races must be confirmed or cancelled before finalizing challenge");
         }
@@ -743,6 +749,14 @@ public class RaceDayServiceImpl implements RaceDayService {
             throw new UnauthorizedException("Referee is not assigned to this race");
         }
         return race;
+    }
+
+    private boolean canCancelRace(RaceStatus status) {
+        return status == RaceStatus.DRAFT
+                || status == RaceStatus.PUBLISHED
+                || status == RaceStatus.OPEN_REGISTRATION
+                || status == RaceStatus.REGISTRATION_CLOSED
+                || status == RaceStatus.SCHEDULED;
     }
 
     private void validateRaceReadyForSchedule(Race race) {
