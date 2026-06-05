@@ -6,11 +6,14 @@ import com.minhthien.hoser_backend.dto.response.JockeyInvitationResponse;
 import com.minhthien.hoser_backend.entity.Horse;
 import com.minhthien.hoser_backend.entity.JockeyInvitation;
 import com.minhthien.hoser_backend.entity.JockeyProfile;
+import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.AssignmentStatus;
 import com.minhthien.hoser_backend.enums.HorseStatus;
 import com.minhthien.hoser_backend.enums.JockeyStatus;
 import com.minhthien.hoser_backend.enums.NotificationType;
+import com.minhthien.hoser_backend.enums.RaceStatus;
+import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.DuplicateResourceException;
@@ -19,6 +22,7 @@ import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.HorseRepository;
 import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
 import com.minhthien.hoser_backend.repository.JockeyProfileRepository;
+import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.JockeyInvitationService;
 import com.minhthien.hoser_backend.service.NotificationService;
@@ -44,6 +48,7 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
     private final JockeyInvitationRepository jockeyInvitationRepository;
     private final HorseRepository horseRepository;
     private final JockeyProfileRepository jockeyProfileRepository;
+    private final RaceRepository raceRepository;
     private final UserRepository userRepository;
     private NotificationService notificationService;
 
@@ -62,6 +67,9 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         if (horse.getStatus() != HorseStatus.APPROVED) {
             throw new BadRequestException("Horse must be approved before inviting a jockey");
         }
+        Race race = raceRepository.findById(request.getRaceId())
+                .orElseThrow(() -> new ResourceNotFoundException("Race", "id", request.getRaceId()));
+        validateInvitableRace(race);
 
         User jockey = requireUser(request.getJockeyId());
         requireRole(jockey, UserRole.JOCKEY, "Invitation target must be a jockey");
@@ -73,8 +81,8 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         if (jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED)) {
             throw new BadRequestException("Jockey already accepted another invitation");
         }
-        if (jockeyInvitationRepository.existsByHorseIdAndJockeyIdAndStatusIn(
-                horse.getId(), jockey.getId(), ACTIVE_STATUSES)) {
+        if (jockeyInvitationRepository.existsByRaceIdAndHorseIdAndJockeyIdAndStatusIn(
+                race.getId(), horse.getId(), jockey.getId(), ACTIVE_STATUSES)) {
             throw new DuplicateResourceException("Active invitation already exists for this horse and jockey");
         }
 
@@ -82,6 +90,7 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
                 .owner(owner)
                 .jockey(jockey)
                 .horse(horse)
+                .race(race)
                 .jockeyProfile(profile)
                 .status(AssignmentStatus.PENDING)
                 .message(request.getMessage())
@@ -253,8 +262,19 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         if (invitation.getHorse().getStatus() != HorseStatus.APPROVED) {
             throw new BadRequestException("Horse is no longer approved");
         }
+        if (invitation.getRace() != null) {
+            validateInvitableRace(invitation.getRace());
+        }
         if (invitation.getJockeyProfile().getStatus() != JockeyStatus.APPROVED) {
             throw new BadRequestException("Jockey profile is no longer approved");
+        }
+    }
+
+    private void validateInvitableRace(Race race) {
+        if (race.getTournament().getStatus() != TournamentStatus.OPEN_REGISTRATION
+                || race.getStatus() == RaceStatus.CANCELLED
+                || race.getStatus() == RaceStatus.RESULT_CONFIRMED) {
+            throw new BadRequestException("Race is not open for jockey invitation");
         }
     }
 
@@ -300,6 +320,10 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
                 .jockeyProfileId(invitation.getJockeyProfile().getId())
                 .horseId(invitation.getHorse().getId())
                 .horseName(invitation.getHorse().getName())
+                .raceId(invitation.getRace() == null ? null : invitation.getRace().getId())
+                .raceName(invitation.getRace() == null ? null : invitation.getRace().getName())
+                .tournamentId(invitation.getRace() == null ? null : invitation.getRace().getTournament().getId())
+                .tournamentName(invitation.getRace() == null ? null : invitation.getRace().getTournament().getName())
                 .status(invitation.getStatus())
                 .message(invitation.getMessage())
                 .responseNote(invitation.getResponseNote())

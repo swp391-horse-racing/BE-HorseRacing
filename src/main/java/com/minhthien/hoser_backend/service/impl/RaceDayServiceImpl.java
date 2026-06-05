@@ -99,7 +99,7 @@ public class RaceDayServiceImpl implements RaceDayService {
         JockeyInvitation invitation = jockeyInvitationRepository.findById(request.getJockeyInvitationId())
                 .orElseThrow(() -> new ResourceNotFoundException("JockeyInvitation", "id",
                         request.getJockeyInvitationId()));
-        validateEligibleInvitation(ownerId, request.getHorseId(), invitation);
+        validateEligibleInvitation(ownerId, raceId, request.getHorseId(), invitation);
         List<RaceRegistrationStatus> activeStatuses = activeRegistrationStatuses();
         if (raceRegistrationRepository.existsByRaceIdAndHorseIdAndStatusIn(
                 raceId, invitation.getHorse().getId(), activeStatuses)) {
@@ -667,7 +667,7 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .toList();
     }
 
-    private void validateEligibleInvitation(Long ownerId, Long horseId, JockeyInvitation invitation) {
+    private void validateEligibleInvitation(Long ownerId, Long raceId, Long horseId, JockeyInvitation invitation) {
         if (horseId == null) {
             throw new BadRequestException("Horse id is required");
         }
@@ -676,6 +676,9 @@ public class RaceDayServiceImpl implements RaceDayService {
         }
         if (!invitation.getHorse().getId().equals(horseId)) {
             throw new BadRequestException("Jockey invitation does not belong to the selected horse");
+        }
+        if (invitation.getRace() != null && !invitation.getRace().getId().equals(raceId)) {
+            throw new BadRequestException("Jockey invitation does not belong to this race");
         }
         if (!invitation.getHorse().getOwner().getId().equals(ownerId)) {
             throw new UnauthorizedException("Owner does not own this horse");

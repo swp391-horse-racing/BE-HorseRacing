@@ -22,6 +22,10 @@ public class JockeyInvitationResponse {
     private Long jockeyProfileId;
     private Long horseId;
     private String horseName;
+    private Long raceId;
+    private String raceName;
+    private Long tournamentId;
+    private String tournamentName;
     private AssignmentStatus status;
     private String message;
     private String responseNote;

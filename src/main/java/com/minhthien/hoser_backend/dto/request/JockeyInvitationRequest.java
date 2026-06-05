@@ -12,6 +12,9 @@ public class JockeyInvitationRequest {
     @NotNull(message = "Horse id is required")
     private Long horseId;
 
+    @NotNull(message = "Race id is required")
+    private Long raceId;
+
     @NotNull(message = "Jockey id is required")
     private Long jockeyId;
 

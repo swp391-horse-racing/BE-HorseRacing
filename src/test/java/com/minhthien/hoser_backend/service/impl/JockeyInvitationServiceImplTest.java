@@ -6,14 +6,19 @@ import com.minhthien.hoser_backend.dto.response.JockeyInvitationResponse;
 import com.minhthien.hoser_backend.entity.Horse;
 import com.minhthien.hoser_backend.entity.JockeyInvitation;
 import com.minhthien.hoser_backend.entity.JockeyProfile;
+import com.minhthien.hoser_backend.entity.Race;
+import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.AssignmentStatus;
 import com.minhthien.hoser_backend.enums.HorseStatus;
 import com.minhthien.hoser_backend.enums.JockeyStatus;
+import com.minhthien.hoser_backend.enums.RaceStatus;
+import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.repository.HorseRepository;
 import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
 import com.minhthien.hoser_backend.repository.JockeyProfileRepository;
+import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,6 +49,8 @@ class JockeyInvitationServiceImplTest {
     @Mock
     private JockeyProfileRepository jockeyProfileRepository;
     @Mock
+    private RaceRepository raceRepository;
+    @Mock
     private UserRepository userRepository;
 
     @InjectMocks
@@ -54,17 +61,19 @@ class JockeyInvitationServiceImplTest {
         User owner = owner();
         User jockey = jockey();
         Horse horse = horse(owner);
+        Race race = race();
         JockeyProfile profile = profile(jockey);
         JockeyInvitationRequest request = invitationRequest(horse, jockey, "500000.00");
 
         when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
         when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
         when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
         when(jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED))
                 .thenReturn(false);
-        when(jockeyInvitationRepository.existsByHorseIdAndJockeyIdAndStatusIn(
-                eq(horse.getId()), eq(jockey.getId()), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndJockeyIdAndStatusIn(
+                eq(race.getId()), eq(horse.getId()), eq(jockey.getId()), anyCollection())).thenReturn(false);
         when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
             JockeyInvitation invitation = invocation.getArgument(0);
             invitation.setId(100L);
@@ -76,6 +85,9 @@ class JockeyInvitationServiceImplTest {
         assertEquals(AssignmentStatus.PENDING, response.getStatus());
         assertEquals("Please join my horse team", response.getMessage());
         assertEquals(new BigDecimal("500000.00"), response.getRemunerationAmount());
+        assertEquals(race.getId(), response.getRaceId());
+        assertEquals("Race 1", response.getRaceName());
+        assertEquals(9L, response.getTournamentId());
         verify(jockeyInvitationRepository).save(any(JockeyInvitation.class));
     }
 
@@ -148,12 +160,14 @@ class JockeyInvitationServiceImplTest {
         User owner = owner();
         User jockey = jockey();
         Horse horse = horse(owner);
+        Race race = race();
         JockeyProfile profile = profile(jockey);
         JockeyInvitationRequest request = invitationRequest(horse, jockey, "700000.00");
 
         when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
         when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
         when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
         when(jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED))
                 .thenReturn(true);
@@ -168,17 +182,19 @@ class JockeyInvitationServiceImplTest {
         User owner = owner();
         User jockey = jockey();
         Horse horse = horse(owner);
+        Race race = race();
         JockeyProfile profile = profile(jockey);
         JockeyInvitationRequest request = invitationRequest(horse, jockey, "800000.00");
 
         when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
         when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
         when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
         when(jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED))
                 .thenReturn(false);
-        when(jockeyInvitationRepository.existsByHorseIdAndJockeyIdAndStatusIn(
-                eq(horse.getId()), eq(jockey.getId()), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndJockeyIdAndStatusIn(
+                eq(race.getId()), eq(horse.getId()), eq(jockey.getId()), anyCollection())).thenReturn(false);
         when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
             JockeyInvitation invitation = invocation.getArgument(0);
             invitation.setId(101L);
@@ -198,10 +214,24 @@ class JockeyInvitationServiceImplTest {
                 .owner(owner)
                 .jockey(jockey)
                 .horse(horse)
+                .race(race())
                 .jockeyProfile(profile(jockey))
                 .status(AssignmentStatus.PENDING)
                 .message("Invite")
                 .remunerationAmount(new BigDecimal("500000.00"))
+                .build();
+    }
+
+    private Race race() {
+        return Race.builder()
+                .id(7L)
+                .name("Race 1")
+                .status(RaceStatus.PUBLISHED)
+                .tournament(Tournament.builder()
+                        .id(9L)
+                        .name("Summer Cup")
+                        .status(TournamentStatus.OPEN_REGISTRATION)
+                        .build())
                 .build();
     }
 
@@ -245,6 +275,7 @@ class JockeyInvitationServiceImplTest {
     private JockeyInvitationRequest invitationRequest(Horse horse, User jockey, String remunerationAmount) {
         JockeyInvitationRequest request = new JockeyInvitationRequest();
         request.setHorseId(horse.getId());
+        request.setRaceId(7L);
         request.setJockeyId(jockey.getId());
         request.setMessage("Please join my horse team");
         request.setRemunerationAmount(new BigDecimal(remunerationAmount));

@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
                 @Index(name = "idx_jockey_invitations_owner", columnList = "owner_id"),
                 @Index(name = "idx_jockey_invitations_jockey", columnList = "jockey_id"),
                 @Index(name = "idx_jockey_invitations_horse", columnList = "horse_id"),
+                @Index(name = "idx_jockey_invitations_race", columnList = "race_id"),
                 @Index(name = "idx_jockey_invitations_status", columnList = "status")
         }
 )
@@ -40,6 +41,10 @@ public class JockeyInvitation {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "horse_id", nullable = false)
     private Horse horse;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "race_id")
+    private Race race;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "jockey_profile_id", nullable = false)

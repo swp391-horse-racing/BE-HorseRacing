@@ -11,26 +11,33 @@ import java.util.List;
 
 @Repository
 public interface JockeyInvitationRepository extends JpaRepository<JockeyInvitation, Long> {
-    @EntityGraph(attributePaths = {"owner", "jockey", "horse", "jockeyProfile", "jockeyProfile.user"})
+    @EntityGraph(attributePaths = {"owner", "jockey", "horse", "race", "race.tournament", "jockeyProfile", "jockeyProfile.user"})
     List<JockeyInvitation> findByOwnerIdOrderByCreatedAtDesc(Long ownerId);
 
-    @EntityGraph(attributePaths = {"owner", "jockey", "horse", "jockeyProfile", "jockeyProfile.user"})
+    @EntityGraph(attributePaths = {"owner", "jockey", "horse", "race", "race.tournament", "jockeyProfile", "jockeyProfile.user"})
     List<JockeyInvitation> findByJockeyIdOrderByCreatedAtDesc(Long jockeyId);
 
-    @EntityGraph(attributePaths = {"owner", "jockey", "horse", "jockeyProfile", "jockeyProfile.user"})
+    @EntityGraph(attributePaths = {"owner", "jockey", "horse", "race", "race.tournament", "jockeyProfile", "jockeyProfile.user"})
     List<JockeyInvitation> findByJockeyIdAndStatusAndIdNotOrderByCreatedAtDesc(
             Long jockeyId,
             AssignmentStatus status,
             Long id
     );
 
-    @EntityGraph(attributePaths = {"owner", "jockey", "horse", "horse.owner", "jockeyProfile", "jockeyProfile.user"})
+    @EntityGraph(attributePaths = {"owner", "jockey", "horse", "horse.owner", "race", "race.tournament", "jockeyProfile", "jockeyProfile.user"})
     List<JockeyInvitation> findByOwnerIdAndStatusOrderByCreatedAtDesc(Long ownerId, AssignmentStatus status);
 
-    @EntityGraph(attributePaths = {"owner", "jockey", "horse", "horse.owner", "jockeyProfile", "jockeyProfile.user"})
+    @EntityGraph(attributePaths = {"owner", "jockey", "horse", "horse.owner", "race", "race.tournament", "jockeyProfile", "jockeyProfile.user"})
     List<JockeyInvitation> findByStatusOrderByCreatedAtDesc(AssignmentStatus status);
 
     boolean existsByHorseIdAndJockeyIdAndStatusIn(
+            Long horseId,
+            Long jockeyId,
+            Collection<AssignmentStatus> statuses
+    );
+
+    boolean existsByRaceIdAndHorseIdAndJockeyIdAndStatusIn(
+            Long raceId,
             Long horseId,
             Long jockeyId,
             Collection<AssignmentStatus> statuses
