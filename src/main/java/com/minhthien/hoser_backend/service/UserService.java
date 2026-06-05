@@ -5,10 +5,14 @@ import com.minhthien.hoser_backend.dto.request.UserProfileRequest;
 import com.minhthien.hoser_backend.dto.response.UserResponse;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 public interface UserService {
     UserResponse getCurrentUser(Long userId);
 
     UserResponse getPublicProfile(Long userId);
+
+    List<UserResponse> getJockeys();
 
     UserResponse updateProfile(Long userId, UserProfileRequest request);
 

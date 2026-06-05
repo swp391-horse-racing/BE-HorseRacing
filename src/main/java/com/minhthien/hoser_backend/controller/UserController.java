@@ -14,6 +14,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/users")
 @SecurityRequirement(name = "bearerAuth")
@@ -27,6 +29,12 @@ public class UserController {
     public ResponseEntity<ApiResponse<UserResponse>> getMyProfile(@AuthenticationPrincipal User currentUser) {
         requireAuthenticated(currentUser);
         return ResponseEntity.ok(ApiResponse.success(userService.getCurrentUser(currentUser.getId())));
+    }
+
+    @GetMapping("/jockeys")
+    public ResponseEntity<ApiResponse<List<UserResponse>>> getJockeys(@AuthenticationPrincipal User currentUser) {
+        requireAuthenticated(currentUser);
+        return ResponseEntity.ok(ApiResponse.success(userService.getJockeys()));
     }
 
     @PutMapping(value = "/me/profile", consumes = MediaType.APPLICATION_JSON_VALUE)

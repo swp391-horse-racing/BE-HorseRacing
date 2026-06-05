@@ -4,6 +4,7 @@ import com.minhthien.hoser_backend.dto.request.UpdatePasswordRequest;
 import com.minhthien.hoser_backend.dto.request.UserProfileRequest;
 import com.minhthien.hoser_backend.dto.response.UserResponse;
 import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.repository.UserRepository;
@@ -14,6 +15,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +40,14 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
         return mapToResponse(user);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserResponse> getJockeys() {
+        return userRepository.findByRoleAndActiveOrderByCreatedAtDesc(UserRole.JOCKEY, true).stream()
+                .map(this::mapToResponse)
+                .toList();
     }
 
     @Override
