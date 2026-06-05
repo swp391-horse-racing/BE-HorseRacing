@@ -271,9 +271,11 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
     }
 
     private void validateInvitableRace(Race race) {
-        if (race.getTournament().getStatus() != TournamentStatus.OPEN_REGISTRATION
-                || race.getStatus() == RaceStatus.CANCELLED
-                || race.getStatus() == RaceStatus.RESULT_CONFIRMED) {
+        boolean tournamentIsPublic = race.getTournament().getStatus() == TournamentStatus.PUBLISHED
+                || race.getTournament().getStatus() == TournamentStatus.OPEN_REGISTRATION;
+        boolean raceIsInvitable = race.getStatus() == RaceStatus.PUBLISHED
+                || race.getStatus() == RaceStatus.OPEN_REGISTRATION;
+        if (!tournamentIsPublic || !raceIsInvitable) {
             throw new BadRequestException("Race is not open for jockey invitation");
         }
     }
