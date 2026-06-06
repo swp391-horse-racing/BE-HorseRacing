@@ -83,5 +83,19 @@ public class AuthController {
     public AuthResponse loginFacebook(@RequestBody FacebookLoginRequest request) {
         return authService.loginFacebook(request.getAccessToken());
     }
+
+    @PostMapping("/2fa/verify")
+    public ResponseEntity<ApiResponse<AuthResponse>> verifyTwoFactor(
+            @Valid @RequestBody TwoFactorVerifyRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Two-factor verification successful", authService.verifyTwoFactor(request)));
+    }
+
+    @PostMapping("/2fa/resend")
+    public ResponseEntity<ApiResponse<AuthResponse>> resendTwoFactor(
+            @Valid @RequestBody TwoFactorResendRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Two-factor code resent", authService.resendTwoFactor(request)));
+    }
 }
 

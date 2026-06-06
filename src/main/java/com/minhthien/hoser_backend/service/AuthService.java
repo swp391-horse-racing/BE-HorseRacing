@@ -3,6 +3,8 @@ package com.minhthien.hoser_backend.service;
 
 import com.minhthien.hoser_backend.dto.request.LoginRequest;
 import com.minhthien.hoser_backend.dto.request.RegisterRequest;
+import com.minhthien.hoser_backend.dto.request.TwoFactorResendRequest;
+import com.minhthien.hoser_backend.dto.request.TwoFactorVerifyRequest;
 import com.minhthien.hoser_backend.dto.response.AuthResponse;
 import com.minhthien.hoser_backend.dto.response.UserResponse;
 
@@ -17,5 +19,9 @@ public interface AuthService {
 
     AuthResponse loginGoogle(String idToken);
     AuthResponse loginFacebook(String accessToken);
+
+    AuthResponse verifyTwoFactor(TwoFactorVerifyRequest request);
+
+    AuthResponse resendTwoFactor(TwoFactorResendRequest request);
 
 }

@@ -1,9 +1,6 @@
 package com.minhthien.hoser_backend.service;
 
-import com.minhthien.hoser_backend.dto.response.DashboardResponse;
-import com.minhthien.hoser_backend.dto.response.JockeyPerformanceResponse;
-import com.minhthien.hoser_backend.dto.response.RaceResponse;
-import com.minhthien.hoser_backend.dto.response.WalletTransactionResponse;
+import com.minhthien.hoser_backend.dto.response.*;
 import com.minhthien.hoser_backend.enums.RaceStatus;
 
 import java.time.LocalDateTime;
@@ -33,4 +30,18 @@ public interface DashboardService {
     List<WalletTransactionResponse> getJockeyPrizes(Long userId);
 
     List<RaceResponse> getAdminRaces(LocalDateTime from, LocalDateTime to, RaceStatus status);
+
+    AdminDashboardSummaryResponse getAdminDashboardSummary();
+
+    List<AdminDashboardRevenueResponse> getAdminDashboardRevenue(int months);
+
+    List<AdminDashboardTournamentRegistrationResponse> getAdminTournamentRegistrations();
+
+    List<AdminDashboardTopHorseResponse> getAdminTopHorses(int limit);
+
+    List<AdminDashboardInsightResponse> getAdminQuickInsights(int months);
+
+    List<AdminDashboardTournamentRaceCountResponse> getAdminTournamentRaceCounts(int limit);
+
+    List<AdminDashboardFeaturedTournamentResponse> getAdminFeaturedTournaments(int limit);
 }

@@ -19,7 +19,8 @@ public class CacheConfig {
                 "publicTournamentRaces",
                 "adminNewsSummaries",
                 "publicNewsSummaries",
-                "newsDetails"
+                "newsDetails",
+                "systemSettings"
         );
         cacheManager.setCaffeine(Caffeine.newBuilder()
                 .maximumSize(2_000)

@@ -1,6 +1,7 @@
 package com.minhthien.hoser_backend.repository;
 
 import com.minhthien.hoser_backend.entity.PaymentOrder;
+import com.minhthien.hoser_backend.enums.PaymentDepositTarget;
 import com.minhthien.hoser_backend.enums.PaymentOrderStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -28,6 +29,12 @@ public interface PaymentOrderRepository extends JpaRepository<PaymentOrder, Long
 
     @EntityGraph(attributePaths = "user")
     List<PaymentOrder> findAllByOrderByCreatedAtDesc();
+
+    @EntityGraph(attributePaths = "user")
+    List<PaymentOrder> findByDepositTargetOrderByCreatedAtDesc(PaymentDepositTarget depositTarget);
+
+    @EntityGraph(attributePaths = "user")
+    Optional<PaymentOrder> findByIdAndDepositTarget(Long id, PaymentDepositTarget depositTarget);
 
     @Query("""
             select po.status, count(po)

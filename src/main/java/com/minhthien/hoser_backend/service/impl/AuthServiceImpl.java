@@ -6,10 +6,13 @@ import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.minhthien.hoser_backend.dto.request.LoginRequest;
 import com.minhthien.hoser_backend.dto.request.RegisterRequest;
+import com.minhthien.hoser_backend.dto.request.TwoFactorResendRequest;
+import com.minhthien.hoser_backend.dto.request.TwoFactorVerifyRequest;
 import com.minhthien.hoser_backend.dto.response.AuthResponse;
 import com.minhthien.hoser_backend.dto.response.UserResponse;
 import com.minhthien.hoser_backend.entity.PasswordResetOtp;
 import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.entity.TwoFactorChallenge;
 import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.enums.RoleApprovalStatus;
 import com.minhthien.hoser_backend.exception.BadRequestException;
@@ -17,10 +20,12 @@ import com.minhthien.hoser_backend.exception.DuplicateResourceException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.repository.PasswordResetOtpRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
+import com.minhthien.hoser_backend.repository.TwoFactorChallengeRepository;
 import com.minhthien.hoser_backend.security.JwtTokenProvider;
 import com.minhthien.hoser_backend.service.AuthService;
 import com.minhthien.hoser_backend.service.MailService;
 import com.minhthien.hoser_backend.service.WalletService;
+import com.minhthien.hoser_backend.service.SystemSettingsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -37,6 +42,7 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -49,6 +55,11 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordResetOtpRepository otpRepository;
     private final MailService mailService;
     private final WalletService walletService;
+    private final TwoFactorChallengeRepository twoFactorChallengeRepository;
+    private final SystemSettingsService systemSettingsService;
+
+    private static final int TWO_FACTOR_EXPIRY_MINUTES = 5;
+    private static final int TWO_FACTOR_MAX_ATTEMPTS = 5;
 
     @Value("${google.client-id}")
     private String googleClientId;
@@ -74,8 +85,7 @@ public class AuthServiceImpl implements AuthService {
 
         user = userRepository.save(user);
         walletService.getOrCreateUserWallet(user.getId());
-        String token = jwtTokenProvider.generateTokenFromUsername(user.getUsername());
-        return buildAuthResponse(user, token);
+        return completeLogin(user);
     }
 
     @Override
@@ -87,8 +97,7 @@ public class AuthServiceImpl implements AuthService {
 
         User user = (User) authentication.getPrincipal();
         ensureDefaultUserRole(user);
-        String token = jwtTokenProvider.generateTokenFromUsername(user.getUsername());
-        return buildAuthResponse(user, token);
+        return completeLogin(user);
     }
 
     @Override
@@ -163,18 +172,7 @@ public class AuthServiceImpl implements AuthService {
                             .build()));
             ensureDefaultUserRole(user);
 
-            String token = jwtTokenProvider.generateTokenFromUsername(user.getUsername());
-            return AuthResponse.builder()
-                    .token(token)
-                    .tokenType("Bearer")
-                    .userId(user.getId())
-                    .username(user.getUsername())
-                    .email(user.getEmail())
-                    .role(user.getRole())
-                    .pendingRole(user.getPendingRole())
-                    .roleApprovalStatus(user.getRoleApprovalStatus())
-                    .roleReviewReason(user.getRoleReviewReason())
-                    .build();
+            return completeLogin(user);
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
@@ -215,18 +213,7 @@ public class AuthServiceImpl implements AuthService {
                             .build()));
             ensureDefaultUserRole(user);
 
-            String token = jwtTokenProvider.generateTokenFromUsername(user.getUsername());
-            return AuthResponse.builder()
-                    .token(token)
-                    .tokenType("Bearer")
-                    .userId(user.getId())
-                    .username(user.getUsername())
-                    .email(user.getEmail())
-                    .role(user.getRole())
-                    .pendingRole(user.getPendingRole())
-                    .roleApprovalStatus(user.getRoleApprovalStatus())
-                    .roleReviewReason(user.getRoleReviewReason())
-                    .build();
+            return completeLogin(user);
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
@@ -247,7 +234,98 @@ public class AuthServiceImpl implements AuthService {
                 .pendingRole(user.getPendingRole())
                 .roleApprovalStatus(user.getRoleApprovalStatus())
                 .roleReviewReason(user.getRoleReviewReason())
+                .twoFactorRequired(false)
                 .build();
+    }
+
+    @Override
+    @Transactional(noRollbackFor = BadRequestException.class)
+    public AuthResponse verifyTwoFactor(TwoFactorVerifyRequest request) {
+        TwoFactorChallenge challenge = twoFactorChallengeRepository.findDetailedById(request.getChallengeId())
+                .orElseThrow(() -> new BadRequestException("Invalid two-factor challenge"));
+        if (challenge.getUsedAt() != null) {
+            throw new BadRequestException("Two-factor challenge has already been used");
+        }
+        if (challenge.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Two-factor challenge has expired");
+        }
+        if (challenge.getAttemptCount() >= TWO_FACTOR_MAX_ATTEMPTS) {
+            throw new BadRequestException("Two-factor challenge has too many failed attempts");
+        }
+        if (!passwordEncoder.matches(request.getOtp(), challenge.getOtpHash())) {
+            challenge.setAttemptCount(challenge.getAttemptCount() + 1);
+            twoFactorChallengeRepository.save(challenge);
+            throw new BadRequestException("Invalid two-factor code");
+        }
+        challenge.setUsedAt(LocalDateTime.now());
+        twoFactorChallengeRepository.save(challenge);
+        return authenticatedResponse(challenge.getUser());
+    }
+
+    @Override
+    @Transactional
+    public AuthResponse resendTwoFactor(TwoFactorResendRequest request) {
+        TwoFactorChallenge challenge = twoFactorChallengeRepository.findDetailedById(request.getChallengeId())
+                .orElseThrow(() -> new BadRequestException("Invalid two-factor challenge"));
+        if (challenge.getUsedAt() != null) {
+            throw new BadRequestException("Two-factor challenge has already been used");
+        }
+        String otp = generateOtp();
+        challenge.setOtpHash(passwordEncoder.encode(otp));
+        challenge.setExpiresAt(LocalDateTime.now().plusMinutes(TWO_FACTOR_EXPIRY_MINUTES));
+        challenge.setAttemptCount(0);
+        twoFactorChallengeRepository.save(challenge);
+        mailService.sendTwoFactorOtp(challenge.getUser(), otp);
+        return challengeResponse(challenge);
+    }
+
+    private AuthResponse completeLogin(User user) {
+        if (systemSettingsService.requiresTwoFactor(user.getRole())) {
+            return createTwoFactorChallenge(user);
+        }
+        return authenticatedResponse(user);
+    }
+
+    private AuthResponse createTwoFactorChallenge(User user) {
+        String otp = generateOtp();
+        TwoFactorChallenge challenge = twoFactorChallengeRepository.save(TwoFactorChallenge.builder()
+                .id(UUID.randomUUID().toString())
+                .user(user)
+                .otpHash(passwordEncoder.encode(otp))
+                .expiresAt(LocalDateTime.now().plusMinutes(TWO_FACTOR_EXPIRY_MINUTES))
+                .build());
+        mailService.sendTwoFactorOtp(user, otp);
+        return challengeResponse(challenge);
+    }
+
+    private AuthResponse challengeResponse(TwoFactorChallenge challenge) {
+        User user = challenge.getUser();
+        return AuthResponse.builder()
+                .token(null)
+                .tokenType("Bearer")
+                .userId(user.getId())
+                .username(user.getUsername())
+                .fullName(user.getFullName())
+                .phone(user.getPhone())
+                .email(user.getEmail())
+                .role(user.getRole())
+                .pendingRole(user.getPendingRole())
+                .roleApprovalStatus(user.getRoleApprovalStatus())
+                .roleReviewReason(user.getRoleReviewReason())
+                .twoFactorRequired(true)
+                .challengeId(challenge.getId())
+                .challengeExpiresAt(challenge.getExpiresAt())
+                .build();
+    }
+
+    private AuthResponse authenticatedResponse(User user) {
+        long expirationMs = systemSettingsService.getCurrent().getSessionDurationMinutes() * 60_000L;
+        String token = jwtTokenProvider.generateTokenFromUsername(user.getUsername(), expirationMs);
+        return buildAuthResponse(user, token);
+    }
+
+    private String generateOtp() {
+        return String.valueOf(ThreadLocalRandom.current().nextInt(100000, 1000000));
     }
 
     private void ensureDefaultUserRole(User user) {

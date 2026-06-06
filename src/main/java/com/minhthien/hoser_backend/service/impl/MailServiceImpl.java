@@ -3,11 +3,13 @@ package com.minhthien.hoser_backend.service.impl;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RaceComplaint;
 import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.EmailEventLog;
 import com.minhthien.hoser_backend.enums.EmailEventStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.repository.EmailEventLogRepository;
 import com.minhthien.hoser_backend.service.MailService;
+import com.minhthien.hoser_backend.service.SystemSettingsService;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.mail.MailPreparationException;
@@ -22,7 +24,8 @@ import java.time.format.DateTimeFormatter;
 
 @Service
 public class MailServiceImpl implements MailService {
-    private static final String BRAND = "HORSE";
+    private static final String FALLBACK_BRAND = "HORSE";
+    private static final String FALLBACK_COLOR = "#0f766e";
     private static final String OTP_SUBJECT = "HORSE - Mã OTP đặt lại mật khẩu";
     private static final String ROLE_APPROVED_SUBJECT = "HORSE - Hồ sơ đăng ký vai trò đã được duyệt";
     private static final String ROLE_REJECTED_SUBJECT = "HORSE - Hồ sơ đăng ký vai trò cần bổ sung";
@@ -40,16 +43,20 @@ public class MailServiceImpl implements MailService {
 
     private final JavaMailSender mailSender;
     private final EmailEventLogRepository emailEventLogRepository;
+    private final SystemSettingsService systemSettingsService;
 
     @Autowired
-    public MailServiceImpl(JavaMailSender mailSender, EmailEventLogRepository emailEventLogRepository) {
+    public MailServiceImpl(JavaMailSender mailSender, EmailEventLogRepository emailEventLogRepository,
+                           SystemSettingsService systemSettingsService) {
         this.mailSender = mailSender;
         this.emailEventLogRepository = emailEventLogRepository;
+        this.systemSettingsService = systemSettingsService;
     }
 
     public MailServiceImpl(JavaMailSender mailSender) {
         this.mailSender = mailSender;
         this.emailEventLogRepository = null;
+        this.systemSettingsService = null;
     }
 
     @Override
@@ -108,9 +115,10 @@ public class MailServiceImpl implements MailService {
 
     @Override
     public void sendRaceReminder(Race race, User recipient) {
+        String subject = settings().getCheckInReminderEmailSubject();
         sendHtmlEmail(
                 recipient.getEmail(),
-                RACE_REMINDER_SUBJECT,
+                renderSubject(subject, race.getTournament().getName(), race.getName()),
                 "RACE_REMINDER",
                 "RACE",
                 String.valueOf(race.getId()),
@@ -166,9 +174,10 @@ public class MailServiceImpl implements MailService {
 
     @Override
     public void sendRaceResultPublished(Race race, User recipient, String referenceType, String referenceId) {
+        String subject = settings().getRaceResultEmailSubject();
         sendHtmlEmail(
                 recipient.getEmail(),
-                RACE_RESULT_SUBJECT,
+                renderSubject(subject, race.getTournament().getName(), race.getName()),
                 "RACE_RESULT_PUBLISHED",
                 referenceType,
                 referenceId,
@@ -183,13 +192,68 @@ public class MailServiceImpl implements MailService {
         sendSimpleStatusEmail(recipient, subject, "PRIZE_PAYOUT", message, referenceType, referenceId);
     }
 
+    @Override
+    public void sendAnnouncement(User recipient, String subject, String message,
+                                 String referenceType, String referenceId) {
+        String safeMessage = HtmlUtils.htmlEscape(message == null ? "" : message)
+                .replace("\r\n", "<br>")
+                .replace("\n", "<br>");
+        sendHtmlEmail(
+                recipient.getEmail(),
+                subject,
+                "ADMIN_ANNOUNCEMENT",
+                referenceType,
+                referenceId,
+                "HORSE\n\nXin chao %s,\n\n%s\n\nEmail nay duoc gui tu HORSE."
+                        .formatted(displayName(recipient), message),
+                layoutHtml(subject, "Announcement", subject, safeMessage, "", "",
+                        "#0f766e", "#d7f7f1")
+        );
+    }
+
+    @Override
+    public void sendTournamentRegistrationOpen(Tournament tournament, User recipient) {
+        String subject = renderSubject(
+                settings().getRegistrationOpenEmailSubject(), tournament.getName(), null);
+        String message = "Registration is now open for tournament " + tournament.getName() + ".";
+        sendHtmlEmail(
+                recipient.getEmail(),
+                subject,
+                "TOURNAMENT_REGISTRATION_OPEN",
+                "TOURNAMENT",
+                String.valueOf(tournament.getId()),
+                brand() + "\n\nXin chao " + displayName(recipient) + ",\n\n" + message,
+                layoutHtml(subject, "Tournament", subject, HtmlUtils.htmlEscape(message), "", "",
+                        primaryColor(), "#fef3c7")
+        );
+    }
+
+    @Override
+    public void sendTwoFactorOtp(User recipient, String otp) {
+        String formattedOtp = formatOtp(otp);
+        String subject = brand() + " - Login verification code";
+        sendHtmlEmail(
+                recipient.getEmail(),
+                subject,
+                "TWO_FACTOR_OTP",
+                "USER",
+                String.valueOf(recipient.getId()),
+                brand() + "\n\nYour login verification code is: " + formattedOtp,
+                layoutHtml(subject, "Security", "Login verification",
+                        "Enter this code to complete your login.",
+                        "<div style=\"font-size:32px;font-weight:700;letter-spacing:6px;\">"
+                                + HtmlUtils.htmlEscape(formattedOtp) + "</div>",
+                        "", primaryColor(), "#fef3c7")
+        );
+    }
+
     private void sendSimpleStatusEmail(User recipient, String subject, String templateType, String message,
                                        String referenceType, String referenceId) {
         sendHtmlEmail(recipient.getEmail(), subject, templateType, referenceType, referenceId,
-                "HORSE\n\nXin chao %s,\n\n%s\n\nEmail nay duoc gui tu dong tu HORSE."
-                        .formatted(displayName(recipient), message),
+                "%s\n\nXin chao %s,\n\n%s\n\nEmail nay duoc gui tu dong."
+                        .formatted(brand(), displayName(recipient), message),
                 layoutHtml(subject, "Notification", subject, HtmlUtils.htmlEscape(message), "", "",
-                        "#0f766e", "#d7f7f1"));
+                primaryColor(), "#d7f7f1"));
     }
 
     private void sendHtmlEmail(String to, String subject, String templateType, String referenceType,
@@ -491,7 +555,7 @@ public class MailServiceImpl implements MailService {
                                     %s
                                     <tr>
                                         <td style="background:#f8fafc;padding:18px 28px;text-align:center;font-size:12px;line-height:18px;color:#7b8794;">
-                                            Email này được gửi tự động từ HORSE.
+                                            Email này được gửi tự động từ %s.
                                         </td>
                                     </tr>
                                 </table>
@@ -503,13 +567,14 @@ public class MailServiceImpl implements MailService {
                 """.formatted(
                 safeTitle,
                 headerColor,
-                BRAND,
+                brand(),
                 subtitleColor,
                 safeSubtitle,
                 safeHeading,
                 intro,
                 mainContent,
-                noticeRow(noticeContent)
+                noticeRow(noticeContent),
+                HtmlUtils.htmlEscape(brand())
         );
     }
 
@@ -546,5 +611,39 @@ public class MailServiceImpl implements MailService {
 
     private String formatRaceTime(java.time.LocalDateTime value) {
         return value == null ? "" : value.format(RACE_TIME_FORMAT);
+    }
+
+    private com.minhthien.hoser_backend.entity.SystemSettings settings() {
+        if (systemSettingsService == null) {
+            return com.minhthien.hoser_backend.entity.SystemSettings.builder()
+                    .registrationOpenEmailSubject(
+                            com.minhthien.hoser_backend.entity.SystemSettings.DEFAULT_REGISTRATION_OPEN_SUBJECT)
+                    .checkInReminderEmailSubject(
+                            com.minhthien.hoser_backend.entity.SystemSettings.DEFAULT_CHECK_IN_REMINDER_SUBJECT)
+                    .raceResultEmailSubject(
+                            com.minhthien.hoser_backend.entity.SystemSettings.DEFAULT_RACE_RESULT_SUBJECT)
+                    .systemName(com.minhthien.hoser_backend.entity.SystemSettings.DEFAULT_SYSTEM_NAME)
+                    .primaryColor(com.minhthien.hoser_backend.entity.SystemSettings.DEFAULT_PRIMARY_COLOR)
+                    .build();
+        }
+        return systemSettingsService.getCurrent();
+    }
+
+    private String brand() {
+        String value = settings().getSystemName();
+        return value == null || value.isBlank() ? FALLBACK_BRAND : value;
+    }
+
+    private String primaryColor() {
+        String value = settings().getPrimaryColor();
+        return value == null || value.isBlank() ? FALLBACK_COLOR : value;
+    }
+
+    private String renderSubject(String template, String tournamentName, String raceName) {
+        if (systemSettingsService != null) {
+            return systemSettingsService.renderSubject(template, tournamentName, raceName);
+        }
+        return template.replace("{{tournament}}", tournamentName == null ? "" : tournamentName)
+                .replace("{{race}}", raceName == null ? "" : raceName);
     }
 }

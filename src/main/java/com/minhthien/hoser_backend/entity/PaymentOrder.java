@@ -1,6 +1,7 @@
 package com.minhthien.hoser_backend.entity;
 
 import com.minhthien.hoser_backend.enums.PaymentOrderStatus;
+import com.minhthien.hoser_backend.enums.PaymentDepositTarget;
 import com.minhthien.hoser_backend.enums.PaymentProvider;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -59,6 +60,11 @@ public class PaymentOrder {
     @Column(nullable = false, length = 20)
     @Builder.Default
     private PaymentOrderStatus status = PaymentOrderStatus.PENDING;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "deposit_target", length = 30)
+    @Builder.Default
+    private PaymentDepositTarget depositTarget = PaymentDepositTarget.USER_WALLET;
 
     @Column(name = "reference_code", nullable = false, length = 80)
     private String referenceCode;
@@ -122,6 +128,9 @@ public class PaymentOrder {
         }
         if (status == null) {
             status = PaymentOrderStatus.PENDING;
+        }
+        if (depositTarget == null) {
+            depositTarget = PaymentDepositTarget.USER_WALLET;
         }
         if (createdBy == null || createdBy.isBlank()) {
             createdBy = "SYSTEM";

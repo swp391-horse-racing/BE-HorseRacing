@@ -1,10 +1,6 @@
 package com.minhthien.hoser_backend.controller;
 
-import com.minhthien.hoser_backend.dto.response.ApiResponse;
-import com.minhthien.hoser_backend.dto.response.DashboardResponse;
-import com.minhthien.hoser_backend.dto.response.JockeyPerformanceResponse;
-import com.minhthien.hoser_backend.dto.response.RaceResponse;
-import com.minhthien.hoser_backend.dto.response.WalletTransactionResponse;
+import com.minhthien.hoser_backend.dto.response.*;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.RaceStatus;
 import com.minhthien.hoser_backend.service.DashboardService;
@@ -102,5 +98,46 @@ public class DashboardController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
             @RequestParam(required = false) RaceStatus status) {
         return ResponseEntity.ok(ApiResponse.success(dashboardService.getAdminRaces(from, to, status)));
+    }
+
+    @GetMapping("/admin/dashboard/summary")
+    public ResponseEntity<ApiResponse<AdminDashboardSummaryResponse>> getAdminDashboardSummary() {
+        return ResponseEntity.ok(ApiResponse.success(dashboardService.getAdminDashboardSummary()));
+    }
+
+    @GetMapping("/admin/dashboard/revenue")
+    public ResponseEntity<ApiResponse<List<AdminDashboardRevenueResponse>>> getAdminDashboardRevenue(
+            @RequestParam(defaultValue = "6") int months) {
+        return ResponseEntity.ok(ApiResponse.success(dashboardService.getAdminDashboardRevenue(months)));
+    }
+
+    @GetMapping("/admin/dashboard/tournament-registrations")
+    public ResponseEntity<ApiResponse<List<AdminDashboardTournamentRegistrationResponse>>>
+    getAdminTournamentRegistrations() {
+        return ResponseEntity.ok(ApiResponse.success(dashboardService.getAdminTournamentRegistrations()));
+    }
+
+    @GetMapping("/admin/dashboard/top-horses")
+    public ResponseEntity<ApiResponse<List<AdminDashboardTopHorseResponse>>> getAdminTopHorses(
+            @RequestParam(defaultValue = "4") int limit) {
+        return ResponseEntity.ok(ApiResponse.success(dashboardService.getAdminTopHorses(limit)));
+    }
+
+    @GetMapping("/admin/dashboard/quick-insights")
+    public ResponseEntity<ApiResponse<List<AdminDashboardInsightResponse>>> getAdminQuickInsights(
+            @RequestParam(defaultValue = "6") int months) {
+        return ResponseEntity.ok(ApiResponse.success(dashboardService.getAdminQuickInsights(months)));
+    }
+
+    @GetMapping("/admin/dashboard/tournament-race-counts")
+    public ResponseEntity<ApiResponse<List<AdminDashboardTournamentRaceCountResponse>>> getTournamentRaceCounts(
+            @RequestParam(defaultValue = "10") int limit) {
+        return ResponseEntity.ok(ApiResponse.success(dashboardService.getAdminTournamentRaceCounts(limit)));
+    }
+
+    @GetMapping("/admin/dashboard/featured-tournaments")
+    public ResponseEntity<ApiResponse<List<AdminDashboardFeaturedTournamentResponse>>> getFeaturedTournaments(
+            @RequestParam(defaultValue = "2") int limit) {
+        return ResponseEntity.ok(ApiResponse.success(dashboardService.getAdminFeaturedTournaments(limit)));
     }
 }

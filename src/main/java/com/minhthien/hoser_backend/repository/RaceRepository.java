@@ -27,6 +27,27 @@ public interface RaceRepository extends JpaRepository<Race, Long> {
 
     long countByStatus(RaceStatus status);
 
+    long countByStatusNot(RaceStatus status);
+
+    @Query("""
+            select count(r)
+            from Race r
+            where r.status <> com.minhthien.hoser_backend.enums.RaceStatus.CANCELLED
+              and r.tournament.status <> com.minhthien.hoser_backend.enums.TournamentStatus.CANCELLED
+            """)
+    long countActiveForAdminDashboard();
+
+    @Query("""
+            select count(r)
+            from Race r
+            where r.status <> com.minhthien.hoser_backend.enums.RaceStatus.CANCELLED
+              and r.tournament.status <> com.minhthien.hoser_backend.enums.TournamentStatus.CANCELLED
+              and r.createdAt >= :from
+              and r.createdAt < :to
+            """)
+    long countActiveCreatedBetween(@Param("from") LocalDateTime from,
+                                   @Param("to") LocalDateTime to);
+
     long countByScheduledStartAtBetween(LocalDateTime startAt, LocalDateTime endAt);
 
     @EntityGraph(attributePaths = {"tournament", "referee"})

@@ -35,10 +35,14 @@ public class JwtTokenProvider {
     }
 
     public String generateTokenFromUsername(String username) {
+        return generateTokenFromUsername(username, jwtExpirationMs);
+    }
+
+    public String generateTokenFromUsername(String username, long expirationMs) {
         return Jwts.builder()
                 .subject(username)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + jwtExpirationMs))
+                .expiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(getSigningKey())
                 .compact();
     }

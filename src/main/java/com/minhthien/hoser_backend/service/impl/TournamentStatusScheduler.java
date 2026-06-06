@@ -3,6 +3,7 @@ package com.minhthien.hoser_backend.service.impl;
 import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
+import com.minhthien.hoser_backend.service.RegistrationOpenBroadcastService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
@@ -19,6 +20,7 @@ public class TournamentStatusScheduler {
     private static final String SYSTEM_USER = "SYSTEM";
 
     private final TournamentRepository tournamentRepository;
+    private final RegistrationOpenBroadcastService registrationOpenBroadcastService;
 
     @Scheduled(
             initialDelayString = "${app.tournament-status.initial-delay-ms:30000}",
@@ -53,6 +55,7 @@ public class TournamentStatusScheduler {
             tournament.setUpdatedBy(SYSTEM_USER);
             TournamentStatusSync.syncPreRaceStatuses(tournament, TournamentStatus.OPEN_REGISTRATION);
             tournamentRepository.save(tournament);
+            registrationOpenBroadcastService.broadcast(tournament);
             updated++;
         }
         return updated;

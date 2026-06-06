@@ -34,7 +34,9 @@ import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
+import com.minhthien.hoser_backend.service.SystemSettingsService;
 import com.minhthien.hoser_backend.service.TournamentService;
+import com.minhthien.hoser_backend.service.RegistrationOpenBroadcastService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -70,6 +72,8 @@ public class TournamentServiceImpl implements TournamentService {
     private final RaceResultRepository raceResultRepository;
     private final RaceComplaintRepository raceComplaintRepository;
     private final JockeyChallengeResultRepository jockeyChallengeResultRepository;
+    private final SystemSettingsService systemSettingsService;
+    private final RegistrationOpenBroadcastService registrationOpenBroadcastService;
 
     @Override
     @Transactional
@@ -102,6 +106,11 @@ public class TournamentServiceImpl implements TournamentService {
                 .createdBy(admin.getUsername())
                 .updatedBy(admin.getUsername())
                 .build();
+        var settings = systemSettingsService.getCurrent();
+        tournament.setRules(hasText(request.getRules())
+                ? request.getRules().trim()
+                : settings.getDefaultTournamentRules());
+        tournament.setLateCheckInFee(settings.getLateCheckInFee());
         applyRequest(tournament, request, admin.getUsername());
         applyBanner(tournament, banner);
         Tournament saved = tournamentRepository.save(tournament);
@@ -334,6 +343,10 @@ public class TournamentServiceImpl implements TournamentService {
         }
         tournament.setUpdatedBy(admin.getUsername());
         Tournament saved = tournamentRepository.save(tournament);
+        if (oldStatus != TournamentStatus.OPEN_REGISTRATION
+                && status == TournamentStatus.OPEN_REGISTRATION) {
+            registrationOpenBroadcastService.broadcast(saved);
+        }
         recordAudit(admin, "TOURNAMENT_STATUS_UPDATED", saved,
                 "Tournament status changed from " + oldStatus + " to " + status);
         return mapToResponse(saved);
@@ -442,6 +455,9 @@ public class TournamentServiceImpl implements TournamentService {
         if (request.getCheckInDeadlineAt() != null) {
             tournament.setCheckInDeadlineAt(request.getCheckInDeadlineAt());
         }
+        if (request.getRules() != null) {
+            tournament.setRules(request.getRules().trim());
+        }
         if (request.getMinTeams() != null) {
             tournament.setMinTeams(request.getMinTeams());
         }
@@ -516,7 +532,9 @@ public class TournamentServiceImpl implements TournamentService {
                 .scheduledEndAt(request.getScheduledEndAt())
                 .minParticipants(request.getMinParticipants())
                 .maxParticipants(request.getMaxParticipants())
-                .entryFee(defaultZero(request.getEntryFee()))
+                .entryFee(request.getEntryFee() == null
+                        ? systemSettingsService.getCurrent().getDefaultRegistrationFee()
+                        : request.getEntryFee())
                 .referee(request.getRefereeId() == null ? null : requireReferee(request.getRefereeId()))
                 .status(RaceStatus.DRAFT)
                 .note(request.getNote())
@@ -532,7 +550,9 @@ public class TournamentServiceImpl implements TournamentService {
         race.setScheduledEndAt(request.getScheduledEndAt());
         race.setMinParticipants(request.getMinParticipants());
         race.setMaxParticipants(request.getMaxParticipants());
-        race.setEntryFee(defaultZero(request.getEntryFee()));
+        if (request.getEntryFee() != null) {
+            race.setEntryFee(request.getEntryFee());
+        }
         race.setReferee(request.getRefereeId() == null ? null : requireReferee(request.getRefereeId()));
         race.setNote(request.getNote());
         race.syncPrizes(mapRacePrizes(request.getPrizes()));
@@ -818,6 +838,8 @@ public class TournamentServiceImpl implements TournamentService {
                 .startAt(tournament.getStartAt())
                 .endAt(tournament.getEndAt())
                 .checkInDeadlineAt(tournament.getCheckInDeadlineAt())
+                .rules(tournament.getRules())
+                .lateCheckInFee(tournament.getLateCheckInFee())
                 .minTeams(tournament.getMinTeams())
                 .maxTeams(tournament.getMaxTeams())
                 .status(tournament.getStatus())

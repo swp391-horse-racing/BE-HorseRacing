@@ -5,6 +5,7 @@ import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.enums.RaceStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
+import com.minhthien.hoser_backend.service.RegistrationOpenBroadcastService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -26,6 +27,8 @@ import static org.mockito.Mockito.when;
 class TournamentStatusSchedulerTest {
     @Mock
     private TournamentRepository tournamentRepository;
+    @Mock
+    private RegistrationOpenBroadcastService registrationOpenBroadcastService;
 
     @InjectMocks
     private TournamentStatusScheduler scheduler;

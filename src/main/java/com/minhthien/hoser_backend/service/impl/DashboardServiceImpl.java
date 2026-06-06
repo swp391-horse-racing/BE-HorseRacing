@@ -14,8 +14,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -25,6 +29,9 @@ import java.util.stream.Collectors;
 public class DashboardServiceImpl implements DashboardService {
     private static final int RECENT_LIMIT = 10;
     private static final PageRequest RECENT_PAGE = PageRequest.of(0, RECENT_LIMIT);
+    private static final ZoneId DASHBOARD_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final Set<RaceRegistrationStatus> VALID_REGISTRATION_STATUSES =
+            EnumSet.of(RaceRegistrationStatus.PENDING, RaceRegistrationStatus.APPROVED);
 
     private final UserRepository userRepository;
     private final WalletRepository walletRepository;
@@ -262,6 +269,240 @@ public class DashboardServiceImpl implements DashboardService {
                 .toList();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public AdminDashboardSummaryResponse getAdminDashboardSummary() {
+        MonthWindow monthWindow = currentMonthWindow();
+        long tournamentCount = tournamentRepository.countByStatusNot(TournamentStatus.CANCELLED);
+        long raceCount = raceRepository.countActiveForAdminDashboard();
+        long registrationCount = raceRegistrationRepository.countValidForAdminDashboard(
+                VALID_REGISTRATION_STATUSES);
+        long activeUserCount = userRepository.countActiveExcludingRole(UserRole.ADMIN);
+        BigDecimal revenue = adminRevenue();
+
+        return AdminDashboardSummaryResponse.builder()
+                .tournamentCount(tournamentCount)
+                .raceCount(raceCount)
+                .registrationCount(registrationCount)
+                .revenue(revenue)
+                .tournament(metric(tournamentCount,
+                        tournamentRepository.countActiveCreatedBetween(
+                                monthWindow.currentStart(), monthWindow.nextStart()),
+                        tournamentRepository.countActiveCreatedBetween(
+                                monthWindow.previousStart(), monthWindow.currentStart())))
+                .race(metric(raceCount,
+                        raceRepository.countActiveCreatedBetween(
+                                monthWindow.currentStart(), monthWindow.nextStart()),
+                        raceRepository.countActiveCreatedBetween(
+                                monthWindow.previousStart(), monthWindow.currentStart())))
+                .activeUser(metric(activeUserCount,
+                        userRepository.countActiveExcludingRoleCreatedBetween(
+                                UserRole.ADMIN, monthWindow.currentStart(), monthWindow.nextStart()),
+                        userRepository.countActiveExcludingRoleCreatedBetween(
+                                UserRole.ADMIN, monthWindow.previousStart(), monthWindow.currentStart())))
+                .revenueMetric(metric(revenue,
+                        adminRevenueBetween(monthWindow.currentStart(), monthWindow.nextStart()),
+                        adminRevenueBetween(monthWindow.previousStart(), monthWindow.currentStart())))
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminDashboardRevenueResponse> getAdminDashboardRevenue(int months) {
+        validateRange(months, 1, 24, "months");
+        YearMonth currentMonth = YearMonth.now(DASHBOARD_ZONE);
+        YearMonth firstMonth = currentMonth.minusMonths(months - 1L);
+        YearMonth queryFirstMonth = firstMonth.minusMonths(1);
+        LocalDateTime from = queryFirstMonth.atDay(1).atStartOfDay();
+        LocalDateTime to = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
+
+        Map<YearMonth, BigDecimal> revenueByMonth = walletTransactionRepository
+                .sumAdminRevenueByMonth(WalletOwnerType.ADMIN, WalletTransactionDirection.CREDIT,
+                        WalletTransactionStatus.SUCCESS, from, to)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> YearMonth.of(number(row[0]).intValue(), number(row[1]).intValue()),
+                        row -> zero((BigDecimal) row[2])));
+
+        List<AdminDashboardRevenueResponse> response = new ArrayList<>();
+        for (int offset = 0; offset < months; offset++) {
+            YearMonth month = firstMonth.plusMonths(offset);
+            BigDecimal amount = revenueByMonth.getOrDefault(month, BigDecimal.ZERO);
+            response.add(AdminDashboardRevenueResponse.builder()
+                    .year(month.getYear())
+                    .month(month.getMonthValue())
+                    .label("T" + month.getMonthValue())
+                    .amount(amount)
+                    .growthPercent(offset == months - 1
+                            ? growthPercent(amount,
+                            revenueByMonth.getOrDefault(month.minusMonths(1), BigDecimal.ZERO))
+                            : null)
+                    .build());
+        }
+        return response;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminDashboardTournamentRegistrationResponse> getAdminTournamentRegistrations() {
+        Map<Long, Long> registrationsByTournament = raceRegistrationRepository
+                .countValidByTournament(VALID_REGISTRATION_STATUSES)
+                .stream()
+                .collect(Collectors.toMap(row -> number(row[0]).longValue(), row -> number(row[2]).longValue()));
+
+        return tournamentRepository.summarizeRegistrationCapacity().stream()
+                .map(row -> {
+                    Long tournamentId = number(row[0]).longValue();
+                    long registrationCount = registrationsByTournament.getOrDefault(tournamentId, 0L);
+                    long capacity = number(row[3]).longValue();
+                    return AdminDashboardTournamentRegistrationResponse.builder()
+                            .tournamentId(tournamentId)
+                            .tournamentName((String) row[1])
+                            .raceCount(number(row[2]).longValue())
+                            .registrationCount(registrationCount)
+                            .capacity(capacity)
+                            .fillRate(percent(registrationCount, capacity))
+                            .build();
+                })
+                .sorted(Comparator.comparing(AdminDashboardTournamentRegistrationResponse::getRegistrationCount)
+                        .reversed()
+                        .thenComparing(AdminDashboardTournamentRegistrationResponse::getTournamentId))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminDashboardTopHorseResponse> getAdminTopHorses(int limit) {
+        validateRange(limit, 1, 20, "limit");
+        List<Object[]> rows = raceResultRepository.findTopHorseStatistics(PageRequest.of(0, limit));
+        List<AdminDashboardTopHorseResponse> response = new ArrayList<>();
+        Long previousWins = null;
+        BigDecimal previousPrize = null;
+        int rank = 0;
+
+        for (int index = 0; index < rows.size(); index++) {
+            Object[] row = rows.get(index);
+            long wins = number(row[4]).longValue();
+            BigDecimal prize = zero((BigDecimal) row[5]);
+            if (previousWins == null || previousWins != wins || previousPrize.compareTo(prize) != 0) {
+                rank = index + 1;
+            }
+            response.add(AdminDashboardTopHorseResponse.builder()
+                    .rank(rank)
+                    .horseId(number(row[0]).longValue())
+                    .horseName((String) row[1])
+                    .ownerId(number(row[2]).longValue())
+                    .ownerName((String) row[3])
+                    .winCount(wins)
+                    .totalPrizeAmount(prize)
+                    .build());
+            previousWins = wins;
+            previousPrize = prize;
+        }
+        return response;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminDashboardInsightResponse> getAdminQuickInsights(int months) {
+        validateRange(months, 1, 24, "months");
+        List<AdminDashboardInsightResponse> insights = new ArrayList<>();
+        List<AdminDashboardTournamentRegistrationResponse> tournaments = getAdminTournamentRegistrations();
+
+        long totalCapacity = tournaments.stream()
+                .mapToLong(AdminDashboardTournamentRegistrationResponse::getCapacity)
+                .sum();
+        long totalRegistrations = tournaments.stream()
+                .mapToLong(AdminDashboardTournamentRegistrationResponse::getRegistrationCount)
+                .sum();
+        if (totalCapacity > 0) {
+            BigDecimal fillRate = percent(totalRegistrations, totalCapacity);
+            insights.add(insight("AVERAGE_FILL_RATE",
+                    "Tỷ lệ lấp đầy đăng ký trung bình đạt " + formatPercent(fillRate) + "%.",
+                    fillRate, "PERCENT",
+                    Map.of("registrationCount", totalRegistrations, "capacity", totalCapacity)));
+        }
+
+        tournaments.stream()
+                .filter(tournament -> tournament.getRegistrationCount() > 0)
+                .findFirst()
+                .ifPresent(tournament -> insights.add(insight("TOP_TOURNAMENT_REGISTRATIONS",
+                        tournament.getTournamentName() + " có số đăng ký cao nhất.",
+                        BigDecimal.valueOf(tournament.getRegistrationCount()), "COUNT",
+                        Map.of("tournamentId", tournament.getTournamentId(),
+                                "tournamentName", tournament.getTournamentName()))));
+
+        BigDecimal totalPrize = zero(raceResultRepository.sumFinalizedPrizeAmount());
+        if (totalPrize.compareTo(BigDecimal.ZERO) > 0) {
+            List<AdminDashboardTopHorseResponse> topThreeHorses = getAdminTopHorses(3);
+            BigDecimal topThreePrize = topThreeHorses.stream()
+                    .map(AdminDashboardTopHorseResponse::getTotalPrizeAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (topThreeHorses.size() == 3 && topThreePrize.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal share = topThreePrize.multiply(BigDecimal.valueOf(100))
+                        .divide(totalPrize, 2, RoundingMode.HALF_UP);
+                insights.add(insight("TOP_THREE_HORSE_PRIZE_SHARE",
+                        "Top 3 ngựa tạo ra " + formatPercent(share) + "% tổng tiền thưởng.",
+                        share, "PERCENT", Map.of("topThreePrizeAmount", topThreePrize,
+                                "totalPrizeAmount", totalPrize)));
+            }
+        }
+
+        if (months >= 2) {
+            addRegistrationTrendInsight(insights, months);
+        }
+        return insights.stream().limit(4).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminDashboardTournamentRaceCountResponse> getAdminTournamentRaceCounts(int limit) {
+        validateRange(limit, 1, 50, "limit");
+        return tournamentRepository.summarizeRegistrationCapacity().stream()
+                .map(row -> AdminDashboardTournamentRaceCountResponse.builder()
+                        .tournamentId(number(row[0]).longValue())
+                        .tournamentName((String) row[1])
+                        .shortName(shortName((String) row[1]))
+                        .raceCount(number(row[2]).longValue())
+                        .build())
+                .sorted(Comparator.comparing(AdminDashboardTournamentRaceCountResponse::getRaceCount)
+                        .reversed()
+                        .thenComparing(AdminDashboardTournamentRaceCountResponse::getTournamentId))
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminDashboardFeaturedTournamentResponse> getAdminFeaturedTournaments(int limit) {
+        validateRange(limit, 1, 10, "limit");
+        Map<Long, Long> registrationsByTournament = raceRegistrationRepository
+                .countValidByTournament(VALID_REGISTRATION_STATUSES)
+                .stream()
+                .collect(Collectors.toMap(row -> number(row[0]).longValue(), row -> number(row[2]).longValue()));
+        LocalDateTime now = LocalDateTime.now(DASHBOARD_ZONE);
+
+        return tournamentRepository.summarizeFeaturedCandidates().stream()
+                .map(row -> {
+                    Long tournamentId = number(row[0]).longValue();
+                    return AdminDashboardFeaturedTournamentResponse.builder()
+                            .tournamentId(tournamentId)
+                            .name((String) row[1])
+                            .bannerUrl((String) row[2])
+                            .startAt((LocalDateTime) row[3])
+                            .status((TournamentStatus) row[4])
+                            .raceCount(number(row[5]).longValue())
+                            .registrationCount(registrationsByTournament.getOrDefault(tournamentId, 0L))
+                            .build();
+                })
+                .sorted(Comparator.comparing(AdminDashboardFeaturedTournamentResponse::getRegistrationCount)
+                        .reversed()
+                        .thenComparing(tournament -> distanceFrom(now, tournament.getStartAt()))
+                        .thenComparing(AdminDashboardFeaturedTournamentResponse::getTournamentId))
+                .limit(limit)
+                .toList();
+    }
+
     private DashboardResponse buildDashboard(User user,
                                              Map<String, Object> businessSummary,
                                              List<DashboardItemResponse> alerts,
@@ -440,6 +681,141 @@ public class DashboardServiceImpl implements DashboardService {
         Map<String, Long> counts = new LinkedHashMap<>();
         rows.forEach(row -> counts.put(((Enum<?>) row[0]).name(), ((Number) row[1]).longValue()));
         return counts;
+    }
+
+    private BigDecimal adminRevenue() {
+        return zero(walletTransactionRepository.sumAdminRevenue(
+                WalletOwnerType.ADMIN,
+                WalletTransactionDirection.CREDIT,
+                WalletTransactionStatus.SUCCESS));
+    }
+
+    private BigDecimal adminRevenueBetween(LocalDateTime from, LocalDateTime to) {
+        return zero(walletTransactionRepository.sumAdminRevenueBetween(
+                WalletOwnerType.ADMIN,
+                WalletTransactionDirection.CREDIT,
+                WalletTransactionStatus.SUCCESS,
+                from,
+                to));
+    }
+
+    private AdminDashboardMetricResponse metric(long total, long current, long previous) {
+        return metric(BigDecimal.valueOf(total), BigDecimal.valueOf(current), BigDecimal.valueOf(previous));
+    }
+
+    private AdminDashboardMetricResponse metric(BigDecimal total, BigDecimal current, BigDecimal previous) {
+        return AdminDashboardMetricResponse.builder()
+                .value(zero(total))
+                .growthPercent(growthPercent(zero(current), zero(previous)))
+                .build();
+    }
+
+    private BigDecimal growthPercent(BigDecimal current, BigDecimal previous) {
+        if (previous.compareTo(BigDecimal.ZERO) == 0) {
+            return current.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO : null;
+        }
+        return current.subtract(previous)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(previous, 2, RoundingMode.HALF_UP);
+    }
+
+    private MonthWindow currentMonthWindow() {
+        YearMonth current = YearMonth.now(DASHBOARD_ZONE);
+        return new MonthWindow(
+                current.minusMonths(1).atDay(1).atStartOfDay(),
+                current.atDay(1).atStartOfDay(),
+                current.plusMonths(1).atDay(1).atStartOfDay());
+    }
+
+    private String shortName(String tournamentName) {
+        if (tournamentName == null || tournamentName.isBlank()) {
+            return "";
+        }
+        String initials = Arrays.stream(tournamentName.trim().split("\\s+"))
+                .filter(word -> !word.isBlank() && Character.isLetter(word.codePointAt(0)))
+                .map(word -> new String(Character.toChars(word.codePointAt(0))))
+                .collect(Collectors.joining())
+                .toUpperCase(Locale.ROOT);
+        if (initials.isEmpty()) {
+            return tournamentName.substring(0, Math.min(5, tournamentName.length())).toUpperCase(Locale.ROOT);
+        }
+        return initials.substring(0, Math.min(5, initials.length()));
+    }
+
+    private long distanceFrom(LocalDateTime now, LocalDateTime target) {
+        return target == null ? Long.MAX_VALUE : Math.abs(Duration.between(now, target).toMinutes());
+    }
+
+    private void addRegistrationTrendInsight(List<AdminDashboardInsightResponse> insights, int months) {
+        YearMonth currentMonth = YearMonth.now(DASHBOARD_ZONE);
+        YearMonth firstMonth = currentMonth.minusMonths(months - 1L);
+        Map<YearMonth, Long> registrationsByMonth = raceRegistrationRepository
+                .countValidByMonth(VALID_REGISTRATION_STATUSES,
+                        firstMonth.atDay(1).atStartOfDay(),
+                        currentMonth.plusMonths(1).atDay(1).atStartOfDay())
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> YearMonth.of(number(row[0]).intValue(), number(row[1]).intValue()),
+                        row -> number(row[2]).longValue()));
+
+        YearMonth previousMonth = currentMonth.minusMonths(1);
+        long currentCount = registrationsByMonth.getOrDefault(currentMonth, 0L);
+        long previousCount = registrationsByMonth.getOrDefault(previousMonth, 0L);
+        if (currentCount == 0 && previousCount == 0) {
+            return;
+        }
+
+        long difference = currentCount - previousCount;
+        String direction = difference > 0 ? "tăng" : "giảm";
+        String message = difference == 0
+                ? "Số đăng ký tháng này không đổi so với tháng trước."
+                : "Số đăng ký tháng này " + direction + " " + Math.abs(difference)
+                + " so với tháng trước.";
+        insights.add(insight("MONTHLY_REGISTRATION_TREND", message,
+                BigDecimal.valueOf(difference), "COUNT_CHANGE",
+                Map.of("currentMonth", currentMonth.toString(),
+                        "currentCount", currentCount,
+                        "previousMonth", previousMonth.toString(),
+                        "previousCount", previousCount)));
+    }
+
+    private AdminDashboardInsightResponse insight(String code, String message, BigDecimal value,
+                                                  String unit, Map<String, Object> metadata) {
+        return AdminDashboardInsightResponse.builder()
+                .code(code)
+                .message(message)
+                .value(value)
+                .unit(unit)
+                .metadata(metadata)
+                .build();
+    }
+
+    private BigDecimal percent(long numerator, long denominator) {
+        if (denominator <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return BigDecimal.valueOf(numerator)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(denominator), 2, RoundingMode.HALF_UP);
+    }
+
+    private String formatPercent(BigDecimal value) {
+        return value.stripTrailingZeros().toPlainString();
+    }
+
+    private Number number(Object value) {
+        return (Number) value;
+    }
+
+    private void validateRange(int value, int min, int max, String field) {
+        if (value < min || value > max) {
+            throw new BadRequestException(field + " must be between " + min + " and " + max);
+        }
+    }
+
+    private record MonthWindow(LocalDateTime previousStart,
+                               LocalDateTime currentStart,
+                               LocalDateTime nextStart) {
     }
 
     private <T> Map<String, Long> countBy(List<T> items, Function<T, String> mapper) {

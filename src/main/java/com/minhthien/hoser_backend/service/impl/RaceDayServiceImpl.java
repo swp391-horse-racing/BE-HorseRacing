@@ -52,6 +52,7 @@ public class RaceDayServiceImpl implements RaceDayService {
     private static final String RACE_RESULT_REF = "RACE_RESULT";
     private static final String JOCKEY_CHALLENGE_REF = "JOCKEY_CHALLENGE";
     private static final String RACE_COMPLAINT_REF = "RACE_COMPLAINT";
+    private static final String LATE_CHECK_IN_REF = "RACE_PARTICIPANT";
 
     private final RaceRepository raceRepository;
     private final RaceRegistrationRepository raceRegistrationRepository;
@@ -410,9 +411,15 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (!participant.getRace().getId().equals(raceId)) {
             throw new BadRequestException("Participant does not belong to this race");
         }
+        boolean firstSuccessfulCheckIn = participant.getStatus() != RaceParticipantStatus.CHECKED_IN
+                && request.getStatus() == RaceParticipantStatus.CHECKED_IN;
+        LocalDateTime checkedInAt = LocalDateTime.now();
+        if (firstSuccessfulCheckIn) {
+            chargeLateCheckInFee(participant, checkedInAt);
+        }
         participant.setStatus(request.getStatus());
         participant.setCheckInNote(request.getNote());
-        participant.setCheckedInAt(LocalDateTime.now());
+        participant.setCheckedInAt(checkedInAt);
         participant.setCheckedInBy(refereeId);
         RaceParticipant saved = raceParticipantRepository.save(participant);
         notifyParticipantCheckIn(saved);
@@ -1013,6 +1020,40 @@ public class RaceDayServiceImpl implements RaceDayService {
         raceRegistrationRepository.save(registration);
     }
 
+    private void chargeLateCheckInFee(RaceParticipant participant, LocalDateTime checkedInAt) {
+        Tournament tournament = participant.getRace().getTournament();
+        BigDecimal fee = defaultZero(tournament.getLateCheckInFee());
+        if (tournament.getCheckInDeadlineAt() == null
+                || !checkedInAt.isAfter(tournament.getCheckInDeadlineAt())
+                || fee.compareTo(BigDecimal.ZERO) <= 0
+                || participant.getLateCheckInFeeDebitKey() != null) {
+            return;
+        }
+        String referenceId = String.valueOf(participant.getId());
+        String userKey = "race-participant:%d:late-check-in-debit".formatted(participant.getId());
+        String metadata = "{\"raceId\":%d,\"tournamentId\":%d,\"deadline\":\"%s\"}".formatted(
+                participant.getRace().getId(), tournament.getId(), tournament.getCheckInDeadlineAt());
+        walletService.debitAllowNegative(
+                participant.getOwner().getId(),
+                fee,
+                WalletTransactionType.LATE_CHECK_IN_FEE,
+                LATE_CHECK_IN_REF,
+                referenceId,
+                userKey,
+                metadata,
+                "Late check-in fee");
+        walletService.creditAdmin(
+                fee,
+                WalletTransactionType.LATE_CHECK_IN_FEE,
+                LATE_CHECK_IN_REF,
+                referenceId,
+                "race-participant:%d:late-check-in-admin-credit".formatted(participant.getId()),
+                metadata,
+                "Late check-in fee received");
+        participant.setLateCheckInFeeAmount(fee);
+        participant.setLateCheckInFeeDebitKey(userKey);
+    }
+
     private void refundRegistrationFee(RaceRegistration registration, String note) {
         BigDecimal entryFee = defaultZero(registration.getEntryFeeAmount());
         if (entryFee.compareTo(BigDecimal.ZERO) > 0) {
@@ -1351,6 +1392,8 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .checkInNote(participant.getCheckInNote())
                 .checkedInAt(participant.getCheckedInAt())
                 .checkedInBy(participant.getCheckedInBy())
+                .lateCheckInFeeAmount(defaultZero(participant.getLateCheckInFeeAmount()))
+                .lateCheckInFeeCharged(participant.getLateCheckInFeeDebitKey() != null)
                 .createdAt(participant.getCreatedAt())
                 .build();
     }

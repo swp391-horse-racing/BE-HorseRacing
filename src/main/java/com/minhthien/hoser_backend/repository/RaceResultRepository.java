@@ -2,6 +2,7 @@ package com.minhthien.hoser_backend.repository;
 
 import com.minhthien.hoser_backend.entity.RaceResult;
 import com.minhthien.hoser_backend.enums.RacePayoutStatus;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -51,4 +52,26 @@ public interface RaceResultRepository extends JpaRepository<RaceResult, Long> {
     boolean existsByRaceTournamentId(Long tournamentId);
 
     boolean existsByHorseId(Long horseId);
+
+    @Query("""
+            select rr.horse.id, rr.horse.name, rr.owner.id,
+                   coalesce(rr.owner.fullName, rr.owner.username),
+                   sum(case when rr.rank = 1 then 1 else 0 end),
+                   coalesce(sum(rr.prizeAmount), 0)
+            from RaceResult rr
+            where rr.race.resultFinalizedAt is not null
+            group by rr.horse.id, rr.horse.name, rr.owner.id,
+                     rr.owner.fullName, rr.owner.username
+            order by sum(case when rr.rank = 1 then 1 else 0 end) desc,
+                     coalesce(sum(rr.prizeAmount), 0) desc,
+                     rr.horse.id asc
+            """)
+    List<Object[]> findTopHorseStatistics(Pageable pageable);
+
+    @Query("""
+            select coalesce(sum(rr.prizeAmount), 0)
+            from RaceResult rr
+            where rr.race.resultFinalizedAt is not null
+            """)
+    java.math.BigDecimal sumFinalizedPrizeAmount();
 }

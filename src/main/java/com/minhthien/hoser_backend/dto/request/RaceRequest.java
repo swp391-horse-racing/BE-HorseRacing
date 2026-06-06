@@ -40,7 +40,7 @@ public class RaceRequest {
 
     @PositiveOrZero(message = "Entry fee must not be negative")
     @Schema(description = "Fee charged for this specific race only", example = "0", defaultValue = "0")
-    private BigDecimal entryFee = BigDecimal.ZERO;
+    private BigDecimal entryFee;
 
     private Long refereeId;
 

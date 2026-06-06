@@ -57,6 +57,13 @@ public class Tournament {
     @Column(name = "check_in_deadline_at")
     private LocalDateTime checkInDeadlineAt;
 
+    @Lob
+    private String rules;
+
+    @Column(name = "late_check_in_fee", nullable = false, precision = 19, scale = 2)
+    @Builder.Default
+    private BigDecimal lateCheckInFee = BigDecimal.ZERO;
+
     @Column(nullable = false, precision = 19, scale = 2)
     @Builder.Default
     private BigDecimal entryFee = BigDecimal.ZERO;
@@ -142,6 +149,9 @@ public class Tournament {
         }
         if (entryFee == null) {
             entryFee = BigDecimal.ZERO;
+        }
+        if (lateCheckInFee == null) {
+            lateCheckInFee = BigDecimal.ZERO;
         }
         if (jockeyChallengeEnabled == null) {
             jockeyChallengeEnabled = false;

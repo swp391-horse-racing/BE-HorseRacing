@@ -10,6 +10,7 @@ import com.minhthien.hoser_backend.dto.response.PaymentOrderResponse;
 import com.minhthien.hoser_backend.entity.PaymentOrder;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.NotificationType;
+import com.minhthien.hoser_backend.enums.PaymentDepositTarget;
 import com.minhthien.hoser_backend.enums.PaymentOrderStatus;
 import com.minhthien.hoser_backend.enums.PaymentProvider;
 import com.minhthien.hoser_backend.enums.WalletTransactionType;
@@ -104,6 +105,17 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public PaymentOrderResponse createDepositOrder(Long userId, CreateDepositOrderRequest request) {
+        return createDepositOrder(userId, request, PaymentDepositTarget.USER_WALLET);
+    }
+
+    @Override
+    @Transactional
+    public PaymentOrderResponse createAdminWalletDepositOrder(Long adminId, CreateDepositOrderRequest request) {
+        return createDepositOrder(adminId, request, PaymentDepositTarget.ADMIN_WALLET);
+    }
+
+    private PaymentOrderResponse createDepositOrder(Long userId, CreateDepositOrderRequest request,
+                                                    PaymentDepositTarget depositTarget) {
         validateAmount(request.getAmount());
         validateCurrency(request.getCurrency());
         PaymentProvider provider = resolveProvider(request.getProvider());
@@ -117,6 +129,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .currency(PaymentOrder.DEFAULT_CURRENCY)
                 .provider(provider)
                 .status(PaymentOrderStatus.PENDING)
+                .depositTarget(depositTarget)
                 .referenceCode(referenceCode)
                 .transferContent("HORSE " + referenceCode)
                 .expiredAt(LocalDateTime.now().plusMinutes(30))
@@ -155,6 +168,23 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional(readOnly = true)
     public PaymentOrderResponse getUserDepositOrder(Long userId, Long orderId) {
         return paymentOrderRepository.findByIdAndUserId(orderId, userId)
+                .map(this::mapToResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("PaymentOrder", "id", orderId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaymentOrderResponse> getAdminWalletDepositOrders() {
+        return paymentOrderRepository
+                .findByDepositTargetOrderByCreatedAtDesc(PaymentDepositTarget.ADMIN_WALLET).stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaymentOrderResponse getAdminWalletDepositOrder(Long orderId) {
+        return paymentOrderRepository.findByIdAndDepositTarget(orderId, PaymentDepositTarget.ADMIN_WALLET)
                 .map(this::mapToResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("PaymentOrder", "id", orderId));
     }
@@ -259,11 +289,7 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BadRequestException("Unsupported callback status: " + request.getStatus());
         }
 
-        String referenceId = order.getReferenceCode();
-        walletService.credit(order.getUser().getId(), order.getAmount(), WalletTransactionType.DEPOSIT,
-                REFERENCE_TYPE, referenceId, "deposit:user:" + referenceId, request.getMetadata(), "Deposit paid");
-        walletService.creditAdmin(order.getAmount(), WalletTransactionType.DEPOSIT,
-                REFERENCE_TYPE, referenceId, "deposit:admin:" + referenceId, request.getMetadata(), "Deposit paid");
+        creditDeposit(order, request.getMetadata(), "Deposit paid");
 
         order.setStatus(PaymentOrderStatus.PAID);
         order.setProviderTransactionId(request.getProviderTransactionId());
@@ -367,11 +393,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         String metadataJson = toMetadata(metadata);
-        String referenceId = order.getReferenceCode();
-        walletService.credit(order.getUser().getId(), order.getAmount(), WalletTransactionType.DEPOSIT,
-                REFERENCE_TYPE, referenceId, "deposit:user:" + referenceId, metadataJson, note);
-        walletService.creditAdmin(order.getAmount(), WalletTransactionType.DEPOSIT,
-                REFERENCE_TYPE, referenceId, "deposit:admin:" + referenceId, metadataJson, note);
+        creditDeposit(order, metadataJson, note);
 
         order.setStatus(PaymentOrderStatus.PAID);
         order.setProviderTransactionId(providerTransactionId);
@@ -548,6 +570,19 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
+    private void creditDeposit(PaymentOrder order, String metadata, String note) {
+        String referenceId = order.getReferenceCode();
+        PaymentDepositTarget target = order.getDepositTarget() == null
+                ? PaymentDepositTarget.USER_WALLET
+                : order.getDepositTarget();
+        if (target == PaymentDepositTarget.USER_WALLET) {
+            walletService.credit(order.getUser().getId(), order.getAmount(), WalletTransactionType.DEPOSIT,
+                    REFERENCE_TYPE, referenceId, "deposit:user:" + referenceId, metadata, note);
+        }
+        walletService.creditAdmin(order.getAmount(), WalletTransactionType.DEPOSIT,
+                REFERENCE_TYPE, referenceId, "deposit:admin:" + referenceId, metadata, note);
+    }
+
     private PaymentOrderResponse mapToResponse(PaymentOrder order) {
         return PaymentOrderResponse.builder()
                 .id(order.getId())
@@ -556,6 +591,9 @@ public class PaymentServiceImpl implements PaymentService {
                 .currency(order.getCurrency())
                 .provider(order.getProvider())
                 .status(order.getStatus())
+                .depositTarget(order.getDepositTarget() == null
+                        ? PaymentDepositTarget.USER_WALLET
+                        : order.getDepositTarget())
                 .referenceCode(order.getReferenceCode())
                 .providerTransactionId(order.getProviderTransactionId())
                 .orderCode(order.getOrderCode())

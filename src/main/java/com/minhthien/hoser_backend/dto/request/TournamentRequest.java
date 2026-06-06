@@ -42,6 +42,9 @@ public class TournamentRequest {
 
     private LocalDateTime checkInDeadlineAt;
 
+    @Size(max = 10000, message = "Tournament rules must not exceed 10000 characters")
+    private String rules;
+
     @NotNull(message = "Minimum teams is required")
     @Positive(message = "Minimum teams must be greater than zero")
     private Integer minTeams;

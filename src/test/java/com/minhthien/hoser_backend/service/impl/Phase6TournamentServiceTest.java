@@ -6,6 +6,7 @@ import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RacePrize;
 import com.minhthien.hoser_backend.entity.Tournament;
+import com.minhthien.hoser_backend.entity.SystemSettings;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.RaceStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
@@ -22,6 +23,8 @@ import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
+import com.minhthien.hoser_backend.service.RegistrationOpenBroadcastService;
+import com.minhthien.hoser_backend.service.SystemSettingsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -68,6 +71,10 @@ class Phase6TournamentServiceTest {
     private RaceComplaintRepository raceComplaintRepository;
     @Mock
     private JockeyChallengeResultRepository jockeyChallengeResultRepository;
+    @Mock
+    private SystemSettingsService systemSettingsService;
+    @Mock
+    private RegistrationOpenBroadcastService registrationOpenBroadcastService;
 
     @InjectMocks
     private TournamentServiceImpl service;
@@ -107,6 +114,21 @@ class Phase6TournamentServiceTest {
 
         assertEquals(RaceStatus.DRAFT, race.getStatus());
         assertEquals(RaceStatus.DRAFT, response.getRaces().get(0).getStatus());
+    }
+
+    @Test
+    void addRaceUsesDefaultFeeOnlyWhenEntryFeeIsOmitted() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Default fee race");
+        request.setEntryFee(null);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+        when(systemSettingsService.getCurrent()).thenReturn(SystemSettings.builder()
+                .defaultRegistrationFee(new BigDecimal("5000000"))
+                .build());
+
+        service.addTournamentRace(ADMIN_ID, 3L, request);
+
+        assertEquals(new BigDecimal("5000000"), tournament.getRaces().get(0).getEntryFee());
     }
 
     @Test

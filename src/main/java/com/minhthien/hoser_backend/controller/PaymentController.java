@@ -48,6 +48,27 @@ public class PaymentController {
         return ResponseEntity.ok(ApiResponse.success(paymentService.getUserDepositOrder(currentUser.getId(), id)));
     }
 
+    @SecurityRequirement(name = "bearerAuth")
+    @PostMapping("/admin/wallet/deposit-orders")
+    public ResponseEntity<ApiResponse<PaymentOrderResponse>> createAdminWalletDepositOrder(
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody CreateDepositOrderRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Admin wallet deposit order created",
+                paymentService.createAdminWalletDepositOrder(currentUser.getId(), request)));
+    }
+
+    @SecurityRequirement(name = "bearerAuth")
+    @GetMapping("/admin/wallet/deposit-orders")
+    public ResponseEntity<ApiResponse<List<PaymentOrderResponse>>> getAdminWalletDepositOrders() {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.getAdminWalletDepositOrders()));
+    }
+
+    @SecurityRequirement(name = "bearerAuth")
+    @GetMapping("/admin/wallet/deposit-orders/{id}")
+    public ResponseEntity<ApiResponse<PaymentOrderResponse>> getAdminWalletDepositOrder(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.getAdminWalletDepositOrder(id)));
+    }
+
     @PostMapping("/payment-callbacks/deposits")
     public ResponseEntity<ApiResponse<PaymentOrderResponse>> handleDepositCallback(
             @Valid @RequestBody DepositCallbackRequest request) {

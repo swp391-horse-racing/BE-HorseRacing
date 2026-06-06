@@ -2,6 +2,7 @@ package com.minhthien.hoser_backend.service;
 
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RaceComplaint;
+import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.UserRole;
 
@@ -18,6 +19,12 @@ public interface MailService {
     void sendRaceReminder(Race race, User recipient);
 
     void sendRaceComplaintCreated(RaceComplaint complaint);
+
+    default void sendTournamentRegistrationOpen(Tournament tournament, User recipient) {
+    }
+
+    default void sendTwoFactorOtp(User recipient, String otp) {
+    }
 
     default void sendRegistrationCreated(User recipient, String raceName, String referenceType, String referenceId) {
     }
@@ -38,5 +45,9 @@ public interface MailService {
     }
 
     default void sendPrizePayout(User recipient, String subject, String message, String referenceType, String referenceId) {
+    }
+
+    default void sendAnnouncement(User recipient, String subject, String message,
+                                  String referenceType, String referenceId) {
     }
 }

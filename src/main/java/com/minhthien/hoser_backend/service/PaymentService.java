@@ -11,9 +11,15 @@ import java.util.Map;
 public interface PaymentService {
     PaymentOrderResponse createDepositOrder(Long userId, CreateDepositOrderRequest request);
 
+    PaymentOrderResponse createAdminWalletDepositOrder(Long adminId, CreateDepositOrderRequest request);
+
     List<PaymentOrderResponse> getUserDepositOrders(Long userId);
 
     PaymentOrderResponse getUserDepositOrder(Long userId, Long orderId);
+
+    List<PaymentOrderResponse> getAdminWalletDepositOrders();
+
+    PaymentOrderResponse getAdminWalletDepositOrder(Long orderId);
 
     List<PaymentOrderResponse> getAdminPaymentOrders();
 

@@ -5,6 +5,7 @@ public enum WalletTransactionType {
     WITHDRAW,
     ADMIN_WITHDRAW,
     ENTRY_FEE,
+    LATE_CHECK_IN_FEE,
     JOCKEY_HIRE,
     JOCKEY_PAYOUT,
     JOCKEY_HIRE_TAX,

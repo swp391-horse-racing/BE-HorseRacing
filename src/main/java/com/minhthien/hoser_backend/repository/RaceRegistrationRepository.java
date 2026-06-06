@@ -36,6 +36,40 @@ public interface RaceRegistrationRepository extends JpaRepository<RaceRegistrati
     boolean existsByHorseId(Long horseId);
 
     @Query("""
+            select count(rr)
+            from RaceRegistration rr
+            where rr.status in :statuses
+              and rr.race.status <> com.minhthien.hoser_backend.enums.RaceStatus.CANCELLED
+              and rr.race.tournament.status <> com.minhthien.hoser_backend.enums.TournamentStatus.CANCELLED
+            """)
+    long countValidForAdminDashboard(@Param("statuses") Collection<RaceRegistrationStatus> statuses);
+
+    @Query("""
+            select rr.race.tournament.id, rr.race.tournament.name, count(rr)
+            from RaceRegistration rr
+            where rr.status in :statuses
+              and rr.race.status <> com.minhthien.hoser_backend.enums.RaceStatus.CANCELLED
+              and rr.race.tournament.status <> com.minhthien.hoser_backend.enums.TournamentStatus.CANCELLED
+            group by rr.race.tournament.id, rr.race.tournament.name
+            """)
+    List<Object[]> countValidByTournament(@Param("statuses") Collection<RaceRegistrationStatus> statuses);
+
+    @Query("""
+            select year(rr.createdAt), month(rr.createdAt), count(rr)
+            from RaceRegistration rr
+            where rr.status in :statuses
+              and rr.race.status <> com.minhthien.hoser_backend.enums.RaceStatus.CANCELLED
+              and rr.race.tournament.status <> com.minhthien.hoser_backend.enums.TournamentStatus.CANCELLED
+              and rr.createdAt >= :from
+              and rr.createdAt < :to
+            group by year(rr.createdAt), month(rr.createdAt)
+            order by year(rr.createdAt), month(rr.createdAt)
+            """)
+    List<Object[]> countValidByMonth(@Param("statuses") Collection<RaceRegistrationStatus> statuses,
+                                     @Param("from") LocalDateTime from,
+                                     @Param("to") LocalDateTime to);
+
+    @Query("""
             select count(rr) > 0
             from RaceRegistration rr
             where rr.horse.id = :horseId
