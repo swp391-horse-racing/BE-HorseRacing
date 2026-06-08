@@ -81,9 +81,9 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         if (jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED)) {
             throw new BadRequestException("Jockey already accepted another invitation");
         }
-        if (jockeyInvitationRepository.existsByRaceIdAndHorseIdAndJockeyIdAndStatusIn(
-                race.getId(), horse.getId(), jockey.getId(), ACTIVE_STATUSES)) {
-            throw new DuplicateResourceException("Active invitation already exists for this horse and jockey");
+        if (jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
+                race.getId(), horse.getId(), ACTIVE_STATUSES)) {
+            throw new DuplicateResourceException("Active invitation already exists for this horse in this race");
         }
 
         JockeyInvitation invitation = JockeyInvitation.builder()

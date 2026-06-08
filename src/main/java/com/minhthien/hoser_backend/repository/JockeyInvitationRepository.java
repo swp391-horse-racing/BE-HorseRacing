@@ -43,6 +43,12 @@ public interface JockeyInvitationRepository extends JpaRepository<JockeyInvitati
             Collection<AssignmentStatus> statuses
     );
 
+    boolean existsByRaceIdAndHorseIdAndStatusIn(
+            Long raceId,
+            Long horseId,
+            Collection<AssignmentStatus> statuses
+    );
+
     boolean existsByJockeyIdAndStatus(Long jockeyId, AssignmentStatus status);
 
     boolean existsByHorseId(Long horseId);

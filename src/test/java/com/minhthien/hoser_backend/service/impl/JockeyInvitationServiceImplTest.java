@@ -15,6 +15,7 @@ import com.minhthien.hoser_backend.enums.JockeyStatus;
 import com.minhthien.hoser_backend.enums.RaceStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
+import com.minhthien.hoser_backend.exception.DuplicateResourceException;
 import com.minhthien.hoser_backend.repository.HorseRepository;
 import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
 import com.minhthien.hoser_backend.repository.JockeyProfileRepository;
@@ -34,6 +35,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
@@ -72,8 +74,8 @@ class JockeyInvitationServiceImplTest {
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
         when(jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED))
                 .thenReturn(false);
-        when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndJockeyIdAndStatusIn(
-                eq(race.getId()), eq(horse.getId()), eq(jockey.getId()), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
+                eq(race.getId()), eq(horse.getId()), anyCollection())).thenReturn(false);
         when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
             JockeyInvitation invitation = invocation.getArgument(0);
             invitation.setId(100L);
@@ -193,8 +195,8 @@ class JockeyInvitationServiceImplTest {
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
         when(jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED))
                 .thenReturn(false);
-        when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndJockeyIdAndStatusIn(
-                eq(race.getId()), eq(horse.getId()), eq(jockey.getId()), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
+                eq(race.getId()), eq(horse.getId()), anyCollection())).thenReturn(false);
         when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
             JockeyInvitation invitation = invocation.getArgument(0);
             invitation.setId(101L);
@@ -205,6 +207,32 @@ class JockeyInvitationServiceImplTest {
 
         assertEquals(AssignmentStatus.PENDING, response.getStatus());
         assertEquals(new BigDecimal("800000.00"), response.getRemunerationAmount());
+    }
+
+    @Test
+    void createInvitationRejectsWhenHorseAlreadyHasActiveInvitationInRace() {
+        User owner = owner();
+        User jockey = jockey();
+        Horse horse = horse(owner);
+        Race race = race();
+        JockeyProfile profile = profile(jockey);
+        JockeyInvitationRequest request = invitationRequest(horse, jockey, "800000.00");
+
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
+        when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
+        when(jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED))
+                .thenReturn(false);
+        when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
+                eq(race.getId()), eq(horse.getId()), anyCollection())).thenReturn(true);
+
+        DuplicateResourceException exception = assertThrows(
+                DuplicateResourceException.class,
+                () -> service.createInvitation(owner.getId(), request));
+
+        assertEquals("Active invitation already exists for this horse in this race", exception.getMessage());
     }
 
     private JockeyInvitation pendingInvitation(User owner, User jockey) {
