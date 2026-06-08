@@ -110,7 +110,6 @@ public class TournamentServiceImpl implements TournamentService {
         tournament.setRules(hasText(request.getRules())
                 ? request.getRules().trim()
                 : settings.getDefaultTournamentRules());
-        tournament.setLateCheckInFee(settings.getLateCheckInFee());
         applyRequest(tournament, request, admin.getUsername());
         applyBanner(tournament, banner);
         Tournament saved = tournamentRepository.save(tournament);
@@ -525,6 +524,9 @@ public class TournamentServiceImpl implements TournamentService {
     }
 
     private Race mapRace(RaceRequest request, Tournament tournament) {
+        var settings = request.getEntryFee() == null || request.getLateCheckInFee() == null
+                ? systemSettingsService.getCurrent()
+                : null;
         Race race = Race.builder()
                 .name(request.getName())
                 .distance(request.getDistance())
@@ -533,8 +535,11 @@ public class TournamentServiceImpl implements TournamentService {
                 .minParticipants(request.getMinParticipants())
                 .maxParticipants(request.getMaxParticipants())
                 .entryFee(request.getEntryFee() == null
-                        ? systemSettingsService.getCurrent().getDefaultRegistrationFee()
+                        ? settings.getDefaultRegistrationFee()
                         : request.getEntryFee())
+                .lateCheckInFee(request.getLateCheckInFee() == null
+                        ? settings.getLateCheckInFee()
+                        : request.getLateCheckInFee())
                 .referee(request.getRefereeId() == null ? null : requireReferee(request.getRefereeId()))
                 .status(RaceStatus.DRAFT)
                 .note(request.getNote())
@@ -552,6 +557,9 @@ public class TournamentServiceImpl implements TournamentService {
         race.setMaxParticipants(request.getMaxParticipants());
         if (request.getEntryFee() != null) {
             race.setEntryFee(request.getEntryFee());
+        }
+        if (request.getLateCheckInFee() != null) {
+            race.setLateCheckInFee(request.getLateCheckInFee());
         }
         race.setReferee(request.getRefereeId() == null ? null : requireReferee(request.getRefereeId()));
         race.setNote(request.getNote());
@@ -839,7 +847,6 @@ public class TournamentServiceImpl implements TournamentService {
                 .endAt(tournament.getEndAt())
                 .checkInDeadlineAt(tournament.getCheckInDeadlineAt())
                 .rules(tournament.getRules())
-                .lateCheckInFee(tournament.getLateCheckInFee())
                 .minTeams(tournament.getMinTeams())
                 .maxTeams(tournament.getMaxTeams())
                 .status(tournament.getStatus())
@@ -904,6 +911,7 @@ public class TournamentServiceImpl implements TournamentService {
                 .minParticipants(race.getMinParticipants())
                 .maxParticipants(race.getMaxParticipants())
                 .entryFee(race.getEntryFee())
+                .lateCheckInFee(race.getLateCheckInFee())
                 .refereeId(referee == null ? null : referee.getId())
                 .refereeUsername(referee == null ? null : referee.getUsername())
                 .status(race.getStatus())

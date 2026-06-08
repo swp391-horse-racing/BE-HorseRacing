@@ -48,7 +48,6 @@ class RaceDayLateCheckInFeeTest {
                 .id(5L)
                 .name("Cup")
                 .checkInDeadlineAt(LocalDateTime.now().minusMinutes(10))
-                .lateCheckInFee(new BigDecimal("500000"))
                 .build();
         Race race = Race.builder()
                 .id(7L)
@@ -56,6 +55,7 @@ class RaceDayLateCheckInFeeTest {
                 .tournament(tournament)
                 .referee(referee)
                 .status(RaceStatus.SCHEDULED)
+                .lateCheckInFee(new BigDecimal("500000"))
                 .build();
         RaceRegistration registration = RaceRegistration.builder().id(8L).build();
         Horse horse = Horse.builder().id(9L).name("Thunder").build();
@@ -88,6 +88,55 @@ class RaceDayLateCheckInFeeTest {
         verify(walletService, times(1)).creditAdmin(
                 eq(new BigDecimal("500000")), eq(WalletTransactionType.LATE_CHECK_IN_FEE),
                 eq("RACE_PARTICIPANT"), eq("10"), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void lateCheckInDoesNotChargeWhenRaceFeeIsZero() {
+        User referee = user(1L, UserRole.REFEREE);
+        User owner = user(2L, UserRole.OWNER);
+        User jockey = user(3L, UserRole.JOCKEY);
+        Tournament tournament = Tournament.builder()
+                .id(5L)
+                .name("Cup")
+                .checkInDeadlineAt(LocalDateTime.now().minusMinutes(10))
+                .build();
+        Race race = Race.builder()
+                .id(7L)
+                .name("Race")
+                .tournament(tournament)
+                .referee(referee)
+                .status(RaceStatus.SCHEDULED)
+                .lateCheckInFee(BigDecimal.ZERO)
+                .build();
+        RaceRegistration registration = RaceRegistration.builder().id(8L).build();
+        Horse horse = Horse.builder().id(9L).name("Thunder").build();
+        RaceParticipant participant = RaceParticipant.builder()
+                .id(10L)
+                .race(race)
+                .registration(registration)
+                .owner(owner)
+                .horse(horse)
+                .jockey(jockey)
+                .gateNumber(1)
+                .status(RaceParticipantStatus.REGISTERED)
+                .build();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(referee));
+        when(raceRepository.findById(7L)).thenReturn(Optional.of(race));
+        when(raceParticipantRepository.findById(10L)).thenReturn(Optional.of(participant));
+        when(raceParticipantRepository.save(participant)).thenReturn(participant);
+        RaceParticipantCheckInRequest request = new RaceParticipantCheckInRequest();
+        request.setStatus(RaceParticipantStatus.CHECKED_IN);
+
+        var response = service.checkInRaceParticipant(1L, 7L, 10L, request);
+
+        assertEquals(BigDecimal.ZERO, response.getLateCheckInFeeAmount());
+        assertFalse(response.getLateCheckInFeeCharged());
+        verify(walletService, never()).debitAllowNegative(
+                anyLong(), any(), eq(WalletTransactionType.LATE_CHECK_IN_FEE),
+                anyString(), anyString(), anyString(), anyString(), anyString());
+        verify(walletService, never()).creditAdmin(
+                any(), eq(WalletTransactionType.LATE_CHECK_IN_FEE),
+                anyString(), anyString(), anyString(), anyString(), anyString());
     }
 
     private User user(Long id, UserRole role) {

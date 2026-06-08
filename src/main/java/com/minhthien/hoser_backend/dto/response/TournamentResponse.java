@@ -5,7 +5,6 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.math.BigDecimal;
 import java.util.List;
 
 @Data
@@ -22,7 +21,6 @@ public class TournamentResponse {
     private LocalDateTime endAt;
     private LocalDateTime checkInDeadlineAt;
     private String rules;
-    private BigDecimal lateCheckInFee;
     private Integer minTeams;
     private Integer maxTeams;
     private TournamentStatus status;

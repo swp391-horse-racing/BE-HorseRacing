@@ -1022,7 +1022,7 @@ public class RaceDayServiceImpl implements RaceDayService {
 
     private void chargeLateCheckInFee(RaceParticipant participant, LocalDateTime checkedInAt) {
         Tournament tournament = participant.getRace().getTournament();
-        BigDecimal fee = defaultZero(tournament.getLateCheckInFee());
+        BigDecimal fee = defaultZero(participant.getRace().getLateCheckInFee());
         if (tournament.getCheckInDeadlineAt() == null
                 || !checkedInAt.isAfter(tournament.getCheckInDeadlineAt())
                 || fee.compareTo(BigDecimal.ZERO) <= 0

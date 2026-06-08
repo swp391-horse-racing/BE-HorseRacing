@@ -90,6 +90,10 @@ class Phase6TournamentServiceTest {
         when(userRepository.findById(ADMIN_ID)).thenReturn(Optional.of(admin));
         when(tournamentRepository.save(any(Tournament.class))).thenAnswer(invocation -> invocation.getArgument(0));
         lenient().when(raceParticipantRepository.countByRaceIds(anyCollection())).thenReturn(List.of());
+        lenient().when(systemSettingsService.getCurrent()).thenReturn(SystemSettings.builder()
+                .defaultRegistrationFee(new BigDecimal("5000000"))
+                .lateCheckInFee(new BigDecimal("500000"))
+                .build());
     }
 
     @Test
@@ -122,13 +126,36 @@ class Phase6TournamentServiceTest {
         RaceRequest request = raceRequest("Default fee race");
         request.setEntryFee(null);
         when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
-        when(systemSettingsService.getCurrent()).thenReturn(SystemSettings.builder()
-                .defaultRegistrationFee(new BigDecimal("5000000"))
-                .build());
 
         service.addTournamentRace(ADMIN_ID, 3L, request);
 
         assertEquals(new BigDecimal("5000000"), tournament.getRaces().get(0).getEntryFee());
+    }
+
+    @Test
+    void addRaceUsesDefaultLateCheckInFeeWhenOmitted() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Default late fee race");
+        request.setLateCheckInFee(null);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.addTournamentRace(ADMIN_ID, 3L, request);
+
+        assertEquals(new BigDecimal("500000"), tournament.getRaces().get(0).getLateCheckInFee());
+        assertEquals(new BigDecimal("500000"), response.getRaces().get(0).getLateCheckInFee());
+    }
+
+    @Test
+    void addRaceUsesRequestLateCheckInFeeWhenProvided() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Override late fee race");
+        request.setLateCheckInFee(new BigDecimal("125000"));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.addTournamentRace(ADMIN_ID, 3L, request);
+
+        assertEquals(new BigDecimal("125000"), tournament.getRaces().get(0).getLateCheckInFee());
+        assertEquals(new BigDecimal("125000"), response.getRaces().get(0).getLateCheckInFee());
     }
 
     @Test
@@ -222,6 +249,7 @@ class Phase6TournamentServiceTest {
         request.setMinParticipants(1);
         request.setMaxParticipants(8);
         request.setEntryFee(BigDecimal.ZERO);
+        request.setLateCheckInFee(new BigDecimal("500000"));
         request.setPrizes(List.of(prizeRequest()));
         return request;
     }

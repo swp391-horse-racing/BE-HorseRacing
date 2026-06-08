@@ -59,6 +59,10 @@ public class Race {
     @Builder.Default
     private BigDecimal entryFee = BigDecimal.ZERO;
 
+    @Column(name = "late_check_in_fee", nullable = false, precision = 19, scale = 2)
+    @Builder.Default
+    private BigDecimal lateCheckInFee = BigDecimal.ZERO;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "referee_id")
     private User referee;
@@ -106,6 +110,9 @@ public class Race {
         updatedAt = now;
         if (entryFee == null) {
             entryFee = BigDecimal.ZERO;
+        }
+        if (lateCheckInFee == null) {
+            lateCheckInFee = BigDecimal.ZERO;
         }
         if (status == null) {
             status = RaceStatus.DRAFT;
