@@ -68,6 +68,30 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void adminLoginReturnsJwtWhenTwoFactorIsDisabled() {
+        User admin = user();
+        Authentication authentication = mock(Authentication.class);
+        when(authentication.getPrincipal()).thenReturn(admin);
+        when(authenticationManager.authenticate(any())).thenReturn(authentication);
+        when(systemSettingsService.requiresTwoFactor(UserRole.ADMIN)).thenReturn(false);
+        when(systemSettingsService.getCurrent()).thenReturn(SystemSettings.builder()
+                .sessionDurationMinutes(60)
+                .build());
+        when(jwtTokenProvider.generateTokenFromUsername("admin", 3_600_000L)).thenReturn("jwt");
+        LoginRequest request = new LoginRequest();
+        request.setEmail("admin@example.com");
+        request.setPassword("secret");
+
+        var response = service.login(request);
+
+        assertFalse(response.getTwoFactorRequired());
+        assertEquals("jwt", response.getToken());
+        assertNull(response.getChallengeId());
+        verify(mailService, never()).sendTwoFactorOtp(any(), anyString());
+        verifyNoInteractions(challengeRepository);
+    }
+
+    @Test
     void successfulVerificationConsumesChallengeAndUsesConfiguredSessionDuration() {
         User admin = user();
         TwoFactorChallenge challenge = TwoFactorChallenge.builder()

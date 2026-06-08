@@ -30,7 +30,7 @@ public class SystemSettings {
             "[HorseRacing] Nhac check-in cuoc dua {{race}}";
     public static final String DEFAULT_RACE_RESULT_SUBJECT =
             "[HorseRacing] Ket qua cuoc dua {{race}}";
-    public static final TwoFactorPolicy DEFAULT_TWO_FACTOR_POLICY = TwoFactorPolicy.ADMIN_ONLY;
+    public static final TwoFactorPolicy DEFAULT_TWO_FACTOR_POLICY = TwoFactorPolicy.DISABLED;
     public static final int DEFAULT_SESSION_DURATION_MINUTES = 60;
     public static final String DEFAULT_SYSTEM_NAME = "Horse Racing Admin";
     public static final String DEFAULT_PRIMARY_COLOR = "#D4A017";

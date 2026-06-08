@@ -4,6 +4,7 @@ import com.minhthien.hoser_backend.dto.request.SystemEmailTemplatesSettingsReque
 import com.minhthien.hoser_backend.dto.request.SystemFeesSettingsRequest;
 import com.minhthien.hoser_backend.entity.SystemSettings;
 import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.enums.TwoFactorPolicy;
 import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
@@ -67,8 +68,18 @@ class SystemSettingsServiceImplTest {
     }
 
     @Test
-    void twoFactorPolicyMatchesConfiguredRoles() {
+    void defaultTwoFactorPolicyIsDisabled() {
         SystemSettings settings = settings();
+        when(settingsRepository.findById(SystemSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
+
+        assertFalse(service.requiresTwoFactor(UserRole.ADMIN));
+        assertFalse(service.requiresTwoFactor(UserRole.OWNER));
+    }
+
+    @Test
+    void adminOnlyTwoFactorPolicyRequiresAdminOnly() {
+        SystemSettings settings = settings();
+        settings.setTwoFactorPolicy(TwoFactorPolicy.ADMIN_ONLY);
         when(settingsRepository.findById(SystemSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
 
         assertTrue(service.requiresTwoFactor(UserRole.ADMIN));
