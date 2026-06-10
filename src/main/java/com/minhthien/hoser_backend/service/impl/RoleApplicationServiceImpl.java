@@ -7,11 +7,13 @@ import com.minhthien.hoser_backend.dto.request.RefereeRoleApplicationRequest;
 import com.minhthien.hoser_backend.dto.request.SpectatorRoleApplicationRequest;
 import com.minhthien.hoser_backend.dto.response.RoleApplicationResponse;
 import com.minhthien.hoser_backend.entity.JockeyProfile;
+import com.minhthien.hoser_backend.entity.KycVerification;
 import com.minhthien.hoser_backend.entity.OwnerProfile;
 import com.minhthien.hoser_backend.entity.RefereeProfile;
 import com.minhthien.hoser_backend.entity.SpectatorProfile;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.JockeyStatus;
+import com.minhthien.hoser_backend.enums.KycStatus;
 import com.minhthien.hoser_backend.enums.RoleApprovalStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.exception.BadRequestException;
@@ -72,9 +74,7 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
             profile.setVerificationDocumentUrl(cloudinaryUploadService.uploadDocument(
                     verificationDocument, OWNER_DOCUMENT_FOLDER));
         }
-        markProfilePending(profile, user);
-        prepareUserPending(user, UserRole.OWNER);
-        userRepository.save(user);
+        markProfileDraft(profile, user);
         return mapOwner(ownerProfileRepository.save(profile));
     }
 
@@ -109,9 +109,7 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
             profile.setLicenseDocumentUrl(cloudinaryUploadService.uploadDocument(
                     licenseDocument, JOCKEY_LICENSE_DOCUMENT_FOLDER));
         }
-        markJockeyPending(profile, user);
-        prepareUserPending(user, UserRole.JOCKEY);
-        userRepository.save(user);
+        markJockeyDraft(profile, user);
         return mapJockey(jockeyProfileRepository.save(profile));
     }
 
@@ -156,9 +154,7 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
             profile.setCertificationDocumentUrl(cloudinaryUploadService.uploadDocument(
                     certificationDocument, REFEREE_DOCUMENT_FOLDER));
         }
-        markProfilePending(profile, user);
-        prepareUserPending(user, UserRole.REFEREE);
-        userRepository.save(user);
+        markProfileDraft(profile, user);
         return mapReferee(refereeProfileRepository.save(profile));
     }
 
@@ -168,9 +164,30 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
         User user = requireUser(userId);
         UserRole role = user.getPendingRole() != null ? user.getPendingRole() : user.getRole();
         if (role == null || role == UserRole.USER || role == UserRole.ADMIN) {
+            RoleApplicationResponse draft = findDraftApplication(userId);
+            if (draft != null) {
+                return draft;
+            }
             return baseUserApplication(user, null, user.getRoleApprovalStatus());
         }
         return findByUserAndRole(userId, role);
+    }
+
+    private RoleApplicationResponse findDraftApplication(Long userId) {
+        RoleApplicationResponse ownerDraft = ownerProfileRepository.findByUserId(userId)
+                .filter(profile -> profile.getStatus() == RoleApprovalStatus.DRAFT)
+                .map(this::mapOwner)
+                .orElse(null);
+        if (ownerDraft != null) return ownerDraft;
+        RoleApplicationResponse jockeyDraft = jockeyProfileRepository.findByUserId(userId)
+                .filter(profile -> profile.getStatus() == JockeyStatus.DRAFT)
+                .map(this::mapJockey)
+                .orElse(null);
+        if (jockeyDraft != null) return jockeyDraft;
+        return refereeProfileRepository.findByUserId(userId)
+                .filter(profile -> profile.getStatus() == RoleApprovalStatus.DRAFT)
+                .map(this::mapReferee)
+                .orElse(null);
     }
 
     @Override
@@ -235,6 +252,7 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
     private RoleApplicationResponse approveOwner(Long profileId, Long adminId) {
         OwnerProfile profile = requireOwnerProfile(profileId);
         requirePending(profile.getStatus());
+        requirePassedKyc(profile.getKycVerification());
         approveUser(profile.getUser(), UserRole.OWNER, adminId);
         approveProfile(profile, adminId);
         RoleApplicationResponse response = mapOwner(ownerProfileRepository.save(profile));
@@ -245,6 +263,7 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
     private RoleApplicationResponse approveJockey(Long profileId, Long adminId) {
         JockeyProfile profile = requireJockeyProfile(profileId);
         requirePending(toRoleStatus(profile.getStatus()));
+        requirePassedKyc(profile.getKycVerification());
         approveUser(profile.getUser(), UserRole.JOCKEY, adminId);
         profile.setStatus(JockeyStatus.APPROVED);
         profile.setReviewReason(null);
@@ -269,6 +288,7 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
     private RoleApplicationResponse approveReferee(Long profileId, Long adminId) {
         RefereeProfile profile = requireRefereeProfile(profileId);
         requirePending(profile.getStatus());
+        requirePassedKyc(profile.getKycVerification());
         approveUser(profile.getUser(), UserRole.REFEREE, adminId);
         approveProfile(profile, adminId);
         RoleApplicationResponse response = mapReferee(refereeProfileRepository.save(profile));
@@ -317,17 +337,19 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
     }
 
     private List<RoleApplicationResponse> applicationsByRole(UserRole role, RoleApprovalStatus status) {
-        if (status == RoleApprovalStatus.NONE) {
+        if (status == RoleApprovalStatus.NONE || status == RoleApprovalStatus.DRAFT) {
             return List.of();
         }
         return switch (role) {
             case OWNER -> (status == null
-                    ? ownerProfileRepository.findAllByOrderByCreatedAtDesc()
+                    ? ownerProfileRepository.findAllByOrderByCreatedAtDesc().stream()
+                        .filter(profile -> profile.getStatus() != RoleApprovalStatus.DRAFT).toList()
                     : ownerProfileRepository.findByStatusOrderByCreatedAtDesc(status)).stream()
                     .map(this::mapOwner)
                     .toList();
             case JOCKEY -> (status == null
-                    ? jockeyProfileRepository.findAllByOrderByCreatedAtDesc()
+                    ? jockeyProfileRepository.findAllByOrderByCreatedAtDesc().stream()
+                        .filter(profile -> profile.getStatus() != JockeyStatus.DRAFT).toList()
                     : jockeyProfileRepository.findByStatusOrderByCreatedAtDesc(toJockeyStatus(status))).stream()
                     .map(this::mapJockey)
                     .toList();
@@ -337,7 +359,8 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
                     .map(this::mapSpectator)
                     .toList();
             case REFEREE -> (status == null
-                    ? refereeProfileRepository.findAllByOrderByCreatedAtDesc()
+                    ? refereeProfileRepository.findAllByOrderByCreatedAtDesc().stream()
+                        .filter(profile -> profile.getStatus() != RoleApprovalStatus.DRAFT).toList()
                     : refereeProfileRepository.findByStatusOrderByCreatedAtDesc(status)).stream()
                     .map(this::mapReferee)
                     .toList();
@@ -371,6 +394,45 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
         if (user.getRoleApprovalStatus() == RoleApprovalStatus.PENDING) {
             throw new BadRequestException("A role application is already pending");
         }
+        boolean hasOtherDraft = (targetRole != UserRole.OWNER
+                && ownerProfileRepository.findByUserId(user.getId())
+                .map(p -> p.getStatus() == RoleApprovalStatus.DRAFT).orElse(false))
+                || (targetRole != UserRole.JOCKEY
+                && jockeyProfileRepository.findByUserId(user.getId())
+                .map(p -> p.getStatus() == JockeyStatus.DRAFT).orElse(false))
+                || (targetRole != UserRole.REFEREE
+                && refereeProfileRepository.findByUserId(user.getId())
+                .map(p -> p.getStatus() == RoleApprovalStatus.DRAFT).orElse(false));
+        if (hasOtherDraft) {
+            throw new BadRequestException("Only one role application draft is allowed at a time");
+        }
+    }
+
+    private void markProfileDraft(OwnerProfile profile, User user) {
+        profile.setStatus(RoleApprovalStatus.DRAFT);
+        profile.setKycVerification(null);
+        profile.setReviewReason(null);
+        profile.setReviewedBy(null);
+        profile.setReviewedAt(null);
+        profile.setUpdatedBy(user.getUsername());
+    }
+
+    private void markProfileDraft(RefereeProfile profile, User user) {
+        profile.setStatus(RoleApprovalStatus.DRAFT);
+        profile.setKycVerification(null);
+        profile.setReviewReason(null);
+        profile.setReviewedBy(null);
+        profile.setReviewedAt(null);
+        profile.setUpdatedBy(user.getUsername());
+    }
+
+    private void markJockeyDraft(JockeyProfile profile, User user) {
+        profile.setStatus(JockeyStatus.DRAFT);
+        profile.setKycVerification(null);
+        profile.setReviewReason(null);
+        profile.setReviewedBy(null);
+        profile.setReviewedAt(null);
+        profile.setUpdatedBy(user.getUsername());
     }
 
     private void prepareUserPending(User user, UserRole pendingRole) {
@@ -545,6 +607,12 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
         }
     }
 
+    private void requirePassedKyc(KycVerification verification) {
+        if (verification == null || verification.getStatus() != KycStatus.PASSED) {
+            throw new BadRequestException("Không thể duyệt role vì user chưa KYC thành công");
+        }
+    }
+
     private String requireReason(AdminReviewRequest request) {
         if (request == null || request.getReason() == null || request.getReason().isBlank()) {
             throw new BadRequestException("Review reason is required");
@@ -575,6 +643,7 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
             return null;
         }
         return switch (status) {
+            case DRAFT -> JockeyStatus.DRAFT;
             case PENDING -> JockeyStatus.PENDING;
             case APPROVED -> JockeyStatus.APPROVED;
             case REJECTED -> JockeyStatus.REJECTED;
@@ -584,6 +653,7 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
 
     private RoleApprovalStatus toRoleStatus(JockeyStatus status) {
         return switch (status) {
+            case DRAFT -> RoleApprovalStatus.DRAFT;
             case PENDING -> RoleApprovalStatus.PENDING;
             case APPROVED -> RoleApprovalStatus.APPROVED;
             case REJECTED, SUSPENDED -> RoleApprovalStatus.REJECTED;
@@ -638,15 +708,15 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
 
     private RoleApplicationResponse mapOwner(OwnerProfile profile) {
         User user = profile.getUser();
-        return baseBuilder(profile.getId(), user, UserRole.OWNER, profile.getStatus(),
+        return withKyc(baseBuilder(profile.getId(), user, UserRole.OWNER, profile.getStatus(),
                 profile.getReviewReason(), profile.getReviewedBy(), profile.getReviewedAt(),
                 profile.getCreatedAt(), profile.getUpdatedAt())
                 .stableName(profile.getStableName())
                 .experienceYears(profile.getExperienceYears())
                 .address(profile.getAddress())
                 .bio(profile.getBio())
-                .verificationDocumentUrl(profile.getVerificationDocumentUrl())
-                .build();
+                .verificationDocumentUrl(profile.getVerificationDocumentUrl()),
+                profile.getKycVerification()).build();
     }
 
     private RoleApplicationResponse mapSpectator(SpectatorProfile profile) {
@@ -664,20 +734,19 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
 
     private RoleApplicationResponse mapReferee(RefereeProfile profile) {
         User user = profile.getUser();
-        return baseBuilder(profile.getId(), user, UserRole.REFEREE, profile.getStatus(),
+        return withKyc(baseBuilder(profile.getId(), user, UserRole.REFEREE, profile.getStatus(),
                 profile.getReviewReason(), profile.getReviewedBy(), profile.getReviewedAt(),
                 profile.getCreatedAt(), profile.getUpdatedAt())
                 .licenseNumber(profile.getLicenseNumber())
                 .experienceYears(profile.getExperienceYears())
                 .specialty(profile.getSpecialty())
                 .certificationDocumentUrl(profile.getCertificationDocumentUrl())
-                .bio(profile.getBio())
-                .build();
+                .bio(profile.getBio()), profile.getKycVerification()).build();
     }
 
     private RoleApplicationResponse mapJockey(JockeyProfile profile) {
         User user = profile.getUser();
-        return baseBuilder(profile.getId(), user, UserRole.JOCKEY, toRoleStatus(profile.getStatus()),
+        return withKyc(baseBuilder(profile.getId(), user, UserRole.JOCKEY, toRoleStatus(profile.getStatus()),
                 profile.getReviewReason(), profile.getReviewedBy(), profile.getReviewedAt(),
                 profile.getCreatedAt(), profile.getUpdatedAt())
                 .licenseNumber(profile.getLicenseNumber())
@@ -689,8 +758,29 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
                 .achievements(profile.getAchievements())
                 .specialties(profile.getSpecialties())
                 .avatarUrl(profile.getAvatarUrl())
-                .licenseDocumentUrl(profile.getLicenseDocumentUrl())
-                .build();
+                .licenseDocumentUrl(profile.getLicenseDocumentUrl()),
+                profile.getKycVerification()).build();
+    }
+
+    private RoleApplicationResponse.RoleApplicationResponseBuilder withKyc(
+            RoleApplicationResponse.RoleApplicationResponseBuilder builder,
+            KycVerification verification) {
+        if (verification == null) {
+            return builder;
+        }
+        return builder
+                .kycStatus(verification.getStatus())
+                .idNumberMasked(verification.getIdNumberMasked())
+                .kycFullName(verification.getFullName())
+                .dateOfBirth(verification.getDateOfBirth())
+                .gender(verification.getGender())
+                .kycAddress(verification.getAddress())
+                .issueDate(verification.getIssueDate())
+                .faceScore(verification.getFaceScore())
+                .cccdFrontImageUrl(verification.getFrontImageUrl())
+                .cccdBackImageUrl(verification.getBackImageUrl())
+                .selfieImageUrl(verification.getSelfieImageUrl())
+                .kycRejectReason(verification.getRejectReason());
     }
 
     private RoleApplicationResponse.RoleApplicationResponseBuilder baseBuilder(

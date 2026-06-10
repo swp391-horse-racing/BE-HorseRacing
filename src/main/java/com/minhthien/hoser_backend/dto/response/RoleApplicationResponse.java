@@ -2,6 +2,7 @@ package com.minhthien.hoser_backend.dto.response;
 
 import com.minhthien.hoser_backend.enums.RoleApprovalStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
+import com.minhthien.hoser_backend.enums.KycStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -49,4 +50,17 @@ public class RoleApplicationResponse {
     private String specialties;
     private String avatarUrl;
     private String licenseDocumentUrl;
+
+    private KycStatus kycStatus;
+    private String idNumberMasked;
+    private String kycFullName;
+    private String dateOfBirth;
+    private String gender;
+    private String kycAddress;
+    private String issueDate;
+    private BigDecimal faceScore;
+    private String cccdFrontImageUrl;
+    private String cccdBackImageUrl;
+    private String selfieImageUrl;
+    private String kycRejectReason;
 }

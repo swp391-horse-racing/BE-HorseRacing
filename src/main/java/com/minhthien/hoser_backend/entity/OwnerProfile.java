@@ -47,10 +47,14 @@ public class OwnerProfile {
     @Column(length = 1000)
     private String verificationDocumentUrl;
 
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "kyc_verification_id", unique = true)
+    private KycVerification kycVerification;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default
-    private RoleApprovalStatus status = RoleApprovalStatus.PENDING;
+    private RoleApprovalStatus status = RoleApprovalStatus.DRAFT;
 
     @Column(length = 1000)
     private String reviewReason;
@@ -83,7 +87,7 @@ public class OwnerProfile {
         }
         updatedAt = now;
         if (status == null) {
-            status = RoleApprovalStatus.PENDING;
+            status = RoleApprovalStatus.DRAFT;
         }
         if (createdBy == null || createdBy.isBlank()) {
             createdBy = "SYSTEM";

@@ -64,10 +64,14 @@ public class JockeyProfile {
     @Column(length = 1000)
     private String licenseDocumentUrl;
 
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "kyc_verification_id", unique = true)
+    private KycVerification kycVerification;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default
-    private JockeyStatus status = JockeyStatus.PENDING;
+    private JockeyStatus status = JockeyStatus.DRAFT;
 
     @Column(length = 1000)
     private String reviewReason;
@@ -100,7 +104,7 @@ public class JockeyProfile {
         }
         updatedAt = now;
         if (status == null) {
-            status = JockeyStatus.PENDING;
+            status = JockeyStatus.DRAFT;
         }
         if (createdBy == null || createdBy.isBlank()) {
             createdBy = "SYSTEM";
