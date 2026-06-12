@@ -34,6 +34,7 @@ public class SystemSettings {
     public static final int DEFAULT_SESSION_DURATION_MINUTES = 60;
     public static final String DEFAULT_SYSTEM_NAME = "Horse Racing Admin";
     public static final String DEFAULT_PRIMARY_COLOR = "#D4A017";
+    public static final String DEFAULT_RACE_DISTANCES_METERS_JSON = "[1000,1200,1500]";
 
     @Id
     private Long id;
@@ -69,6 +70,10 @@ public class SystemSettings {
 
     @Column(name = "primary_color", nullable = false, length = 7)
     private String primaryColor;
+
+    @Lob
+    @Column(name = "race_distances_meters_json", nullable = false)
+    private String raceDistancesMetersJson;
 
     @Column(name = "created_at", nullable = false)
     @Builder.Default
@@ -110,5 +115,8 @@ public class SystemSettings {
         if (sessionDurationMinutes == null) sessionDurationMinutes = DEFAULT_SESSION_DURATION_MINUTES;
         if (systemName == null) systemName = DEFAULT_SYSTEM_NAME;
         if (primaryColor == null) primaryColor = DEFAULT_PRIMARY_COLOR;
+        if (raceDistancesMetersJson == null || raceDistancesMetersJson.isBlank()) {
+            raceDistancesMetersJson = DEFAULT_RACE_DISTANCES_METERS_JSON;
+        }
     }
 }

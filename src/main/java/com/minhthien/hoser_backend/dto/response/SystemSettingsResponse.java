@@ -6,6 +6,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -20,6 +21,7 @@ public class SystemSettingsResponse {
     private Integer sessionDurationMinutes;
     private String systemName;
     private String primaryColor;
+    private List<RaceDistanceOptionResponse> raceDistances;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private String updatedBy;

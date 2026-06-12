@@ -2,6 +2,7 @@ package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.dto.request.SystemEmailTemplatesSettingsRequest;
 import com.minhthien.hoser_backend.dto.request.SystemFeesSettingsRequest;
+import com.minhthien.hoser_backend.dto.request.SystemRaceDistancesSettingsRequest;
 import com.minhthien.hoser_backend.entity.SystemSettings;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.TwoFactorPolicy;
@@ -17,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -86,6 +88,54 @@ class SystemSettingsServiceImplTest {
         assertFalse(service.requiresTwoFactor(UserRole.OWNER));
     }
 
+    @Test
+    void updateRaceDistancesSortsValuesAndReturnsLabels() {
+        User admin = User.builder().id(1L).username("admin").role(UserRole.ADMIN).build();
+        SystemSettings settings = settings();
+        SystemRaceDistancesSettingsRequest request = new SystemRaceDistancesSettingsRequest();
+        request.setDistancesMeters(List.of(1500, 1000, 1200));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+        when(settingsRepository.findById(SystemSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
+        when(settingsRepository.save(settings)).thenReturn(settings);
+
+        var response = service.updateRaceDistances(1L, request);
+
+        assertEquals(List.of(1000, 1200, 1500), response.getRaceDistances().stream()
+                .map(option -> option.getMeters())
+                .toList());
+        assertEquals("1000m", response.getRaceDistances().get(0).getLabel());
+        assertEquals("[1000,1200,1500]", settings.getRaceDistancesMetersJson());
+        verify(auditLogRepository).save(any());
+    }
+
+    @Test
+    void updateRaceDistancesRejectsEmptyInvalidAndDuplicateValues() {
+        User admin = User.builder().id(1L).username("admin").role(UserRole.ADMIN).build();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+
+        SystemRaceDistancesSettingsRequest request = new SystemRaceDistancesSettingsRequest();
+        request.setDistancesMeters(List.of());
+        assertThrows(BadRequestException.class, () -> service.updateRaceDistances(1L, request));
+
+        request.setDistancesMeters(List.of(1000, 0));
+        assertThrows(BadRequestException.class, () -> service.updateRaceDistances(1L, request));
+
+        request.setDistancesMeters(List.of(1000, 1000));
+        assertThrows(BadRequestException.class, () -> service.updateRaceDistances(1L, request));
+        verify(settingsRepository, never()).save(any());
+    }
+
+    @Test
+    void normalizeRaceDistanceAcceptsConfiguredMetersAndLabelsOnly() {
+        SystemSettings settings = settings();
+        settings.setRaceDistancesMetersJson("[1000,1200,1500]");
+        when(settingsRepository.findById(SystemSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
+
+        assertEquals("1000m", service.normalizeRaceDistance("1000"));
+        assertEquals("1200m", service.normalizeRaceDistance("1200m"));
+        assertThrows(BadRequestException.class, () -> service.normalizeRaceDistance("1300m"));
+    }
+
     private SystemSettings settings() {
         return SystemSettings.builder()
                 .id(SystemSettings.SINGLETON_ID)
@@ -99,6 +149,7 @@ class SystemSettingsServiceImplTest {
                 .sessionDurationMinutes(SystemSettings.DEFAULT_SESSION_DURATION_MINUTES)
                 .systemName(SystemSettings.DEFAULT_SYSTEM_NAME)
                 .primaryColor(SystemSettings.DEFAULT_PRIMARY_COLOR)
+                .raceDistancesMetersJson(SystemSettings.DEFAULT_RACE_DISTANCES_METERS_JSON)
                 .build();
     }
 }

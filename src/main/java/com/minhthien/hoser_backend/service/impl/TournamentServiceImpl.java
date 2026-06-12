@@ -542,7 +542,7 @@ public class TournamentServiceImpl implements TournamentService {
                 : null;
         Race race = Race.builder()
                 .name(request.getName())
-                .distance(request.getDistance())
+                .distance(systemSettingsService.normalizeRaceDistance(request.getDistance()))
                 .scheduledStartAt(request.getScheduledStartAt())
                 .scheduledEndAt(request.getScheduledEndAt())
                 .minParticipants(request.getMinParticipants())
@@ -563,7 +563,7 @@ public class TournamentServiceImpl implements TournamentService {
 
     private void applyRaceRequest(Race race, RaceRequest request) {
         race.setName(request.getName());
-        race.setDistance(request.getDistance());
+        race.setDistance(systemSettingsService.normalizeRaceDistance(request.getDistance()));
         race.setScheduledStartAt(request.getScheduledStartAt());
         race.setScheduledEndAt(request.getScheduledEndAt());
         race.setMinParticipants(request.getMinParticipants());

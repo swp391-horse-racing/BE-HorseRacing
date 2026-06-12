@@ -70,6 +70,14 @@ public class SystemSettingsController {
         return ok(settingsService.updateBranding(admin.getId(), request));
     }
 
+    @SecurityRequirement(name = "bearerAuth")
+    @PutMapping("/api/v1/admin/system-settings/race-distances")
+    public ResponseEntity<ApiResponse<SystemSettingsResponse>> updateRaceDistances(
+            @AuthenticationPrincipal User admin,
+            @Valid @RequestBody SystemRaceDistancesSettingsRequest request) {
+        return ok(settingsService.updateRaceDistances(admin.getId(), request));
+    }
+
     private ResponseEntity<ApiResponse<SystemSettingsResponse>> ok(SystemSettingsResponse response) {
         return ResponseEntity.ok(ApiResponse.success("System settings updated", response));
     }

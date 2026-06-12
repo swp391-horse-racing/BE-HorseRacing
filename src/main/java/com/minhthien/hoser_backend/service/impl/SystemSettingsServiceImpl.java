@@ -1,7 +1,11 @@
 package com.minhthien.hoser_backend.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.minhthien.hoser_backend.dto.request.*;
 import com.minhthien.hoser_backend.dto.response.PublicBrandingResponse;
+import com.minhthien.hoser_backend.dto.response.RaceDistanceOptionResponse;
 import com.minhthien.hoser_backend.dto.response.SystemSettingsResponse;
 import com.minhthien.hoser_backend.entity.AdminAuditLog;
 import com.minhthien.hoser_backend.entity.SystemSettings;
@@ -22,7 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,7 +36,10 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class SystemSettingsServiceImpl implements SystemSettingsService {
     private static final String REFERENCE_TYPE = "SYSTEM_SETTINGS";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final TypeReference<List<Integer>> INTEGER_LIST_TYPE = new TypeReference<>() {};
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{\\{([^{}]+)}}");
+    private static final Pattern DISTANCE_PATTERN = Pattern.compile("^(\\d+)\\s*m?$", Pattern.CASE_INSENSITIVE);
     private static final Set<String> ALLOWED_PLACEHOLDERS = Set.of("tournament", "race");
 
     private final SystemSettingsRepository settingsRepository;
@@ -110,9 +119,48 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "systemSettings", allEntries = true)
+    public SystemSettingsResponse updateRaceDistances(Long adminId, SystemRaceDistancesSettingsRequest request) {
+        User admin = requireAdmin(adminId);
+        List<Integer> distances = normalizeDistanceList(request == null ? null : request.getDistancesMeters());
+        SystemSettings settings = getOrCreate();
+        settings.setRaceDistancesMetersJson(writeDistances(distances));
+        return save(admin, settings, "SYSTEM_RACE_DISTANCES_UPDATED");
+    }
+
+    @Override
+    @Transactional
     @Cacheable(value = "systemSettings", key = "'singleton'")
     public SystemSettings getCurrent() {
         return getOrCreate();
+    }
+
+    @Override
+    @Transactional
+    public List<RaceDistanceOptionResponse> getRaceDistanceOptions() {
+        return raceDistanceOptions(getCurrent());
+    }
+
+    @Override
+    @Transactional
+    public String normalizeRaceDistance(String distance) {
+        if (distance == null || distance.isBlank()) {
+            throw new BadRequestException("Race distance is required");
+        }
+        Matcher matcher = DISTANCE_PATTERN.matcher(distance.trim());
+        if (!matcher.matches()) {
+            throw new BadRequestException("Race distance must be a configured meter value");
+        }
+        Integer meters;
+        try {
+            meters = Integer.valueOf(matcher.group(1));
+        } catch (NumberFormatException ex) {
+            throw new BadRequestException("Race distance must be a valid meter value");
+        }
+        if (!readDistances(getCurrent()).contains(meters)) {
+            throw new BadRequestException("Race distance is not configured");
+        }
+        return meters + "m";
     }
 
     @Override
@@ -150,6 +198,7 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
                 .sessionDurationMinutes(SystemSettings.DEFAULT_SESSION_DURATION_MINUTES)
                 .systemName(SystemSettings.DEFAULT_SYSTEM_NAME)
                 .primaryColor(SystemSettings.DEFAULT_PRIMARY_COLOR)
+                .raceDistancesMetersJson(SystemSettings.DEFAULT_RACE_DISTANCES_METERS_JSON)
                 .build();
     }
 
@@ -199,6 +248,52 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         }
     }
 
+    private List<Integer> normalizeDistanceList(List<Integer> distances) {
+        if (distances == null || distances.isEmpty()) {
+            throw new BadRequestException("Race distances are required");
+        }
+        TreeSet<Integer> sorted = new TreeSet<>();
+        for (Integer distance : distances) {
+            if (distance == null || distance <= 0) {
+                throw new BadRequestException("Race distance must be greater than zero");
+            }
+            if (!sorted.add(distance)) {
+                throw new BadRequestException("Race distances must be unique");
+            }
+        }
+        return List.copyOf(sorted);
+    }
+
+    private List<Integer> readDistances(SystemSettings settings) {
+        try {
+            String source = settings.getRaceDistancesMetersJson();
+            if (source == null || source.isBlank()) {
+                source = SystemSettings.DEFAULT_RACE_DISTANCES_METERS_JSON;
+            }
+            List<Integer> distances = OBJECT_MAPPER.readValue(source, INTEGER_LIST_TYPE);
+            return normalizeDistanceList(distances);
+        } catch (JsonProcessingException | IllegalArgumentException ex) {
+            throw new BadRequestException("Race distance settings are invalid");
+        }
+    }
+
+    private String writeDistances(List<Integer> distances) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(distances);
+        } catch (JsonProcessingException ex) {
+            throw new BadRequestException("Race distance settings are invalid");
+        }
+    }
+
+    private List<RaceDistanceOptionResponse> raceDistanceOptions(SystemSettings settings) {
+        return readDistances(settings).stream()
+                .map(meters -> RaceDistanceOptionResponse.builder()
+                        .meters(meters)
+                        .label(meters + "m")
+                        .build())
+                .toList();
+    }
+
     private SystemSettingsResponse map(SystemSettings settings) {
         return SystemSettingsResponse.builder()
                 .defaultRegistrationFee(settings.getDefaultRegistrationFee())
@@ -211,6 +306,7 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
                 .sessionDurationMinutes(settings.getSessionDurationMinutes())
                 .systemName(settings.getSystemName())
                 .primaryColor(settings.getPrimaryColor())
+                .raceDistances(raceDistanceOptions(settings))
                 .createdAt(settings.getCreatedAt())
                 .updatedAt(settings.getUpdatedAt())
                 .updatedBy(settings.getUpdatedBy())

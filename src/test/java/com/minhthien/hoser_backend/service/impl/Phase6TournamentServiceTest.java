@@ -45,6 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -100,6 +101,8 @@ class Phase6TournamentServiceTest {
                 .defaultRegistrationFee(new BigDecimal("5000000"))
                 .lateCheckInFee(new BigDecimal("500000"))
                 .build());
+        lenient().when(systemSettingsService.normalizeRaceDistance(anyString()))
+                .thenAnswer(invocation -> normalizeRaceDistance(invocation.getArgument(0)));
     }
 
     @Test
@@ -162,6 +165,44 @@ class Phase6TournamentServiceTest {
 
         assertEquals(new BigDecimal("125000"), tournament.getRaces().get(0).getLateCheckInFee());
         assertEquals(new BigDecimal("125000"), response.getRaces().get(0).getLateCheckInFee());
+    }
+
+    @Test
+    void addRaceNormalizesConfiguredDistanceWithoutUnit() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Normalized distance");
+        request.setDistance("1000");
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.addTournamentRace(ADMIN_ID, 3L, request);
+
+        assertEquals("1000m", tournament.getRaces().get(0).getDistance());
+        assertEquals("1000m", response.getRaces().get(0).getDistance());
+    }
+
+    @Test
+    void addRaceRejectsUnconfiguredDistance() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Bad distance");
+        request.setDistance("1300m");
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        assertThrows(BadRequestException.class, () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+    }
+
+    @Test
+    void updateRaceNormalizesConfiguredDistanceWithoutUnit() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race race = race(10L, tournament, RaceStatus.DRAFT, "Before");
+        RaceRequest request = raceRequest("After");
+        request.setDistance("1200");
+        tournament.getRaces().add(race);
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+
+        TournamentResponse response = service.updateTournamentRace(ADMIN_ID, 10L, request);
+
+        assertEquals("1200m", race.getDistance());
+        assertEquals("1200m", response.getRaces().get(0).getDistance());
     }
 
     @Test
@@ -399,6 +440,16 @@ class Phase6TournamentServiceTest {
         request.setRank(rank);
         request.setAmount(new BigDecimal(amount));
         return request;
+    }
+
+    private String normalizeRaceDistance(String distance) {
+        String trimmed = distance.trim().toLowerCase();
+        String metersText = trimmed.endsWith("m") ? trimmed.substring(0, trimmed.length() - 1).trim() : trimmed;
+        int meters = Integer.parseInt(metersText);
+        if (!List.of(1000, 1200, 1500).contains(meters)) {
+            throw new BadRequestException("Race distance is not configured");
+        }
+        return meters + "m";
     }
 
     private TournamentRequest tournamentRequest() {
