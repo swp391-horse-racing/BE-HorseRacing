@@ -53,6 +53,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.Collections;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -704,6 +705,8 @@ public class TournamentServiceImpl implements TournamentService {
                 throw new BadRequestException("Race prize must have a positive amount or item name");
             }
         }
+        validatePrizeAmountsDescending(race.getPrizes(), RacePrize::getRank, RacePrize::getAmount,
+                "Race prize amounts must decrease as rank increases");
     }
 
     private void validateConfiguredChallenge(Tournament tournament) {
@@ -724,6 +727,27 @@ public class TournamentServiceImpl implements TournamentService {
                 throw new BadRequestException("Jockey challenge prize rank must be unique");
             }
             requireNonNegative(defaultZero(prize.getAmount()), "Jockey challenge prize amount must not be negative");
+        }
+        validatePrizeAmountsDescending(tournament.getJockeyChallengePrizes(),
+                JockeyChallengePrize::getRank, JockeyChallengePrize::getAmount,
+                "Jockey challenge prize amounts must decrease as rank increases");
+    }
+
+    private <T> void validatePrizeAmountsDescending(List<T> prizes,
+                                                    Function<T, Integer> rankExtractor,
+                                                    Function<T, BigDecimal> amountExtractor,
+                                                    String message) {
+        List<T> sortedPrizes = prizes.stream()
+                .sorted(Comparator.comparing(rankExtractor))
+                .toList();
+        for (int i = 1; i < sortedPrizes.size(); i++) {
+            T previous = sortedPrizes.get(i - 1);
+            T current = sortedPrizes.get(i);
+            BigDecimal previousAmount = defaultZero(amountExtractor.apply(previous));
+            BigDecimal currentAmount = defaultZero(amountExtractor.apply(current));
+            if (previousAmount.compareTo(currentAmount) <= 0) {
+                throw new BadRequestException(message);
+            }
         }
     }
 

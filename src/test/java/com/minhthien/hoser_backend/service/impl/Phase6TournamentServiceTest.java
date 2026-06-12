@@ -2,6 +2,7 @@ package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.dto.request.RacePrizeRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRequest;
+import com.minhthien.hoser_backend.dto.request.JockeyChallengePrizeRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
@@ -258,6 +259,78 @@ class Phase6TournamentServiceTest {
                 () -> service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.REGISTRATION_CLOSED));
     }
 
+    @Test
+    void addRaceAcceptsPrizeAmountsDescendingByRank() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Descending prizes");
+        request.setPrizes(List.of(
+                prizeRequest(1, "1000"),
+                prizeRequest(2, "800"),
+                prizeRequest(3, "500"),
+                prizeRequest(4, "100")));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        service.addTournamentRace(ADMIN_ID, 3L, request);
+
+        assertEquals(4, tournament.getRaces().get(0).getPrizes().size());
+    }
+
+    @Test
+    void addRaceRejectsEqualPrizeAmountsAcrossRanks() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Equal prizes");
+        request.setPrizes(List.of(
+                prizeRequest(1, "1000"),
+                prizeRequest(2, "1000"),
+                prizeRequest(3, "500")));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        assertThrows(BadRequestException.class, () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+    }
+
+    @Test
+    void addRaceRejectsIncreasingPrizeAmountsAcrossRanks() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Increasing prizes");
+        request.setPrizes(List.of(
+                prizeRequest(1, "1000"),
+                prizeRequest(2, "1200"),
+                prizeRequest(3, "500")));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        assertThrows(BadRequestException.class, () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+    }
+
+    @Test
+    void updateTournamentAcceptsJockeyChallengePrizeAmountsDescendingByRank() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        TournamentUpdateRequest request = new TournamentUpdateRequest();
+        request.setJockeyChallengeEnabled(true);
+        request.setJockeyChallengePrizes(List.of(
+                challengePrizeRequest(1, "1000"),
+                challengePrizeRequest(2, "800"),
+                challengePrizeRequest(4, "100")));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.updateTournament(ADMIN_ID, 3L, request);
+
+        assertEquals(3, response.getJockeyChallengePrizes().size());
+    }
+
+    @Test
+    void updateTournamentRejectsJockeyChallengePrizeAmountsNotDescending() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        TournamentUpdateRequest request = new TournamentUpdateRequest();
+        request.setJockeyChallengeEnabled(true);
+        request.setJockeyChallengePrizes(List.of(
+                challengePrizeRequest(1, "1000"),
+                challengePrizeRequest(2, "1000"),
+                challengePrizeRequest(3, "500")));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        assertThrows(BadRequestException.class, () -> service.updateTournament(ADMIN_ID, 3L, request));
+    }
+
     private Tournament tournament(TournamentStatus status) {
         return Tournament.builder()
                 .id(3L)
@@ -311,9 +384,20 @@ class Phase6TournamentServiceTest {
     }
 
     private RacePrizeRequest prizeRequest() {
+        return prizeRequest(1, "100");
+    }
+
+    private RacePrizeRequest prizeRequest(Integer rank, String amount) {
         RacePrizeRequest request = new RacePrizeRequest();
-        request.setRank(1);
-        request.setAmount(BigDecimal.valueOf(100));
+        request.setRank(rank);
+        request.setAmount(new BigDecimal(amount));
+        return request;
+    }
+
+    private JockeyChallengePrizeRequest challengePrizeRequest(Integer rank, String amount) {
+        JockeyChallengePrizeRequest request = new JockeyChallengePrizeRequest();
+        request.setRank(rank);
+        request.setAmount(new BigDecimal(amount));
         return request;
     }
 
