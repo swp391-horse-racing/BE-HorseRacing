@@ -53,6 +53,14 @@ public class TournamentRequest {
     @Positive(message = "Maximum teams must be greater than zero")
     private Integer maxTeams;
 
+    @NotNull(message = "Minimum horses per owner is required")
+    @Positive(message = "Minimum horses per owner must be greater than zero")
+    private Integer minHorsesPerOwner;
+
+    @NotNull(message = "Maximum horses per owner is required")
+    @Positive(message = "Maximum horses per owner must be greater than zero")
+    private Integer maxHorsesPerOwner;
+
     @Schema(description = "Enable daily jockey challenge scoring for this race day", example = "true")
     private Boolean jockeyChallengeEnabled = false;
 

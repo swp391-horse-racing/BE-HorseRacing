@@ -20,6 +20,8 @@ public class TournamentSummaryResponse {
     private LocalDateTime endAt;
     private Integer minTeams;
     private Integer maxTeams;
+    private Integer minHorsesPerOwner;
+    private Integer maxHorsesPerOwner;
     private TournamentStatus status;
     private LocalDateTime publishedAt;
     private LocalDateTime openedRegistrationAt;

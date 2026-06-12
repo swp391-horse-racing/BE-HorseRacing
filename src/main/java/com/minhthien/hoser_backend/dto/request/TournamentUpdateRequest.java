@@ -41,6 +41,12 @@ public class TournamentUpdateRequest {
     @Positive(message = "Maximum teams must be greater than zero")
     private Integer maxTeams;
 
+    @Positive(message = "Minimum horses per owner must be greater than zero")
+    private Integer minHorsesPerOwner;
+
+    @Positive(message = "Maximum horses per owner must be greater than zero")
+    private Integer maxHorsesPerOwner;
+
     private Boolean jockeyChallengeEnabled;
 
     @Positive(message = "First place points must be greater than zero")

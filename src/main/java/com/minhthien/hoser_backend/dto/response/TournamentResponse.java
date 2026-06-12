@@ -23,6 +23,8 @@ public class TournamentResponse {
     private String rules;
     private Integer minTeams;
     private Integer maxTeams;
+    private Integer minHorsesPerOwner;
+    private Integer maxHorsesPerOwner;
     private TournamentStatus status;
     private LocalDateTime publishedAt;
     private LocalDateTime openedRegistrationAt;

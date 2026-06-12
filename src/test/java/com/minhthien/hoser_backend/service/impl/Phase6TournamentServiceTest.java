@@ -2,6 +2,8 @@ package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.dto.request.RacePrizeRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRequest;
+import com.minhthien.hoser_backend.dto.request.TournamentRequest;
+import com.minhthien.hoser_backend.dto.request.TournamentUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RacePrize;
@@ -11,6 +13,7 @@ import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.RaceStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
+import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
 import com.minhthien.hoser_backend.repository.BetMarketRepository;
 import com.minhthien.hoser_backend.repository.BetRepository;
@@ -38,6 +41,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.lenient;
@@ -88,8 +92,9 @@ class Phase6TournamentServiceTest {
                 .build();
 
         when(userRepository.findById(ADMIN_ID)).thenReturn(Optional.of(admin));
-        when(tournamentRepository.save(any(Tournament.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(tournamentRepository.save(any(Tournament.class))).thenAnswer(invocation -> invocation.getArgument(0));
         lenient().when(raceParticipantRepository.countByRaceIds(anyCollection())).thenReturn(List.of());
+        lenient().when(raceRegistrationRepository.countByOwnerForTournament(any(), anyCollection())).thenReturn(List.of());
         lenient().when(systemSettingsService.getCurrent()).thenReturn(SystemSettings.builder()
                 .defaultRegistrationFee(new BigDecimal("5000000"))
                 .lateCheckInFee(new BigDecimal("500000"))
@@ -204,6 +209,55 @@ class Phase6TournamentServiceTest {
         assertEquals(RaceStatus.CANCELLED, response.getRaces().get(1).getStatus());
     }
 
+    @Test
+    void createTournamentRejectsMinHorsesPerOwnerBelowFour() {
+        TournamentRequest request = tournamentRequest();
+        request.setMinHorsesPerOwner(3);
+
+        assertThrows(BadRequestException.class, () -> service.createTournament(ADMIN_ID, request));
+    }
+
+    @Test
+    void createTournamentRejectsMaxHorsesPerOwnerLessThanSixAboveMinimum() {
+        TournamentRequest request = tournamentRequest();
+        request.setMinHorsesPerOwner(4);
+        request.setMaxHorsesPerOwner(9);
+
+        assertThrows(BadRequestException.class, () -> service.createTournament(ADMIN_ID, request));
+    }
+
+    @Test
+    void createTournamentAcceptsMinFourAndMaxTen() {
+        TournamentRequest request = tournamentRequest();
+
+        TournamentResponse response = service.createTournament(ADMIN_ID, request);
+
+        assertEquals(4, response.getMinHorsesPerOwner());
+        assertEquals(10, response.getMaxHorsesPerOwner());
+    }
+
+    @Test
+    void updateTournamentRejectsInvalidHorsesPerOwnerRange() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        TournamentUpdateRequest request = new TournamentUpdateRequest();
+        request.setMinHorsesPerOwner(5);
+        request.setMaxHorsesPerOwner(10);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        assertThrows(BadRequestException.class, () -> service.updateTournament(ADMIN_ID, 3L, request));
+    }
+
+    @Test
+    void closeRegistrationRejectsOwnerBelowMinimumHorses() {
+        Tournament tournament = tournament(TournamentStatus.OPEN_REGISTRATION);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+        when(raceRegistrationRepository.countByOwnerForTournament(any(), anyCollection()))
+                .thenReturn(List.<Object[]>of(new Object[]{2L, "owner", 3L}));
+
+        assertThrows(BadRequestException.class,
+                () -> service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.REGISTRATION_CLOSED));
+    }
+
     private Tournament tournament(TournamentStatus status) {
         return Tournament.builder()
                 .id(3L)
@@ -215,6 +269,8 @@ class Phase6TournamentServiceTest {
                 .endAt(LocalDateTime.of(2026, 7, 10, 18, 0))
                 .minTeams(1)
                 .maxTeams(20)
+                .minHorsesPerOwner(4)
+                .maxHorsesPerOwner(10)
                 .status(status)
                 .jockeyChallengeEnabled(false)
                 .build();
@@ -258,6 +314,21 @@ class Phase6TournamentServiceTest {
         RacePrizeRequest request = new RacePrizeRequest();
         request.setRank(1);
         request.setAmount(BigDecimal.valueOf(100));
+        return request;
+    }
+
+    private TournamentRequest tournamentRequest() {
+        TournamentRequest request = new TournamentRequest();
+        request.setName("Summer Cup");
+        request.setLocation("Ho Chi Minh City");
+        request.setRegistrationOpenAt(LocalDateTime.of(2026, 7, 1, 9, 0));
+        request.setRegistrationCloseAt(LocalDateTime.of(2026, 7, 5, 17, 0));
+        request.setStartAt(LocalDateTime.of(2026, 7, 10, 9, 0));
+        request.setEndAt(LocalDateTime.of(2026, 7, 10, 18, 0));
+        request.setMinTeams(1);
+        request.setMaxTeams(20);
+        request.setMinHorsesPerOwner(4);
+        request.setMaxHorsesPerOwner(10);
         return request;
     }
 }

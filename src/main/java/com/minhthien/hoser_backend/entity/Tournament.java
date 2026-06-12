@@ -70,6 +70,14 @@ public class Tournament {
     @Column(nullable = false)
     private Integer maxTeams;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer minHorsesPerOwner = 4;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer maxHorsesPerOwner = 10;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     @Builder.Default
@@ -145,6 +153,12 @@ public class Tournament {
         }
         if (entryFee == null) {
             entryFee = BigDecimal.ZERO;
+        }
+        if (minHorsesPerOwner == null) {
+            minHorsesPerOwner = 4;
+        }
+        if (maxHorsesPerOwner == null) {
+            maxHorsesPerOwner = 10;
         }
         if (jockeyChallengeEnabled == null) {
             jockeyChallengeEnabled = false;

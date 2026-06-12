@@ -17,6 +17,7 @@ import com.minhthien.hoser_backend.entity.RacePrize;
 import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.RaceStatus;
+import com.minhthien.hoser_backend.enums.RaceRegistrationStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.exception.BadRequestException;
@@ -332,6 +333,9 @@ public class TournamentServiceImpl implements TournamentService {
         if (requiresReadySetup(status)) {
             validateReadyForPublish(tournament);
         }
+        if (status == TournamentStatus.REGISTRATION_CLOSED) {
+            validateOwnerHorseMinimums(tournament);
+        }
         tournament.setStatus(status);
         if (status == TournamentStatus.PUBLISHED && tournament.getPublishedAt() == null) {
             tournament.setPublishedAt(LocalDateTime.now());
@@ -417,6 +421,8 @@ public class TournamentServiceImpl implements TournamentService {
         tournament.setEntryFee(BigDecimal.ZERO);
         tournament.setMinTeams(request.getMinTeams());
         tournament.setMaxTeams(request.getMaxTeams());
+        tournament.setMinHorsesPerOwner(request.getMinHorsesPerOwner());
+        tournament.setMaxHorsesPerOwner(request.getMaxHorsesPerOwner());
         tournament.setJockeyChallengeEnabled(Boolean.TRUE.equals(request.getJockeyChallengeEnabled()));
         tournament.setJockeyChallengeFirstPoints(defaultPositive(request.getJockeyChallengeFirstPoints(), 3));
         tournament.setJockeyChallengeSecondPoints(defaultPositive(request.getJockeyChallengeSecondPoints(), 2));
@@ -462,6 +468,12 @@ public class TournamentServiceImpl implements TournamentService {
         }
         if (request.getMaxTeams() != null) {
             tournament.setMaxTeams(request.getMaxTeams());
+        }
+        if (request.getMinHorsesPerOwner() != null) {
+            tournament.setMinHorsesPerOwner(request.getMinHorsesPerOwner());
+        }
+        if (request.getMaxHorsesPerOwner() != null) {
+            tournament.setMaxHorsesPerOwner(request.getMaxHorsesPerOwner());
         }
         if (request.getJockeyChallengeEnabled() != null) {
             tournament.setJockeyChallengeEnabled(request.getJockeyChallengeEnabled());
@@ -606,6 +618,7 @@ public class TournamentServiceImpl implements TournamentService {
         validateTimeWindow(request.getRegistrationOpenAt(), request.getRegistrationCloseAt(),
                 request.getStartAt(), request.getEndAt(), request.getCheckInDeadlineAt());
         validateTeamLimits(request.getMinTeams(), request.getMaxTeams());
+        validateHorsesPerOwnerLimits(request.getMinHorsesPerOwner(), request.getMaxHorsesPerOwner());
     }
 
     private void validateBaseTournament(Tournament tournament) {
@@ -618,6 +631,7 @@ public class TournamentServiceImpl implements TournamentService {
         validateTimeWindow(tournament.getRegistrationOpenAt(), tournament.getRegistrationCloseAt(),
                 tournament.getStartAt(), tournament.getEndAt(), tournament.getCheckInDeadlineAt());
         validateTeamLimits(tournament.getMinTeams(), tournament.getMaxTeams());
+        validateHorsesPerOwnerLimits(tournament.getMinHorsesPerOwner(), tournament.getMaxHorsesPerOwner());
         tournament.setEntryFee(BigDecimal.ZERO);
     }
 
@@ -748,6 +762,37 @@ public class TournamentServiceImpl implements TournamentService {
         }
     }
 
+    private void validateHorsesPerOwnerLimits(Integer minHorsesPerOwner, Integer maxHorsesPerOwner) {
+        if (minHorsesPerOwner == null || maxHorsesPerOwner == null) {
+            throw new BadRequestException("Tournament horses per owner limits are required");
+        }
+        if (minHorsesPerOwner < 4) {
+            throw new BadRequestException("Minimum horses per owner must be at least 4");
+        }
+        if (maxHorsesPerOwner < minHorsesPerOwner + 6) {
+            throw new BadRequestException("Maximum horses per owner must be at least 6 more than minimum horses per owner");
+        }
+    }
+
+    private void validateOwnerHorseMinimums(Tournament tournament) {
+        List<Object[]> ownerCounts = raceRegistrationRepository.countByOwnerForTournament(
+                tournament.getId(), activeRegistrationStatuses());
+        for (Object[] row : ownerCounts) {
+            Long ownerId = (Long) row[0];
+            String username = (String) row[1];
+            long count = (Long) row[2];
+            if (count < tournament.getMinHorsesPerOwner()) {
+                throw new BadRequestException("Owner " + username + " (" + ownerId
+                        + ") must register at least " + tournament.getMinHorsesPerOwner()
+                        + " horses in this tournament");
+            }
+        }
+    }
+
+    private List<RaceRegistrationStatus> activeRegistrationStatuses() {
+        return List.of(RaceRegistrationStatus.PENDING, RaceRegistrationStatus.APPROVED);
+    }
+
     private void recordAudit(User admin, String action, Tournament tournament, String reason) {
         adminAuditLogRepository.save(AdminAuditLog.builder()
                 .adminId(admin.getId())
@@ -849,6 +894,8 @@ public class TournamentServiceImpl implements TournamentService {
                 .rules(tournament.getRules())
                 .minTeams(tournament.getMinTeams())
                 .maxTeams(tournament.getMaxTeams())
+                .minHorsesPerOwner(tournament.getMinHorsesPerOwner())
+                .maxHorsesPerOwner(tournament.getMaxHorsesPerOwner())
                 .status(tournament.getStatus())
                 .publishedAt(tournament.getPublishedAt())
                 .openedRegistrationAt(tournament.getOpenedRegistrationAt())
@@ -889,6 +936,8 @@ public class TournamentServiceImpl implements TournamentService {
                 .endAt(tournament.getEndAt())
                 .minTeams(tournament.getMinTeams())
                 .maxTeams(tournament.getMaxTeams())
+                .minHorsesPerOwner(tournament.getMinHorsesPerOwner())
+                .maxHorsesPerOwner(tournament.getMaxHorsesPerOwner())
                 .status(tournament.getStatus())
                 .publishedAt(tournament.getPublishedAt())
                 .openedRegistrationAt(tournament.getOpenedRegistrationAt())

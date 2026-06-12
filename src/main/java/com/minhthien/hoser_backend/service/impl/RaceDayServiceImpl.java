@@ -102,6 +102,14 @@ public class RaceDayServiceImpl implements RaceDayService {
                         request.getJockeyInvitationId()));
         validateEligibleInvitation(ownerId, raceId, request.getHorseId(), invitation);
         List<RaceRegistrationStatus> activeStatuses = activeRegistrationStatuses();
+        if (raceRegistrationRepository.existsByRaceIdAndOwnerIdAndStatusIn(raceId, ownerId, activeStatuses)) {
+            throw new BadRequestException("Owner can only register one horse for this race");
+        }
+        long ownerTournamentRegistrationCount = raceRegistrationRepository
+                .countByRaceTournamentIdAndOwnerIdAndStatusIn(tournament.getId(), ownerId, activeStatuses);
+        if (ownerTournamentRegistrationCount >= tournament.getMaxHorsesPerOwner()) {
+            throw new BadRequestException("Owner has reached the maximum horses allowed for this tournament");
+        }
         if (raceRegistrationRepository.existsByRaceIdAndHorseIdAndStatusIn(
                 raceId, invitation.getHorse().getId(), activeStatuses)) {
             throw new BadRequestException("Horse is already registered for this race");
@@ -265,6 +273,7 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (participantCount > tournament.getMaxTeams()) {
             throw new BadRequestException("Tournament exceeds maximum team limit");
         }
+        validateOwnerHorseMinimums(tournament);
         schedulableRaces.forEach(this::validateRaceReadyForSchedule);
         validateJockeyScheduleAcrossTournament(schedulableRaces);
         tournament.setStatus(TournamentStatus.SCHEDULED);
@@ -1349,6 +1358,21 @@ public class RaceDayServiceImpl implements RaceDayService {
 
     private List<RaceRegistrationStatus> activeRegistrationStatuses() {
         return List.of(RaceRegistrationStatus.PENDING, RaceRegistrationStatus.APPROVED);
+    }
+
+    private void validateOwnerHorseMinimums(Tournament tournament) {
+        List<Object[]> ownerCounts = raceRegistrationRepository.countByOwnerForTournament(
+                tournament.getId(), activeRegistrationStatuses());
+        for (Object[] row : ownerCounts) {
+            Long ownerId = (Long) row[0];
+            String username = (String) row[1];
+            long count = (Long) row[2];
+            if (count < tournament.getMinHorsesPerOwner()) {
+                throw new BadRequestException("Owner " + username + " (" + ownerId
+                        + ") must register at least " + tournament.getMinHorsesPerOwner()
+                        + " horses in this tournament");
+            }
+        }
     }
 
     private RaceRegistrationResponse mapRegistration(RaceRegistration registration) {

@@ -29,6 +29,21 @@ public interface RaceRegistrationRepository extends JpaRepository<RaceRegistrati
 
     boolean existsByRaceIdAndHorseIdAndStatusIn(Long raceId, Long horseId, Collection<RaceRegistrationStatus> statuses);
 
+    boolean existsByRaceIdAndOwnerIdAndStatusIn(Long raceId, Long ownerId, Collection<RaceRegistrationStatus> statuses);
+
+    long countByRaceTournamentIdAndOwnerIdAndStatusIn(Long tournamentId, Long ownerId,
+                                                      Collection<RaceRegistrationStatus> statuses);
+
+    @Query("""
+            select rr.owner.id, rr.owner.username, count(rr)
+            from RaceRegistration rr
+            where rr.race.tournament.id = :tournamentId
+              and rr.status in :statuses
+            group by rr.owner.id, rr.owner.username
+            """)
+    List<Object[]> countByOwnerForTournament(@Param("tournamentId") Long tournamentId,
+                                             @Param("statuses") Collection<RaceRegistrationStatus> statuses);
+
     boolean existsByRaceId(Long raceId);
 
     boolean existsByRaceTournamentId(Long tournamentId);
