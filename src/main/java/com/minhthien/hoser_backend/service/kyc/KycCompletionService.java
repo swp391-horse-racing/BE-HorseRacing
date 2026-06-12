@@ -19,6 +19,7 @@ public class KycCompletionService {
     private final OwnerProfileRepository ownerProfileRepository;
     private final JockeyProfileRepository jockeyProfileRepository;
     private final RefereeProfileRepository refereeProfileRepository;
+    private final SpectatorProfileRepository spectatorProfileRepository;
     private final UserRepository userRepository;
 
     @Transactional
@@ -69,6 +70,17 @@ public class KycCompletionService {
                 profile.setStatus(RoleApprovalStatus.PENDING);
                 profile.setUpdatedBy(user.getUsername());
                 yield refereeProfileRepository.save(profile).getId();
+            }
+            case SPECTATOR -> {
+                SpectatorProfile profile = spectatorProfileRepository.findByUserId(userId)
+                        .orElseThrow(() -> new ResourceNotFoundException("SpectatorProfile", "userId", userId));
+                if (profile.getStatus() != RoleApprovalStatus.DRAFT) {
+                    throw new BadRequestException("Hồ sơ SPECTATOR không còn ở trạng thái DRAFT");
+                }
+                profile.setKycVerification(verification);
+                profile.setStatus(RoleApprovalStatus.PENDING);
+                profile.setUpdatedBy(user.getUsername());
+                yield spectatorProfileRepository.save(profile).getId();
             }
             default -> throw new BadRequestException("Role này không yêu cầu KYC");
         };

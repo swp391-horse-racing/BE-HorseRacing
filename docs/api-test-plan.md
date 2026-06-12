@@ -362,7 +362,7 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 |---|---|---|---|---|---|
 | ROLE-01 | POST | `/api/v1/role-applications/owner` | USER | multipart owner | Don owner PENDING |
 | ROLE-02 | POST | `/api/v1/role-applications/jockey` | USER | multipart jockey | Don jockey/profile PENDING |
-| ROLE-03 | POST | `/api/v1/role-applications/spectator` | USER | JSON spectator | Spectator APPROVED ngay, user doi role SPECTATOR |
+| ROLE-03 | POST | `/api/v1/role-applications/spectator` | USER | JSON spectator | Spectator DRAFT, user chua doi role |
 | ROLE-04 | POST | `/api/v1/role-applications/referee` | USER | multipart referee | Don referee PENDING |
 | ROLE-05 | GET | `/api/v1/role-applications/me` | Authenticated | none | Don cua user hien tai |
 | ROLE-06 | GET | `/api/v1/admin/role-applications` | ADMIN | query `role`, `status` optional | List don loc duoc |
@@ -539,9 +539,9 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 
 1. Tao 4 user role `USER`.
 2. Goi `ROLE-01`, `ROLE-02`, `ROLE-03`, `ROLE-04` tu tung user.
-3. Goi `ROLE-05` de xac nhan spectator da `APPROVED`, cac role con lai van `PENDING`.
+3. Goi `ROLE-05` de xac nhan spectator dang `DRAFT` truoc KYC; owner/jockey/referee van theo flow KYC rieng.
 4. Admin goi `ROLE-06`, `ROLE-07`, `ROLE-08` de loc don.
-5. Admin approve 1 owner, 1 jockey, 1 referee bang `ROLE-09`; spectator khong can admin approve.
+5. Spectator chay OCR CCCD du 18 tuoi, face-match thanh cong de ho so sang `PENDING`; admin approve spectator/owner/jockey/referee bang `ROLE-09`.
 6. Admin reject 1 don khac bang `ROLE-10`.
 7. Login/me lai de xac nhan role da doi.
 

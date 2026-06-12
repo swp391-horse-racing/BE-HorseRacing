@@ -16,8 +16,8 @@ bio=Horse owner profile
 verificationDocument=<optional file>
 ```
 
-The response status is `DRAFT`. `JOCKEY` and `REFEREE` use their existing
-request fields and endpoints.
+The response status is `DRAFT`. `JOCKEY`, `SPECTATOR`, and `REFEREE` use their
+existing request fields and endpoints.
 
 ## 2. Upload CCCD
 
@@ -33,6 +33,11 @@ cccdBack=<back.jpg>
 Successful OCR returns an `OCR_PASSED` verification, masked ID number, name,
 date of birth, gender, address and issue date. The full ID number and raw FPT
 response are never returned.
+
+For `requestedRole=SPECTATOR`, OCR must read a date of birth proving the user
+is at least 18 years old. Supported date formats are `dd/MM/yyyy`,
+`dd-MM-yyyy`, and `yyyy-MM-dd`; underage or unparseable dates fail KYC before
+selfie upload.
 
 ## 3. Upload selfie
 

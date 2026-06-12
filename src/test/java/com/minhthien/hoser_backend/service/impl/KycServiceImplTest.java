@@ -4,6 +4,7 @@ import com.minhthien.hoser_backend.dto.kyc.FptFaceMatchResult;
 import com.minhthien.hoser_backend.dto.kyc.FptOcrResult;
 import com.minhthien.hoser_backend.entity.KycVerification;
 import com.minhthien.hoser_backend.entity.OwnerProfile;
+import com.minhthien.hoser_backend.entity.SpectatorProfile;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.KycStatus;
 import com.minhthien.hoser_backend.enums.RoleApprovalStatus;
@@ -22,6 +23,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -34,6 +37,7 @@ class KycServiceImplTest {
     @Mock private OwnerProfileRepository ownerProfileRepository;
     @Mock private JockeyProfileRepository jockeyProfileRepository;
     @Mock private RefereeProfileRepository refereeProfileRepository;
+    @Mock private SpectatorProfileRepository spectatorProfileRepository;
     @Mock private KycVerificationRepository kycVerificationRepository;
     @Mock private CloudinaryUploadService cloudinaryUploadService;
     @Mock private FptAiClient fptAiClient;
@@ -130,6 +134,82 @@ class KycServiceImplTest {
                 () -> service.verifyCccd(1L, UserRole.OWNER, file, image("back")));
 
         verifyNoInteractions(fptAiClient, cloudinaryUploadService);
+    }
+
+    @Test
+    void spectatorOcrRejectsUnderageAndPersistsFailure() {
+        User user = user();
+        String underageDob = LocalDate.now().minusYears(18).plusDays(1)
+                .format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(spectatorProfileRepository.findByUserId(1L)).thenReturn(Optional.of(
+                SpectatorProfile.builder().user(user).displayName("Fan")
+                        .status(RoleApprovalStatus.DRAFT).build()));
+        when(cloudinaryUploadService.uploadImage(any(), anyString()))
+                .thenReturn("front-url", "back-url");
+        when(fptAiClient.callOcr(any())).thenReturn(new FptOcrResult(
+                true, "012345678901", "NGUYEN VAN A", underageDob,
+                "Nam", "HCM", "01/01/2020", "{}", null));
+        when(failurePersistenceService.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        BadRequestException error = assertThrows(BadRequestException.class,
+                () -> service.verifyCccd(1L, UserRole.SPECTATOR, image("front"), image("back")));
+
+        assertTrue(error.getMessage().contains("18"));
+        verify(failurePersistenceService).save(argThat(v -> v.getStatus() == KycStatus.FAILED));
+        verify(kycVerificationRepository, never()).save(any());
+    }
+
+    @Test
+    void spectatorOcrAcceptsAdult() {
+        User user = user();
+        String adultDob = LocalDate.now().minusYears(18)
+                .format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(spectatorProfileRepository.findByUserId(1L)).thenReturn(Optional.of(
+                SpectatorProfile.builder().user(user).displayName("Fan")
+                        .status(RoleApprovalStatus.DRAFT).build()));
+        when(cloudinaryUploadService.uploadImage(any(), anyString()))
+                .thenReturn("front-url", "back-url");
+        when(fptAiClient.callOcr(any())).thenReturn(new FptOcrResult(
+                true, "012345678901", "NGUYEN VAN A", adultDob,
+                "Nam", "HCM", "01/01/2020", "{}", null));
+        when(kycVerificationRepository.save(any())).thenAnswer(invocation -> {
+            KycVerification value = invocation.getArgument(0);
+            value.setId(20L);
+            return value;
+        });
+
+        var response = service.verifyCccd(
+                1L, UserRole.SPECTATOR, image("front"), image("back"));
+
+        assertEquals(KycStatus.OCR_PASSED, response.getKycStatus());
+        assertEquals(adultDob, response.getDateOfBirth());
+    }
+
+    @Test
+    void spectatorFaceMatchSubmitsDraftForAdminReview() {
+        User user = user();
+        KycVerification verification = KycVerification.builder()
+                .id(20L).user(user).requestedRole(UserRole.SPECTATOR)
+                .status(KycStatus.OCR_PASSED).frontImageUrl("front-url").build();
+        when(kycVerificationRepository.findByIdAndUserId(20L, 1L))
+                .thenReturn(Optional.of(verification));
+        when(spectatorProfileRepository.findByUserId(1L)).thenReturn(Optional.of(
+                SpectatorProfile.builder().id(30L).user(user).displayName("Fan")
+                        .status(RoleApprovalStatus.DRAFT).build()));
+        when(cloudinaryUploadService.uploadImage(any(), anyString())).thenReturn("selfie-url");
+        when(fptAiClient.download("front-url")).thenReturn(new byte[]{1});
+        when(fptAiClient.callFaceMatch(any(), anyString(), any())).thenReturn(
+                new FptFaceMatchResult(true, new BigDecimal("90"), "{}", null));
+        when(completionService.complete(eq(20L), eq(1L), eq("selfie-url"), any()))
+                .thenReturn(30L);
+
+        var response = service.verifyFace(1L, 20L, image("selfie"));
+
+        assertEquals(KycStatus.PASSED, response.getKycStatus());
+        assertEquals(RoleApprovalStatus.PENDING, response.getApplicationStatus());
+        assertEquals(30L, response.getProfileId());
     }
 
     private MockMultipartFile image(String name) {

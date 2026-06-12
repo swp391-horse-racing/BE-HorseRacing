@@ -18,11 +18,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Set;
 
 @Service
@@ -30,11 +33,17 @@ import java.util.Set;
 public class KycServiceImpl implements KycService {
     private static final long MAX_IMAGE_SIZE = 5L * 1024 * 1024;
     private static final Set<String> IMAGE_TYPES = Set.of("image/jpeg", "image/jpg", "image/png");
+    private static final List<DateTimeFormatter> DOB_FORMATTERS = List.of(
+            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+            DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+            DateTimeFormatter.ISO_LOCAL_DATE
+    );
 
     private final UserRepository userRepository;
     private final OwnerProfileRepository ownerProfileRepository;
     private final JockeyProfileRepository jockeyProfileRepository;
     private final RefereeProfileRepository refereeProfileRepository;
+    private final SpectatorProfileRepository spectatorProfileRepository;
     private final KycVerificationRepository kycVerificationRepository;
     private final CloudinaryUploadService cloudinaryUploadService;
     private final FptAiClient fptAiClient;
@@ -78,6 +87,7 @@ public class KycServiceImpl implements KycService {
         verification.setGender(result.gender());
         verification.setAddress(result.address());
         verification.setIssueDate(result.issueDate());
+        requireAdultForSpectator(verification);
 
         if (kycVerificationRepository.existsByIdNumberHashAndStatusAndUserIdNot(
                 idHash, KycStatus.PASSED, userId)) {
@@ -141,11 +151,46 @@ public class KycServiceImpl implements KycService {
                     .map(p -> p.getStatus() == JockeyStatus.DRAFT).orElse(false);
             case REFEREE -> refereeProfileRepository.findByUserId(userId)
                     .map(p -> p.getStatus() == RoleApprovalStatus.DRAFT).orElse(false);
-            default -> throw new BadRequestException("KYC chỉ áp dụng cho OWNER, JOCKEY hoặc REFEREE");
+            case SPECTATOR -> spectatorProfileRepository.findByUserId(userId)
+                    .map(p -> p.getStatus() == RoleApprovalStatus.DRAFT).orElse(false);
+            default -> throw new BadRequestException("KYC chỉ áp dụng cho OWNER, JOCKEY, SPECTATOR hoặc REFEREE");
         };
         if (!draft) {
             throw new BadRequestException("Vui lòng nhập đầy đủ hồ sơ role ở trạng thái DRAFT trước khi KYC");
         }
+    }
+
+    private void requireAdultForSpectator(KycVerification verification) {
+        if (verification.getRequestedRole() != UserRole.SPECTATOR) {
+            return;
+        }
+        LocalDate birthDate = parseBirthDate(verification.getDateOfBirth());
+        String reason;
+        if (birthDate == null) {
+            reason = "Không xác định được tuổi từ CCCD";
+        } else if (birthDate.plusYears(18).isAfter(LocalDate.now())) {
+            reason = "Spectator phải đủ 18 tuổi mới được tiếp tục KYC";
+        } else {
+            return;
+        }
+        verification.setStatus(KycStatus.FAILED);
+        verification.setRejectReason(reason);
+        failurePersistenceService.save(verification);
+        throw new BadRequestException("KYC thất bại: " + reason);
+    }
+
+    private LocalDate parseBirthDate(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        for (DateTimeFormatter formatter : DOB_FORMATTERS) {
+            try {
+                return LocalDate.parse(trimmed, formatter);
+            } catch (DateTimeParseException ignored) {
+            }
+        }
+        return null;
     }
 
     private User requireUser(Long userId) {

@@ -128,9 +128,7 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
         profile.setLocation(request.getLocation());
         profile.setFavoriteHorseBreed(request.getFavoriteHorseBreed());
         profile.setBio(request.getBio());
-        approveProfileByUser(profile, user);
-        approveUserBySelf(user, UserRole.SPECTATOR);
-        userRepository.save(user);
+        markProfileDraft(profile, user);
         return mapSpectator(spectatorProfileRepository.save(profile));
     }
 
@@ -184,9 +182,14 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
                 .map(this::mapJockey)
                 .orElse(null);
         if (jockeyDraft != null) return jockeyDraft;
-        return refereeProfileRepository.findByUserId(userId)
+        RoleApplicationResponse refereeDraft = refereeProfileRepository.findByUserId(userId)
                 .filter(profile -> profile.getStatus() == RoleApprovalStatus.DRAFT)
                 .map(this::mapReferee)
+                .orElse(null);
+        if (refereeDraft != null) return refereeDraft;
+        return spectatorProfileRepository.findByUserId(userId)
+                .filter(profile -> profile.getStatus() == RoleApprovalStatus.DRAFT)
+                .map(this::mapSpectator)
                 .orElse(null);
     }
 
@@ -278,6 +281,7 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
     private RoleApplicationResponse approveSpectator(Long profileId, Long adminId) {
         SpectatorProfile profile = requireSpectatorProfile(profileId);
         requirePending(profile.getStatus());
+        requirePassedKyc(profile.getKycVerification());
         approveUser(profile.getUser(), UserRole.SPECTATOR, adminId);
         approveProfile(profile, adminId);
         RoleApplicationResponse response = mapSpectator(spectatorProfileRepository.save(profile));
@@ -354,7 +358,8 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
                     .map(this::mapJockey)
                     .toList();
             case SPECTATOR -> (status == null
-                    ? spectatorProfileRepository.findAllByOrderByCreatedAtDesc()
+                    ? spectatorProfileRepository.findAllByOrderByCreatedAtDesc().stream()
+                        .filter(profile -> profile.getStatus() != RoleApprovalStatus.DRAFT).toList()
                     : spectatorProfileRepository.findByStatusOrderByCreatedAtDesc(status)).stream()
                     .map(this::mapSpectator)
                     .toList();
@@ -402,6 +407,9 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
                 .map(p -> p.getStatus() == JockeyStatus.DRAFT).orElse(false))
                 || (targetRole != UserRole.REFEREE
                 && refereeProfileRepository.findByUserId(user.getId())
+                .map(p -> p.getStatus() == RoleApprovalStatus.DRAFT).orElse(false))
+                || (targetRole != UserRole.SPECTATOR
+                && spectatorProfileRepository.findByUserId(user.getId())
                 .map(p -> p.getStatus() == RoleApprovalStatus.DRAFT).orElse(false));
         if (hasOtherDraft) {
             throw new BadRequestException("Only one role application draft is allowed at a time");
@@ -418,6 +426,15 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
     }
 
     private void markProfileDraft(RefereeProfile profile, User user) {
+        profile.setStatus(RoleApprovalStatus.DRAFT);
+        profile.setKycVerification(null);
+        profile.setReviewReason(null);
+        profile.setReviewedBy(null);
+        profile.setReviewedAt(null);
+        profile.setUpdatedBy(user.getUsername());
+    }
+
+    private void markProfileDraft(SpectatorProfile profile, User user) {
         profile.setStatus(RoleApprovalStatus.DRAFT);
         profile.setKycVerification(null);
         profile.setReviewReason(null);
@@ -721,14 +738,15 @@ public class RoleApplicationServiceImpl implements RoleApplicationService {
 
     private RoleApplicationResponse mapSpectator(SpectatorProfile profile) {
         User user = profile.getUser();
-        return baseBuilder(profile.getId(), user, UserRole.SPECTATOR, profile.getStatus(),
+        return withKyc(baseBuilder(profile.getId(), user, UserRole.SPECTATOR, profile.getStatus(),
                 profile.getReviewReason(), profile.getReviewedBy(), profile.getReviewedAt(),
                 profile.getCreatedAt(), profile.getUpdatedAt())
                 .displayName(profile.getDisplayName())
                 .phone(profile.getPhone())
                 .location(profile.getLocation())
                 .favoriteHorseBreed(profile.getFavoriteHorseBreed())
-                .bio(profile.getBio())
+                .bio(profile.getBio()),
+                profile.getKycVerification())
                 .build();
     }
 
