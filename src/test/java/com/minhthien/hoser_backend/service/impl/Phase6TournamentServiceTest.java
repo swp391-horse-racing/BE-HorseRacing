@@ -252,6 +252,97 @@ class Phase6TournamentServiceTest {
     }
 
     @Test
+    void statusTransitionAllowsDraftToCancelled() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.CANCELLED);
+
+        assertEquals(TournamentStatus.CANCELLED, tournament.getStatus());
+        assertEquals(TournamentStatus.CANCELLED, response.getStatus());
+    }
+
+    @Test
+    void statusTransitionAllowsPublishedToCancelled() {
+        Tournament tournament = tournament(TournamentStatus.PUBLISHED);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.CANCELLED);
+
+        assertEquals(TournamentStatus.CANCELLED, tournament.getStatus());
+        assertEquals(TournamentStatus.CANCELLED, response.getStatus());
+    }
+
+    @Test
+    void statusTransitionAllowsRegistrationClosedToScheduled() {
+        Tournament tournament = tournament(TournamentStatus.REGISTRATION_CLOSED);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.SCHEDULED);
+
+        assertEquals(TournamentStatus.SCHEDULED, tournament.getStatus());
+        assertEquals(TournamentStatus.SCHEDULED, response.getStatus());
+    }
+
+    @Test
+    void statusTransitionAllowsScheduledToOngoing() {
+        Tournament tournament = tournament(TournamentStatus.SCHEDULED);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.ONGOING);
+
+        assertEquals(TournamentStatus.ONGOING, tournament.getStatus());
+        assertEquals(TournamentStatus.ONGOING, response.getStatus());
+    }
+
+    @Test
+    void statusTransitionRejectsDraftToOpenRegistration() {
+        assertInvalidStatusTransition(TournamentStatus.DRAFT, TournamentStatus.OPEN_REGISTRATION);
+    }
+
+    @Test
+    void statusTransitionRejectsPublishedToRegistrationClosed() {
+        assertInvalidStatusTransition(TournamentStatus.PUBLISHED, TournamentStatus.REGISTRATION_CLOSED);
+    }
+
+    @Test
+    void statusTransitionRejectsOpenRegistrationToScheduled() {
+        assertInvalidStatusTransition(TournamentStatus.OPEN_REGISTRATION, TournamentStatus.SCHEDULED);
+    }
+
+    @Test
+    void statusTransitionRejectsOngoingToCompletedViaStatusEndpoint() {
+        assertInvalidStatusTransition(TournamentStatus.ONGOING, TournamentStatus.COMPLETED);
+    }
+
+    @Test
+    void statusTransitionRejectsCancelledToPublicStatuses() {
+        for (TournamentStatus targetStatus : List.of(
+                TournamentStatus.PUBLISHED,
+                TournamentStatus.OPEN_REGISTRATION,
+                TournamentStatus.REGISTRATION_CLOSED,
+                TournamentStatus.SCHEDULED,
+                TournamentStatus.ONGOING,
+                TournamentStatus.COMPLETED)) {
+            assertInvalidStatusTransition(TournamentStatus.CANCELLED, targetStatus);
+        }
+    }
+
+    @Test
+    void statusTransitionRejectsCompletedToOtherStatuses() {
+        for (TournamentStatus targetStatus : List.of(
+                TournamentStatus.DRAFT,
+                TournamentStatus.PUBLISHED,
+                TournamentStatus.OPEN_REGISTRATION,
+                TournamentStatus.REGISTRATION_CLOSED,
+                TournamentStatus.SCHEDULED,
+                TournamentStatus.ONGOING,
+                TournamentStatus.CANCELLED)) {
+            assertInvalidStatusTransition(TournamentStatus.COMPLETED, targetStatus);
+        }
+    }
+
+    @Test
     void createTournamentRejectsMinHorsesPerOwnerBelowFour() {
         TournamentRequest request = tournamentRequest();
         request.setMinHorsesPerOwner(3);
@@ -408,6 +499,14 @@ class Phase6TournamentServiceTest {
                 .amount(BigDecimal.valueOf(100))
                 .build()));
         return race;
+    }
+
+    private void assertInvalidStatusTransition(TournamentStatus currentStatus, TournamentStatus targetStatus) {
+        Tournament tournament = tournament(currentStatus);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        assertThrows(BadRequestException.class,
+                () -> service.updateTournamentStatus(ADMIN_ID, 3L, targetStatus));
     }
 
     private RaceRequest raceRequest(String name) {

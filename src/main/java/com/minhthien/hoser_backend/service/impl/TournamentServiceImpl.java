@@ -331,6 +331,7 @@ public class TournamentServiceImpl implements TournamentService {
         Tournament tournament = requireTournament(tournamentId);
         TournamentStatus oldStatus = tournament.getStatus();
 
+        validateStatusTransition(oldStatus, status);
         if (requiresReadySetup(status)) {
             validateReadyForPublish(tournament);
         }
@@ -1064,6 +1065,26 @@ public class TournamentServiceImpl implements TournamentService {
 
     private boolean requiresReadySetup(TournamentStatus status) {
         return status == TournamentStatus.PUBLISHED || status == TournamentStatus.OPEN_REGISTRATION;
+    }
+
+    private void validateStatusTransition(TournamentStatus currentStatus, TournamentStatus targetStatus) {
+        boolean allowed = switch (currentStatus) {
+            case DRAFT -> targetStatus == TournamentStatus.PUBLISHED
+                    || targetStatus == TournamentStatus.CANCELLED;
+            case PUBLISHED -> targetStatus == TournamentStatus.OPEN_REGISTRATION
+                    || targetStatus == TournamentStatus.CANCELLED;
+            case OPEN_REGISTRATION -> targetStatus == TournamentStatus.REGISTRATION_CLOSED;
+            case REGISTRATION_CLOSED -> targetStatus == TournamentStatus.SCHEDULED;
+            case SCHEDULED -> targetStatus == TournamentStatus.ONGOING;
+            case ONGOING, COMPLETED, CANCELLED -> false;
+        };
+        if (!allowed) {
+            if (targetStatus == TournamentStatus.COMPLETED) {
+                throw new BadRequestException("Use tournament finalize endpoint to complete tournaments");
+            }
+            throw new BadRequestException(
+                    "Cannot change tournament status from " + currentStatus + " to " + targetStatus);
+        }
     }
 
     private List<TournamentStatus> publicStatuses() {
