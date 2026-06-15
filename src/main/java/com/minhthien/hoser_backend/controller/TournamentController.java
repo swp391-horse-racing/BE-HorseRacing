@@ -5,6 +5,7 @@ import com.minhthien.hoser_backend.dto.request.TournamentRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
+import com.minhthien.hoser_backend.dto.response.RaceVenueResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentBannerUploadResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentFinalizationResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentLeaderboardResponse;
@@ -172,6 +173,11 @@ public class TournamentController {
             @PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(
                 tournamentFinalizationService.getPayouts(currentUser.getId(), id)));
+    }
+
+    @GetMapping("/admin/tournaments/{id}/venues")
+    public ResponseEntity<ApiResponse<List<RaceVenueResponse>>> getTournamentVenueOptions(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(tournamentService.getTournamentVenueOptions(id)));
     }
 
     @GetMapping("/tournaments")

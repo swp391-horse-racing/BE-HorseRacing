@@ -33,6 +33,10 @@ public interface TournamentRepository extends JpaRepository<Tournament, Long> {
 
     long countByStatusNot(TournamentStatus status);
 
+    boolean existsByProvinceId(Long provinceId);
+
+    boolean existsByProvinceIdAndStatusIn(Long provinceId, Collection<TournamentStatus> statuses);
+
     @Query("""
             select count(t)
             from Tournament t

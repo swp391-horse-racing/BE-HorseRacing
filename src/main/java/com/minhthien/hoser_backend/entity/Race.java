@@ -43,6 +43,10 @@ public class Race {
     @Column(nullable = false, length = 80)
     private String distance;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "venue_id")
+    private RaceVenue venue;
+
     @Column(name = "scheduled_start_at", nullable = false)
     private LocalDateTime scheduledStartAt;
 

@@ -8,12 +8,15 @@ import com.minhthien.hoser_backend.dto.request.TournamentUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengePrizeResponse;
 import com.minhthien.hoser_backend.dto.response.RacePrizeResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
+import com.minhthien.hoser_backend.dto.response.RaceVenueResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentSummaryResponse;
 import com.minhthien.hoser_backend.entity.AdminAuditLog;
 import com.minhthien.hoser_backend.entity.JockeyChallengePrize;
+import com.minhthien.hoser_backend.entity.Province;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RacePrize;
+import com.minhthien.hoser_backend.entity.RaceVenue;
 import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.RaceStatus;
@@ -35,6 +38,7 @@ import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
+import com.minhthien.hoser_backend.service.LocationSettingsService;
 import com.minhthien.hoser_backend.service.SystemSettingsService;
 import com.minhthien.hoser_backend.service.TournamentService;
 import com.minhthien.hoser_backend.service.RegistrationOpenBroadcastService;
@@ -76,6 +80,7 @@ public class TournamentServiceImpl implements TournamentService {
     private final JockeyChallengeResultRepository jockeyChallengeResultRepository;
     private final SystemSettingsService systemSettingsService;
     private final RegistrationOpenBroadcastService registrationOpenBroadcastService;
+    private final LocationSettingsService locationSettingsService;
 
     @Override
     @Transactional
@@ -410,10 +415,18 @@ public class TournamentServiceImpl implements TournamentService {
                 .toList();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<RaceVenueResponse> getTournamentVenueOptions(Long tournamentId) {
+        requireTournament(tournamentId);
+        return locationSettingsService.getActiveVenuesByTournament(tournamentId);
+    }
+
     private void applyRequest(Tournament tournament, TournamentRequest request, String updatedBy) {
         tournament.setName(request.getName());
         tournament.setDescription(request.getDescription());
         tournament.setLocation(request.getLocation());
+        tournament.setProvince(locationSettingsService.requireActiveProvince(request.getProvinceId()));
         tournament.setBannerUrl(request.getBannerUrl());
         tournament.setRegistrationOpenAt(request.getRegistrationOpenAt());
         tournament.setRegistrationCloseAt(request.getRegistrationCloseAt());
@@ -443,6 +456,11 @@ public class TournamentServiceImpl implements TournamentService {
         }
         if (request.getLocation() != null) {
             tournament.setLocation(request.getLocation());
+        }
+        if (request.getProvinceId() != null) {
+            Province province = locationSettingsService.requireActiveProvince(request.getProvinceId());
+            validateProvinceChange(tournament, province);
+            tournament.setProvince(province);
         }
         if (request.getBannerUrl() != null) {
             tournament.setBannerUrl(request.getBannerUrl());
@@ -541,9 +559,11 @@ public class TournamentServiceImpl implements TournamentService {
         var settings = request.getEntryFee() == null || request.getLateCheckInFee() == null
                 ? systemSettingsService.getCurrent()
                 : null;
+        RaceVenue venue = requireVenueForTournament(request.getVenueId(), tournament);
         Race race = Race.builder()
                 .name(request.getName())
                 .distance(systemSettingsService.normalizeRaceDistance(request.getDistance()))
+                .venue(venue)
                 .scheduledStartAt(request.getScheduledStartAt())
                 .scheduledEndAt(request.getScheduledEndAt())
                 .minParticipants(request.getMinParticipants())
@@ -565,6 +585,7 @@ public class TournamentServiceImpl implements TournamentService {
     private void applyRaceRequest(Race race, RaceRequest request) {
         race.setName(request.getName());
         race.setDistance(systemSettingsService.normalizeRaceDistance(request.getDistance()));
+        race.setVenue(requireVenueForTournament(request.getVenueId(), race.getTournament()));
         race.setScheduledStartAt(request.getScheduledStartAt());
         race.setScheduledEndAt(request.getScheduledEndAt());
         race.setMinParticipants(request.getMinParticipants());
@@ -617,6 +638,9 @@ public class TournamentServiceImpl implements TournamentService {
         if (!hasText(request.getLocation())) {
             throw new BadRequestException("Location is required");
         }
+        if (request.getProvinceId() == null) {
+            throw new BadRequestException("Province is required");
+        }
         validateTimeWindow(request.getRegistrationOpenAt(), request.getRegistrationCloseAt(),
                 request.getStartAt(), request.getEndAt(), request.getCheckInDeadlineAt());
         validateTeamLimits(request.getMinTeams(), request.getMaxTeams());
@@ -629,6 +653,9 @@ public class TournamentServiceImpl implements TournamentService {
         }
         if (!hasText(tournament.getLocation())) {
             throw new BadRequestException("Location is required");
+        }
+        if (tournament.getProvince() == null) {
+            throw new BadRequestException("Province is required");
         }
         validateTimeWindow(tournament.getRegistrationOpenAt(), tournament.getRegistrationCloseAt(),
                 tournament.getStartAt(), tournament.getEndAt(), tournament.getCheckInDeadlineAt());
@@ -668,6 +695,10 @@ public class TournamentServiceImpl implements TournamentService {
         if (!hasText(race.getDistance())) {
             throw new BadRequestException("Race distance is required");
         }
+        if (race.getVenue() == null) {
+            throw new BadRequestException("Race venue is required");
+        }
+        validateVenueBelongsToTournament(race.getVenue(), tournament);
         if (race.getScheduledStartAt() == null || race.getScheduledEndAt() == null) {
             throw new BadRequestException("Race schedule is required");
         }
@@ -791,11 +822,14 @@ public class TournamentServiceImpl implements TournamentService {
         if (minHorsesPerOwner == null || maxHorsesPerOwner == null) {
             throw new BadRequestException("Tournament horses per owner limits are required");
         }
-        if (minHorsesPerOwner < 4) {
-            throw new BadRequestException("Minimum horses per owner must be at least 4");
+        if (minHorsesPerOwner <= 0) {
+            throw new BadRequestException("Minimum horses per owner must be greater than zero");
         }
-        if (maxHorsesPerOwner < minHorsesPerOwner + 6) {
-            throw new BadRequestException("Maximum horses per owner must be at least 6 more than minimum horses per owner");
+        if (maxHorsesPerOwner <= 0) {
+            throw new BadRequestException("Maximum horses per owner must be greater than zero");
+        }
+        if (minHorsesPerOwner > maxHorsesPerOwner) {
+            throw new BadRequestException("Minimum horses per owner must not exceed maximum horses per owner");
         }
     }
 
@@ -865,6 +899,35 @@ public class TournamentServiceImpl implements TournamentService {
         return referee;
     }
 
+    private RaceVenue requireVenueForTournament(Long venueId, Tournament tournament) {
+        RaceVenue venue = locationSettingsService.requireActiveVenue(venueId);
+        validateVenueBelongsToTournament(venue, tournament);
+        return venue;
+    }
+
+    private void validateVenueBelongsToTournament(RaceVenue venue, Tournament tournament) {
+        if (tournament == null || tournament.getProvince() == null) {
+            throw new BadRequestException("Tournament province is required");
+        }
+        if (venue == null || venue.getProvince() == null
+                || !venue.getProvince().getId().equals(tournament.getProvince().getId())) {
+            throw new BadRequestException("Race venue must belong to tournament province");
+        }
+    }
+
+    private void validateProvinceChange(Tournament tournament, Province province) {
+        if (tournament.getRaces() == null || tournament.getRaces().isEmpty()) {
+            return;
+        }
+        for (Race race : tournament.getRaces()) {
+            RaceVenue venue = race.getVenue();
+            if (venue == null || venue.getProvince() == null
+                    || !venue.getProvince().getId().equals(province.getId())) {
+                throw new BadRequestException("Cannot change tournament province while races use venues from another province");
+            }
+        }
+    }
+
     private Race requireRace(Long raceId) {
         return raceRepository.findById(raceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Race", "id", raceId));
@@ -910,6 +973,8 @@ public class TournamentServiceImpl implements TournamentService {
                 .name(tournament.getName())
                 .description(tournament.getDescription())
                 .location(tournament.getLocation())
+                .provinceId(tournament.getProvince() == null ? null : tournament.getProvince().getId())
+                .provinceName(tournament.getProvince() == null ? null : tournament.getProvince().getName())
                 .bannerUrl(tournament.getBannerUrl())
                 .registrationOpenAt(tournament.getRegistrationOpenAt())
                 .registrationCloseAt(tournament.getRegistrationCloseAt())
@@ -954,6 +1019,8 @@ public class TournamentServiceImpl implements TournamentService {
                 .name(tournament.getName())
                 .description(tournament.getDescription())
                 .location(tournament.getLocation())
+                .provinceId(tournament.getProvince() == null ? null : tournament.getProvince().getId())
+                .provinceName(tournament.getProvince() == null ? null : tournament.getProvince().getName())
                 .bannerUrl(tournament.getBannerUrl())
                 .registrationOpenAt(tournament.getRegistrationOpenAt())
                 .registrationCloseAt(tournament.getRegistrationCloseAt())
@@ -975,11 +1042,18 @@ public class TournamentServiceImpl implements TournamentService {
 
     private RaceResponse mapRace(Race race, Map<Long, Integer> participantCounts) {
         User referee = race.getReferee();
+        RaceVenue venue = race.getVenue();
+        Province province = venue == null ? null : venue.getProvince();
         return RaceResponse.builder()
                 .id(race.getId())
                 .tournamentId(race.getTournament() == null ? null : race.getTournament().getId())
                 .name(race.getName())
                 .distance(race.getDistance())
+                .venueId(venue == null ? null : venue.getId())
+                .venueName(venue == null ? null : venue.getName())
+                .venueAddress(venue == null ? null : venue.getAddress())
+                .provinceId(province == null ? null : province.getId())
+                .provinceName(province == null ? null : province.getName())
                 .scheduledStartAt(race.getScheduledStartAt())
                 .scheduledEndAt(race.getScheduledEndAt())
                 .minParticipants(race.getMinParticipants())

@@ -4,6 +4,7 @@ import com.minhthien.hoser_backend.dto.request.RaceRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
+import com.minhthien.hoser_backend.dto.response.RaceVenueResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentSummaryResponse;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
@@ -50,4 +51,6 @@ public interface TournamentService {
     TournamentResponse getPublicTournament(Long tournamentId);
 
     List<RaceResponse> getPublicTournamentRaces(Long tournamentId);
+
+    List<RaceVenueResponse> getTournamentVenueOptions(Long tournamentId);
 }

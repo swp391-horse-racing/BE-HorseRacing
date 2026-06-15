@@ -76,6 +76,82 @@ class KycServiceImplTest {
     }
 
     @Test
+    void successfulOcrAllowsNormalizedFullNameMatch() {
+        User user = user();
+        user.setFullName("Ngô Đình Minh Thiện");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(ownerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(
+                OwnerProfile.builder().user(user).stableName("Stable").address("Address")
+                        .status(RoleApprovalStatus.DRAFT).build()));
+        when(cloudinaryUploadService.uploadImage(any(), anyString()))
+                .thenReturn("front-url", "back-url");
+        when(fptAiClient.callOcr(any())).thenReturn(new FptOcrResult(
+                true, "012345678901", "NGO DINH MINH THIEN", "01/01/2000",
+                "Nam", "HCM", "01/01/2020", "{}", null));
+        when(kycVerificationRepository.save(any())).thenAnswer(invocation -> {
+            KycVerification value = invocation.getArgument(0);
+            value.setId(20L);
+            return value;
+        });
+
+        var response = service.verifyCccd(
+                1L, UserRole.OWNER, image("front"), image("back"));
+
+        assertEquals(KycStatus.OCR_PASSED, response.getKycStatus());
+        assertEquals("NGO DINH MINH THIEN", response.getFullName());
+    }
+
+    @Test
+    void rejectsOcrWhenCccdFullNameDoesNotMatchAccountFullName() {
+        User user = user();
+        user.setFullName("NGO DINH MINH THIEN");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(ownerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(
+                OwnerProfile.builder().user(user).stableName("Stable").address("Address")
+                        .status(RoleApprovalStatus.DRAFT).build()));
+        when(cloudinaryUploadService.uploadImage(any(), anyString()))
+                .thenReturn("front-url", "back-url");
+        when(fptAiClient.callOcr(any())).thenReturn(new FptOcrResult(
+                true, "012345678901", "CHÂU THÀNH", "01/01/2000",
+                "Nam", "HCM", "01/01/2020", "{}", null));
+        when(failurePersistenceService.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        BadRequestException error = assertThrows(BadRequestException.class,
+                () -> service.verifyCccd(1L, UserRole.OWNER, image("front"), image("back")));
+
+        assertTrue(error.getMessage().contains("Họ và tên trên CCCD không khớp với họ tên tài khoản"));
+        verify(failurePersistenceService).save(argThat(v ->
+                v.getStatus() == KycStatus.FAILED
+                        && "Họ và tên trên CCCD không khớp với họ tên tài khoản".equals(v.getRejectReason())));
+        verify(kycVerificationRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectsOcrWhenAccountFullNameIsBlank() {
+        User user = user();
+        user.setFullName(" ");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(ownerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(
+                OwnerProfile.builder().user(user).stableName("Stable").address("Address")
+                        .status(RoleApprovalStatus.DRAFT).build()));
+        when(cloudinaryUploadService.uploadImage(any(), anyString()))
+                .thenReturn("front-url", "back-url");
+        when(fptAiClient.callOcr(any())).thenReturn(new FptOcrResult(
+                true, "012345678901", "NGO DINH MINH THIEN", "01/01/2000",
+                "Nam", "HCM", "01/01/2020", "{}", null));
+        when(failurePersistenceService.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        BadRequestException error = assertThrows(BadRequestException.class,
+                () -> service.verifyCccd(1L, UserRole.OWNER, image("front"), image("back")));
+
+        assertTrue(error.getMessage().contains("Vui lòng cập nhật họ và tên tài khoản trước khi KYC"));
+        verify(failurePersistenceService).save(argThat(v ->
+                v.getStatus() == KycStatus.FAILED
+                        && "Vui lòng cập nhật họ và tên tài khoản trước khi KYC".equals(v.getRejectReason())));
+        verify(kycVerificationRepository, never()).save(any());
+    }
+
+    @Test
     void ocrFailureIsPersistedAndStopsTheWizard() {
         User user = user();
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
@@ -221,6 +297,7 @@ class KycServiceImplTest {
                 .id(1L)
                 .username("user")
                 .email("user@example.com")
+                .fullName("NGUYEN VAN A")
                 .role(UserRole.USER)
                 .roleApprovalStatus(RoleApprovalStatus.NONE)
                 .active(true)

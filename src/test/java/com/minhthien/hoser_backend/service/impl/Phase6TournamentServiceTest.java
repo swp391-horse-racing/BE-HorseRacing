@@ -5,9 +5,12 @@ import com.minhthien.hoser_backend.dto.request.RaceRequest;
 import com.minhthien.hoser_backend.dto.request.JockeyChallengePrizeRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentUpdateRequest;
+import com.minhthien.hoser_backend.dto.response.RaceVenueResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
+import com.minhthien.hoser_backend.entity.Province;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RacePrize;
+import com.minhthien.hoser_backend.entity.RaceVenue;
 import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.SystemSettings;
 import com.minhthien.hoser_backend.entity.User;
@@ -27,6 +30,7 @@ import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
+import com.minhthien.hoser_backend.service.LocationSettingsService;
 import com.minhthien.hoser_backend.service.RegistrationOpenBroadcastService;
 import com.minhthien.hoser_backend.service.SystemSettingsService;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +56,9 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class Phase6TournamentServiceTest {
     private static final Long ADMIN_ID = 1L;
+    private static final Long PROVINCE_ID = 50L;
+    private static final Long VENUE_ID = 60L;
+    private static final Long OTHER_VENUE_ID = 61L;
 
     @Mock
     private TournamentRepository tournamentRepository;
@@ -81,6 +88,8 @@ class Phase6TournamentServiceTest {
     private SystemSettingsService systemSettingsService;
     @Mock
     private RegistrationOpenBroadcastService registrationOpenBroadcastService;
+    @Mock
+    private LocationSettingsService locationSettingsService;
 
     @InjectMocks
     private TournamentServiceImpl service;
@@ -93,7 +102,7 @@ class Phase6TournamentServiceTest {
                 .role(UserRole.ADMIN)
                 .build();
 
-        when(userRepository.findById(ADMIN_ID)).thenReturn(Optional.of(admin));
+        lenient().when(userRepository.findById(ADMIN_ID)).thenReturn(Optional.of(admin));
         lenient().when(tournamentRepository.save(any(Tournament.class))).thenAnswer(invocation -> invocation.getArgument(0));
         lenient().when(raceParticipantRepository.countByRaceIds(anyCollection())).thenReturn(List.of());
         lenient().when(raceRegistrationRepository.countByOwnerForTournament(any(), anyCollection())).thenReturn(List.of());
@@ -103,6 +112,9 @@ class Phase6TournamentServiceTest {
                 .build());
         lenient().when(systemSettingsService.normalizeRaceDistance(anyString()))
                 .thenAnswer(invocation -> normalizeRaceDistance(invocation.getArgument(0)));
+        lenient().when(locationSettingsService.requireActiveProvince(PROVINCE_ID)).thenReturn(province());
+        lenient().when(locationSettingsService.requireActiveVenue(VENUE_ID)).thenReturn(venue());
+        lenient().when(locationSettingsService.requireActiveVenue(OTHER_VENUE_ID)).thenReturn(otherProvinceVenue());
     }
 
     @Test
@@ -127,6 +139,20 @@ class Phase6TournamentServiceTest {
 
         assertEquals(RaceStatus.DRAFT, race.getStatus());
         assertEquals(RaceStatus.DRAFT, response.getRaces().get(0).getStatus());
+    }
+
+    @Test
+    void addRaceRejectsMinParticipantsAboveMaxParticipants() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Invalid participants");
+        request.setMinParticipants(9);
+        request.setMaxParticipants(8);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+
+        assertEquals("Race minimum participants must not exceed maximum participants", exception.getMessage());
     }
 
     @Test
@@ -203,6 +229,32 @@ class Phase6TournamentServiceTest {
 
         assertEquals("1200m", race.getDistance());
         assertEquals("1200m", response.getRaces().get(0).getDistance());
+    }
+
+    @Test
+    void addRaceRejectsVenueFromAnotherProvince() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Wrong province venue");
+        request.setVenueId(OTHER_VENUE_ID);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        assertThrows(BadRequestException.class, () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+    }
+
+    @Test
+    void tournamentVenueOptionsDelegatesToLocationSettings() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceVenueResponse venueResponse = RaceVenueResponse.builder()
+                .id(VENUE_ID)
+                .provinceId(PROVINCE_ID)
+                .name("Phu Tho Racecourse")
+                .build();
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+        when(locationSettingsService.getActiveVenuesByTournament(3L)).thenReturn(List.of(venueResponse));
+
+        List<RaceVenueResponse> response = service.getTournamentVenueOptions(3L);
+
+        assertEquals(List.of(VENUE_ID), response.stream().map(RaceVenueResponse::getId).toList());
     }
 
     @Test
@@ -343,41 +395,103 @@ class Phase6TournamentServiceTest {
     }
 
     @Test
-    void createTournamentRejectsMinHorsesPerOwnerBelowFour() {
+    void createTournamentAcceptsOwnerHorseLimitOneToFive() {
         TournamentRequest request = tournamentRequest();
-        request.setMinHorsesPerOwner(3);
-
-        assertThrows(BadRequestException.class, () -> service.createTournament(ADMIN_ID, request));
-    }
-
-    @Test
-    void createTournamentRejectsMaxHorsesPerOwnerLessThanSixAboveMinimum() {
-        TournamentRequest request = tournamentRequest();
-        request.setMinHorsesPerOwner(4);
-        request.setMaxHorsesPerOwner(9);
-
-        assertThrows(BadRequestException.class, () -> service.createTournament(ADMIN_ID, request));
-    }
-
-    @Test
-    void createTournamentAcceptsMinFourAndMaxTen() {
-        TournamentRequest request = tournamentRequest();
+        request.setMinHorsesPerOwner(1);
+        request.setMaxHorsesPerOwner(5);
 
         TournamentResponse response = service.createTournament(ADMIN_ID, request);
 
-        assertEquals(4, response.getMinHorsesPerOwner());
-        assertEquals(10, response.getMaxHorsesPerOwner());
+        assertEquals(1, response.getMinHorsesPerOwner());
+        assertEquals(5, response.getMaxHorsesPerOwner());
+    }
+
+    @Test
+    void createTournamentRejectsMinHorsesPerOwnerNotPositive() {
+        TournamentRequest request = tournamentRequest();
+        request.setMinHorsesPerOwner(0);
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.createTournament(ADMIN_ID, request));
+
+        assertEquals("Minimum horses per owner must be greater than zero", exception.getMessage());
+    }
+
+    @Test
+    void createTournamentRejectsMaxHorsesPerOwnerNotPositive() {
+        TournamentRequest request = tournamentRequest();
+        request.setMaxHorsesPerOwner(0);
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.createTournament(ADMIN_ID, request));
+
+        assertEquals("Maximum horses per owner must be greater than zero", exception.getMessage());
+    }
+
+    @Test
+    void createTournamentRejectsMinHorsesPerOwnerAboveMax() {
+        TournamentRequest request = tournamentRequest();
+        request.setMinHorsesPerOwner(6);
+        request.setMaxHorsesPerOwner(5);
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.createTournament(ADMIN_ID, request));
+
+        assertEquals("Minimum horses per owner must not exceed maximum horses per owner", exception.getMessage());
+    }
+
+    @Test
+    void updateTournamentAcceptsOwnerHorseLimitOneToFive() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        TournamentUpdateRequest request = new TournamentUpdateRequest();
+        request.setMinHorsesPerOwner(1);
+        request.setMaxHorsesPerOwner(5);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.updateTournament(ADMIN_ID, 3L, request);
+
+        assertEquals(1, response.getMinHorsesPerOwner());
+        assertEquals(5, response.getMaxHorsesPerOwner());
+    }
+
+    @Test
+    void updateTournamentRejectsMinHorsesPerOwnerNotPositive() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        TournamentUpdateRequest request = new TournamentUpdateRequest();
+        request.setMinHorsesPerOwner(0);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.updateTournament(ADMIN_ID, 3L, request));
+
+        assertEquals("Minimum horses per owner must be greater than zero", exception.getMessage());
+    }
+
+    @Test
+    void updateTournamentRejectsMaxHorsesPerOwnerNotPositive() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        TournamentUpdateRequest request = new TournamentUpdateRequest();
+        request.setMaxHorsesPerOwner(0);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.updateTournament(ADMIN_ID, 3L, request));
+
+        assertEquals("Maximum horses per owner must be greater than zero", exception.getMessage());
     }
 
     @Test
     void updateTournamentRejectsInvalidHorsesPerOwnerRange() {
         Tournament tournament = tournament(TournamentStatus.DRAFT);
         TournamentUpdateRequest request = new TournamentUpdateRequest();
-        request.setMinHorsesPerOwner(5);
-        request.setMaxHorsesPerOwner(10);
+        request.setMinHorsesPerOwner(6);
+        request.setMaxHorsesPerOwner(5);
         when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
 
-        assertThrows(BadRequestException.class, () -> service.updateTournament(ADMIN_ID, 3L, request));
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.updateTournament(ADMIN_ID, 3L, request));
+
+        assertEquals("Minimum horses per owner must not exceed maximum horses per owner", exception.getMessage());
     }
 
     @Test
@@ -468,6 +582,7 @@ class Phase6TournamentServiceTest {
                 .id(3L)
                 .name("Summer Cup")
                 .location("Ho Chi Minh City")
+                .province(province())
                 .registrationOpenAt(LocalDateTime.of(2026, 7, 1, 9, 0))
                 .registrationCloseAt(LocalDateTime.of(2026, 7, 5, 17, 0))
                 .startAt(LocalDateTime.of(2026, 7, 10, 9, 0))
@@ -487,6 +602,7 @@ class Phase6TournamentServiceTest {
                 .tournament(tournament)
                 .name(name)
                 .distance("1000m")
+                .venue(venue())
                 .scheduledStartAt(LocalDateTime.of(2026, 7, 10, 10, id.intValue() % 10))
                 .scheduledEndAt(LocalDateTime.of(2026, 7, 10, 11, id.intValue() % 10))
                 .minParticipants(1)
@@ -513,6 +629,7 @@ class Phase6TournamentServiceTest {
         RaceRequest request = new RaceRequest();
         request.setName(name);
         request.setDistance("1000m");
+        request.setVenueId(VENUE_ID);
         request.setScheduledStartAt(LocalDateTime.of(2026, 7, 10, 10, 0));
         request.setScheduledEndAt(LocalDateTime.of(2026, 7, 10, 11, 0));
         request.setMinParticipants(1);
@@ -555,6 +672,7 @@ class Phase6TournamentServiceTest {
         TournamentRequest request = new TournamentRequest();
         request.setName("Summer Cup");
         request.setLocation("Ho Chi Minh City");
+        request.setProvinceId(PROVINCE_ID);
         request.setRegistrationOpenAt(LocalDateTime.of(2026, 7, 1, 9, 0));
         request.setRegistrationCloseAt(LocalDateTime.of(2026, 7, 5, 17, 0));
         request.setStartAt(LocalDateTime.of(2026, 7, 10, 9, 0));
@@ -564,5 +682,37 @@ class Phase6TournamentServiceTest {
         request.setMinHorsesPerOwner(4);
         request.setMaxHorsesPerOwner(10);
         return request;
+    }
+
+    private Province province() {
+        return Province.builder()
+                .id(PROVINCE_ID)
+                .name("Ho Chi Minh City")
+                .code("HCM")
+                .active(true)
+                .build();
+    }
+
+    private RaceVenue venue() {
+        return RaceVenue.builder()
+                .id(VENUE_ID)
+                .province(province())
+                .name("Phu Tho Racecourse")
+                .active(true)
+                .build();
+    }
+
+    private RaceVenue otherProvinceVenue() {
+        return RaceVenue.builder()
+                .id(OTHER_VENUE_ID)
+                .province(Province.builder()
+                        .id(51L)
+                        .name("Ha Noi")
+                        .code("HN")
+                        .active(true)
+                        .build())
+                .name("Ha Noi Racecourse")
+                .active(true)
+                .build();
     }
 }

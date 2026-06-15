@@ -29,6 +29,8 @@ public interface RaceRepository extends JpaRepository<Race, Long> {
 
     long countByStatusNot(RaceStatus status);
 
+    boolean existsByVenueId(Long venueId);
+
     @Query("""
             select count(r)
             from Race r

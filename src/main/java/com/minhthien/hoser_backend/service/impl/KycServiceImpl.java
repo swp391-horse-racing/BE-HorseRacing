@@ -21,11 +21,13 @@ import org.springframework.web.multipart.MultipartFile;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 @Service
@@ -87,6 +89,7 @@ public class KycServiceImpl implements KycService {
         verification.setGender(result.gender());
         verification.setAddress(result.address());
         verification.setIssueDate(result.issueDate());
+        validateFullNameMatchesCccd(user, result, verification);
         requireAdultForSpectator(verification);
 
         if (kycVerificationRepository.existsByIdNumberHashAndStatusAndUserIdNot(
@@ -232,6 +235,36 @@ public class KycServiceImpl implements KycService {
     private String normalizeIdNumber(String idNumber) {
         if (idNumber == null) throw new BadRequestException("Không đọc được số CCCD");
         return idNumber.replaceAll("\\s+", "");
+    }
+
+    private void validateFullNameMatchesCccd(User user, FptOcrResult result, KycVerification verification) {
+        if (user.getFullName() == null || user.getFullName().isBlank()) {
+            verification.setStatus(KycStatus.FAILED);
+            verification.setRejectReason("Vui lòng cập nhật họ và tên tài khoản trước khi KYC");
+            failurePersistenceService.save(verification);
+            throw new BadRequestException("KYC thất bại: Vui lòng cập nhật họ và tên tài khoản trước khi KYC");
+        }
+
+        String accountFullName = normalizeFullName(user.getFullName());
+        String cccdFullName = normalizeFullName(result.fullName());
+        if (cccdFullName.isBlank() || !accountFullName.equals(cccdFullName)) {
+            verification.setStatus(KycStatus.FAILED);
+            verification.setRejectReason("Họ và tên trên CCCD không khớp với họ tên tài khoản");
+            failurePersistenceService.save(verification);
+            throw new BadRequestException("KYC thất bại: Họ và tên trên CCCD không khớp với họ tên tài khoản");
+        }
+    }
+
+    private String normalizeFullName(String fullName) {
+        if (fullName == null) {
+            return "";
+        }
+        String collapsed = fullName.trim().replaceAll("\\s+", " ");
+        String normalized = Normalizer.normalize(collapsed, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .replace('Đ', 'D')
+                .replace('đ', 'd');
+        return normalized.toUpperCase(Locale.ROOT);
     }
 
     private String maskIdNumber(String idNumber) {

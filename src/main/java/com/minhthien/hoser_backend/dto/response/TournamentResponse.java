@@ -14,6 +14,8 @@ public class TournamentResponse {
     private String name;
     private String description;
     private String location;
+    private Long provinceId;
+    private String provinceName;
     private String bannerUrl;
     private LocalDateTime registrationOpenAt;
     private LocalDateTime registrationCloseAt;

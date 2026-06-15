@@ -39,6 +39,10 @@ public class Tournament {
     @Column(nullable = false, length = 255)
     private String location;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "province_id")
+    private Province province;
+
     @Column(name = "banner_url", length = 500)
     private String bannerUrl;
 
