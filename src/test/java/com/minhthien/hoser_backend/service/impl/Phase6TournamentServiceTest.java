@@ -194,6 +194,47 @@ class Phase6TournamentServiceTest {
     }
 
     @Test
+    void addRaceRejectsZeroLateCheckInFee() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Zero late fee race");
+        request.setLateCheckInFee(BigDecimal.ZERO);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+
+        assertEquals("Race late check-in fee must be greater than zero", exception.getMessage());
+    }
+
+    @Test
+    void addRaceRejectsNegativeLateCheckInFee() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Negative late fee race");
+        request.setLateCheckInFee(new BigDecimal("-1"));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+
+        assertEquals("Race late check-in fee must be greater than zero", exception.getMessage());
+    }
+
+    @Test
+    void updateRaceRejectsZeroLateCheckInFee() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race race = race(10L, tournament, RaceStatus.DRAFT, "Before");
+        RaceRequest request = raceRequest("After");
+        request.setLateCheckInFee(BigDecimal.ZERO);
+        tournament.getRaces().add(race);
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.updateTournamentRace(ADMIN_ID, 10L, request));
+
+        assertEquals("Race late check-in fee must be greater than zero", exception.getMessage());
+    }
+
+    @Test
     void addRaceNormalizesConfiguredDistanceWithoutUnit() {
         Tournament tournament = tournament(TournamentStatus.DRAFT);
         RaceRequest request = raceRequest("Normalized distance");
@@ -506,6 +547,33 @@ class Phase6TournamentServiceTest {
     }
 
     @Test
+    void addRaceAcceptsNoPrizesForDraftTournament() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Draft without prizes");
+        request.setPrizes(List.of());
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.addTournamentRace(ADMIN_ID, 3L, request);
+
+        assertEquals(1, tournament.getRaces().size());
+        assertEquals(0, tournament.getRaces().get(0).getPrizes().size());
+        assertEquals(0, response.getRaces().get(0).getPrizes().size());
+    }
+
+    @Test
+    void addRaceIgnoresEmptyPrizePlaceholderForDraftTournament() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Draft placeholder prize");
+        request.setPrizes(List.of(prizeRequest(1, "0")));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.addTournamentRace(ADMIN_ID, 3L, request);
+
+        assertEquals(0, tournament.getRaces().get(0).getPrizes().size());
+        assertEquals(0, response.getRaces().get(0).getPrizes().size());
+    }
+
+    @Test
     void addRaceAcceptsPrizeAmountsDescendingByRank() {
         Tournament tournament = tournament(TournamentStatus.DRAFT);
         RaceRequest request = raceRequest("Descending prizes");
@@ -548,20 +616,21 @@ class Phase6TournamentServiceTest {
     }
 
     @Test
-    void addRaceRejectsZeroPrizeAmount() {
+    void publishTournamentRejectsRaceWithoutPrizes() {
         Tournament tournament = tournament(TournamentStatus.DRAFT);
-        RaceRequest request = raceRequest("Zero prize");
-        request.setPrizes(List.of(prizeRequest(1, "0")));
+        Race race = race(10L, tournament, RaceStatus.DRAFT, "No prize race");
+        race.replacePrizes(List.of());
+        tournament.getRaces().add(race);
         when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
 
         BadRequestException exception = assertThrows(BadRequestException.class,
-                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+                () -> service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.PUBLISHED));
 
-        assertEquals("Race prize amount must be greater than zero", exception.getMessage());
+        assertEquals("Race must have at least one prize", exception.getMessage());
     }
 
     @Test
-    void addRaceRejectsZeroPrizeAmountEvenWithItemName() {
+    void addRaceAcceptsZeroPrizeAmountEvenWithItemName() {
         Tournament tournament = tournament(TournamentStatus.DRAFT);
         RaceRequest request = raceRequest("Zero item prize");
         RacePrizeRequest prize = prizeRequest(1, "0");
@@ -569,14 +638,27 @@ class Phase6TournamentServiceTest {
         request.setPrizes(List.of(prize));
         when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
 
-        BadRequestException exception = assertThrows(BadRequestException.class,
-                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+        TournamentResponse response = service.addTournamentRace(ADMIN_ID, 3L, request);
 
-        assertEquals("Race prize amount must be greater than zero", exception.getMessage());
+        assertEquals(BigDecimal.ZERO, tournament.getRaces().get(0).getPrizes().get(0).getAmount());
+        assertEquals(BigDecimal.ZERO, response.getRaces().get(0).getPrizes().get(0).getAmount());
     }
 
     @Test
-    void updateRaceRejectsZeroPrizeAmount() {
+    void addRaceRejectsNegativePrizeAmount() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Negative prize");
+        request.setPrizes(List.of(prizeRequest(1, "-1")));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+
+        assertEquals("Race prize amount must not be negative", exception.getMessage());
+    }
+
+    @Test
+    void updateDraftRaceIgnoresEmptyPrizePlaceholder() {
         Tournament tournament = tournament(TournamentStatus.DRAFT);
         Race race = race(10L, tournament, RaceStatus.DRAFT, "Before");
         RaceRequest request = raceRequest("After");
@@ -584,10 +666,42 @@ class Phase6TournamentServiceTest {
         tournament.getRaces().add(race);
         when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
 
-        BadRequestException exception = assertThrows(BadRequestException.class,
-                () -> service.updateTournamentRace(ADMIN_ID, 10L, request));
+        TournamentResponse response = service.updateTournamentRace(ADMIN_ID, 10L, request);
 
-        assertEquals("Race prize amount must be greater than zero", exception.getMessage());
+        assertEquals(0, race.getPrizes().size());
+        assertEquals(0, response.getRaces().get(0).getPrizes().size());
+    }
+
+    @Test
+    void updatePublishedRaceAcceptsZeroPrizeAmount() {
+        Tournament tournament = tournament(TournamentStatus.PUBLISHED);
+        Race race = race(10L, tournament, RaceStatus.PUBLISHED, "Before");
+        RaceRequest request = raceRequest("After");
+        request.setPrizes(List.of(prizeRequest(1, "0")));
+        tournament.getRaces().add(race);
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+
+        TournamentResponse response = service.updateTournamentRace(ADMIN_ID, 10L, request);
+
+        assertEquals(BigDecimal.ZERO, race.getPrizes().get(0).getAmount());
+        assertEquals(BigDecimal.ZERO, response.getRaces().get(0).getPrizes().get(0).getAmount());
+    }
+
+    @Test
+    void publishTournamentAcceptsZeroPrizeAmount() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race race = race(10L, tournament, RaceStatus.DRAFT, "Zero prize race");
+        race.replacePrizes(List.of(RacePrize.builder()
+                .rank(1)
+                .amount(BigDecimal.ZERO)
+                .build()));
+        tournament.getRaces().add(race);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.PUBLISHED);
+
+        assertEquals(TournamentStatus.PUBLISHED, tournament.getStatus());
+        assertEquals(BigDecimal.ZERO, response.getRaces().get(0).getPrizes().get(0).getAmount());
     }
 
     @Test
@@ -651,6 +765,7 @@ class Phase6TournamentServiceTest {
                 .minParticipants(1)
                 .maxParticipants(8)
                 .entryFee(BigDecimal.ZERO)
+                .lateCheckInFee(new BigDecimal("500000"))
                 .status(status)
                 .build();
         race.replacePrizes(List.of(RacePrize.builder()

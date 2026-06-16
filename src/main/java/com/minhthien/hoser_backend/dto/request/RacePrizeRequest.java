@@ -3,6 +3,7 @@ package com.minhthien.hoser_backend.dto.request;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -16,7 +17,7 @@ public class RacePrizeRequest {
     private Integer rank;
 
     @NotNull(message = "Prize amount is required")
-    @Positive(message = "Prize amount must be greater than zero")
+    @PositiveOrZero(message = "Prize amount must not be negative")
     @Schema(description = "Prize amount paid to the winning horse owner wallet", example = "1000000")
     private BigDecimal amount = BigDecimal.ZERO;
 

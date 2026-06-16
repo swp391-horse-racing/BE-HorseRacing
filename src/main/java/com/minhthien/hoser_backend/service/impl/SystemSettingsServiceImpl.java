@@ -66,7 +66,7 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         User admin = requireAdmin(adminId);
         SystemSettings settings = getOrCreate();
         settings.setDefaultRegistrationFee(normalizeMoney(request.getDefaultRegistrationFee(), "Default registration fee"));
-        settings.setLateCheckInFee(normalizeMoney(request.getLateCheckInFee(), "Late check-in fee"));
+        settings.setLateCheckInFee(normalizePositiveMoney(request.getLateCheckInFee(), "Late check-in fee"));
         return save(admin, settings, "SYSTEM_FEES_UPDATED");
     }
 
@@ -228,6 +228,13 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
     private BigDecimal normalizeMoney(BigDecimal amount, String label) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) < 0) {
             throw new BadRequestException(label + " must not be negative");
+        }
+        return amount.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal normalizePositiveMoney(BigDecimal amount, String label) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException(label + " must be greater than zero");
         }
         return amount.setScale(2, RoundingMode.HALF_UP);
     }

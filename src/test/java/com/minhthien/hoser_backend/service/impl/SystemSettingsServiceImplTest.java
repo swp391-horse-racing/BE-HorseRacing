@@ -54,6 +54,40 @@ class SystemSettingsServiceImplTest {
     }
 
     @Test
+    void updateFeesRejectsZeroLateCheckInFee() {
+        User admin = User.builder().id(1L).username("admin").role(UserRole.ADMIN).build();
+        SystemSettings settings = settings();
+        SystemFeesSettingsRequest request = new SystemFeesSettingsRequest();
+        request.setDefaultRegistrationFee(new BigDecimal("5000000"));
+        request.setLateCheckInFee(BigDecimal.ZERO);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+        when(settingsRepository.findById(SystemSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.updateFees(1L, request));
+
+        assertEquals("Late check-in fee must be greater than zero", exception.getMessage());
+        verify(settingsRepository, never()).save(any());
+    }
+
+    @Test
+    void updateFeesRejectsNegativeLateCheckInFee() {
+        User admin = User.builder().id(1L).username("admin").role(UserRole.ADMIN).build();
+        SystemSettings settings = settings();
+        SystemFeesSettingsRequest request = new SystemFeesSettingsRequest();
+        request.setDefaultRegistrationFee(new BigDecimal("5000000"));
+        request.setLateCheckInFee(new BigDecimal("-1"));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+        when(settingsRepository.findById(SystemSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.updateFees(1L, request));
+
+        assertEquals("Late check-in fee must be greater than zero", exception.getMessage());
+        verify(settingsRepository, never()).save(any());
+    }
+
+    @Test
     void emailTemplatesRejectUnknownAndMissingPlaceholders() {
         User admin = User.builder().id(1L).username("admin").role(UserRole.ADMIN).build();
         when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
