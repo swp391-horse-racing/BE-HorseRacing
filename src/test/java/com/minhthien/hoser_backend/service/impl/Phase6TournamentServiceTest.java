@@ -548,6 +548,49 @@ class Phase6TournamentServiceTest {
     }
 
     @Test
+    void addRaceRejectsZeroPrizeAmount() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Zero prize");
+        request.setPrizes(List.of(prizeRequest(1, "0")));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+
+        assertEquals("Race prize amount must be greater than zero", exception.getMessage());
+    }
+
+    @Test
+    void addRaceRejectsZeroPrizeAmountEvenWithItemName() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Zero item prize");
+        RacePrizeRequest prize = prizeRequest(1, "0");
+        prize.setItemName("Trophy");
+        request.setPrizes(List.of(prize));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+
+        assertEquals("Race prize amount must be greater than zero", exception.getMessage());
+    }
+
+    @Test
+    void updateRaceRejectsZeroPrizeAmount() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race race = race(10L, tournament, RaceStatus.DRAFT, "Before");
+        RaceRequest request = raceRequest("After");
+        request.setPrizes(List.of(prizeRequest(1, "0")));
+        tournament.getRaces().add(race);
+        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.updateTournamentRace(ADMIN_ID, 10L, request));
+
+        assertEquals("Race prize amount must be greater than zero", exception.getMessage());
+    }
+
+    @Test
     void updateTournamentAcceptsJockeyChallengePrizeAmountsDescendingByRank() {
         Tournament tournament = tournament(TournamentStatus.DRAFT);
         TournamentUpdateRequest request = new TournamentUpdateRequest();

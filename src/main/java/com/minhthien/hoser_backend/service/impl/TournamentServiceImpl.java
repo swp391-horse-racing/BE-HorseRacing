@@ -732,9 +732,8 @@ public class TournamentServiceImpl implements TournamentService {
                 throw new BadRequestException("Race prize rank must be unique within a race");
             }
             BigDecimal amount = defaultZero(prize.getAmount());
-            requireNonNegative(amount, "Race prize amount must not be negative");
-            if (amount.compareTo(BigDecimal.ZERO) == 0 && !hasText(prize.getItemName())) {
-                throw new BadRequestException("Race prize must have a positive amount or item name");
+            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BadRequestException("Race prize amount must be greater than zero");
             }
         }
         validatePrizeAmountsDescending(race.getPrizes(), RacePrize::getRank, RacePrize::getAmount,
