@@ -1,11 +1,14 @@
 package com.minhthien.hoser_backend.service.impl;
 
+import com.minhthien.hoser_backend.dto.request.HorseRequest;
+import com.minhthien.hoser_backend.dto.request.HorseUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.HorseResponse;
 import com.minhthien.hoser_backend.entity.Horse;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RaceResult;
 import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.enums.HorseGender;
 import com.minhthien.hoser_backend.enums.HorseStatus;
 import com.minhthien.hoser_backend.enums.RaceParticipantStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
@@ -18,9 +21,12 @@ import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.convert.ApplicationConversionService;
+import org.springframework.core.convert.ConversionFailedException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -29,6 +35,9 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -50,6 +59,67 @@ class HorseServiceImplTest {
 
     @InjectMocks
     private HorseServiceImpl service;
+
+    @Test
+    void createHorseStoresMaleGenderEnum() {
+        User owner = owner();
+        HorseRequest request = new HorseRequest();
+        request.setName("Lightning");
+        request.setGender(HorseGender.MALE);
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(horseRepository.save(any(Horse.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        HorseResponse response = service.createHorse(owner.getId(), request, null, null);
+
+        ArgumentCaptor<Horse> horseCaptor = ArgumentCaptor.forClass(Horse.class);
+        verify(horseRepository).save(horseCaptor.capture());
+        assertEquals(HorseGender.MALE, horseCaptor.getValue().getGender());
+        assertEquals(HorseGender.MALE, response.getGender());
+    }
+
+    @Test
+    void updateHorseChangesGenderToFemaleEnum() {
+        User owner = owner();
+        Horse horse = horse(10L);
+        horse.setStatus(HorseStatus.PENDING);
+        horse.setGender(HorseGender.MALE);
+        HorseUpdateRequest request = new HorseUpdateRequest();
+        request.setGender(HorseGender.FEMALE);
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(horseRepository.save(horse)).thenReturn(horse);
+        when(raceResultRepository.findByHorseIdOrderByRaceScheduledStartAtDesc(horse.getId())).thenReturn(List.of());
+
+        HorseResponse response = service.updateHorse(owner.getId(), horse.getId(), request, null, null);
+
+        assertEquals(HorseGender.FEMALE, horse.getGender());
+        assertEquals(HorseGender.FEMALE, response.getGender());
+    }
+
+    @Test
+    void updateHorseKeepsExistingGenderWhenGenderIsOmitted() {
+        User owner = owner();
+        Horse horse = horse(10L);
+        horse.setStatus(HorseStatus.PENDING);
+        horse.setGender(HorseGender.MALE);
+        HorseUpdateRequest request = new HorseUpdateRequest();
+        request.setBreed("Arabian");
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(horseRepository.save(horse)).thenReturn(horse);
+        when(raceResultRepository.findByHorseIdOrderByRaceScheduledStartAtDesc(horse.getId())).thenReturn(List.of());
+
+        HorseResponse response = service.updateHorse(owner.getId(), horse.getId(), request, null, null);
+
+        assertEquals(HorseGender.MALE, horse.getGender());
+        assertEquals(HorseGender.MALE, response.getGender());
+    }
+
+    @Test
+    void invalidHorseGenderCannotBeConvertedToEnum() {
+        assertThrows(ConversionFailedException.class, () ->
+                ApplicationConversionService.getSharedInstance().convert("OTHER", HorseGender.class));
+    }
 
     @Test
     void horseDetailIncludesEmptyPerformanceWhenHorseHasNoResults() {
@@ -102,13 +172,17 @@ class HorseServiceImplTest {
     private Horse horse(Long id) {
         return Horse.builder()
                 .id(id)
-                .owner(User.builder()
-                        .id(20L)
-                        .username("owner")
-                        .role(UserRole.OWNER)
-                        .build())
+                .owner(owner())
                 .name("Lightning")
                 .status(HorseStatus.APPROVED)
+                .build();
+    }
+
+    private User owner() {
+        return User.builder()
+                .id(20L)
+                .username("owner")
+                .role(UserRole.OWNER)
                 .build();
     }
 

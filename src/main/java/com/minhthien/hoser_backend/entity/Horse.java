@@ -1,6 +1,7 @@
 package com.minhthien.hoser_backend.entity;
 
 import com.minhthien.hoser_backend.enums.HorseStatus;
+import com.minhthien.hoser_backend.enums.HorseGender;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -39,8 +40,9 @@ public class Horse {
 
     private Integer age;
 
-    @Column(length = 40)
-    private String gender;
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private HorseGender gender;
 
     @Column(length = 80)
     private String color;

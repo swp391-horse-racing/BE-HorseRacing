@@ -1,5 +1,6 @@
 package com.minhthien.hoser_backend.dto.response;
 
+import com.minhthien.hoser_backend.enums.HorseGender;
 import com.minhthien.hoser_backend.enums.HorseStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -21,7 +22,7 @@ public class HorseResponse {
     private String name;
     private String breed;
     private Integer age;
-    private String gender;
+    private HorseGender gender;
     private String color;
     private BigDecimal heightCm;
     private BigDecimal weightKg;
