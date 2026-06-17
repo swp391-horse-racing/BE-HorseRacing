@@ -25,6 +25,7 @@ import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.*;
 import com.minhthien.hoser_backend.service.BettingService;
+import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.MailService;
 import com.minhthien.hoser_backend.service.NotificationService;
@@ -36,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -52,6 +54,7 @@ public class RaceDayServiceImpl implements RaceDayService {
     private static final String RACE_RESULT_REF = "RACE_RESULT";
     private static final String JOCKEY_CHALLENGE_REF = "JOCKEY_CHALLENGE";
     private static final String RACE_COMPLAINT_REF = "RACE_COMPLAINT";
+    private static final String RACE_COMPLAINT_EVIDENCE_FOLDER = "hoser/race-complaints/evidence";
     private static final String LATE_CHECK_IN_REF = "RACE_PARTICIPANT";
 
     private final RaceRepository raceRepository;
@@ -68,6 +71,7 @@ public class RaceDayServiceImpl implements RaceDayService {
     private final FinanceSettingsService financeSettingsService;
     private final MailService mailService;
     private final BettingService bettingService;
+    private final CloudinaryUploadService cloudinaryUploadService;
     private NotificationService notificationService;
     private RealtimeEventService realtimeEventService;
 
@@ -506,7 +510,8 @@ public class RaceDayServiceImpl implements RaceDayService {
 
     @Override
     @Transactional
-    public RaceComplaintResponse createRaceComplaint(Long ownerId, Long raceId, RaceComplaintRequest request) {
+    public RaceComplaintResponse createRaceComplaint(Long ownerId, Long raceId, RaceComplaintRequest request,
+                                                     MultipartFile evidence) {
         User owner = requireUser(ownerId);
         requireRole(owner, UserRole.OWNER, "Only owners can create race complaints");
         if (request == null || request.getAccusedParticipantId() == null) {
@@ -536,13 +541,16 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (accusedParticipant.getOwner().getId().equals(ownerId)) {
             throw new BadRequestException("Owner cannot complain about their own participant");
         }
+        String evidenceUrl = evidence == null || evidence.isEmpty()
+                ? null
+                : cloudinaryUploadService.uploadImage(evidence, RACE_COMPLAINT_EVIDENCE_FOLDER);
         RaceComplaint complaint = RaceComplaint.builder()
                 .race(race)
                 .complainantOwner(owner)
                 .accusedOwner(accusedParticipant.getOwner())
                 .accusedParticipant(accusedParticipant)
                 .reason(request.getReason())
-                .evidenceUrl(request.getEvidenceUrl())
+                .evidenceUrl(evidenceUrl)
                 .build();
         RaceComplaint saved = raceComplaintRepository.save(complaint);
         mailService.sendRaceComplaintCreated(saved);

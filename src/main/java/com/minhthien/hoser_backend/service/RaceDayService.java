@@ -17,6 +17,7 @@ import com.minhthien.hoser_backend.dto.response.RaceRegistrationResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResultResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -60,7 +61,8 @@ public interface RaceDayService {
 
     List<RaceResultResponse> getRaceResults(Long raceId);
 
-    RaceComplaintResponse createRaceComplaint(Long ownerId, Long raceId, RaceComplaintRequest request);
+    RaceComplaintResponse createRaceComplaint(Long ownerId, Long raceId, RaceComplaintRequest request,
+                                              MultipartFile evidence);
 
     List<RaceComplaintResponse> getOwnerRaceComplaints(Long ownerId);
 

@@ -24,8 +24,10 @@ import com.minhthien.hoser_backend.service.RaceDayService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -180,13 +182,14 @@ public class RaceDayController {
         return ResponseEntity.ok(ApiResponse.success(raceDayService.getRaceResults(id)));
     }
 
-    @PostMapping("/races/{id}/complaints")
+    @PostMapping(value = "/races/{id}/complaints", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<RaceComplaintResponse>> createRaceComplaint(
             @AuthenticationPrincipal User currentUser,
             @PathVariable Long id,
-            @Valid @RequestBody RaceComplaintRequest request) {
+            @Valid @RequestPart("request") RaceComplaintRequest request,
+            @RequestPart(value = "evidence", required = false) MultipartFile evidence) {
         return ResponseEntity.ok(ApiResponse.success("Race complaint created",
-                raceDayService.createRaceComplaint(currentUser.getId(), id, request)));
+                raceDayService.createRaceComplaint(currentUser.getId(), id, request, evidence)));
     }
 
     @GetMapping("/owner/race-complaints")

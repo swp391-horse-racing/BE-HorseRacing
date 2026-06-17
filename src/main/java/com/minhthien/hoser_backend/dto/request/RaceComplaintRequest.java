@@ -11,7 +11,4 @@ public class RaceComplaintRequest {
 
     @Size(min = 1, max = 2000, message = "Complaint reason must be between 1 and 2000 characters")
     private String reason;
-
-    @Size(max = 1000, message = "Evidence URL must be at most 1000 characters")
-    private String evidenceUrl;
 }
