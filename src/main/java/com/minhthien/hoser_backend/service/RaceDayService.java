@@ -40,9 +40,6 @@ public interface RaceDayService {
 
     List<RaceParticipantResponse> getRaceParticipants(Long adminId, Long raceId);
 
-    RaceParticipantResponse updateParticipantGate(Long adminId, Long raceId, Long participantId,
-                                                  RaceGateUpdateRequest request);
-
     RaceResponse assignRaceReferee(Long adminId, Long raceId, RaceRefereeAssignmentRequest request);
 
     RaceResponse cancelRace(Long adminId, Long raceId, RaceCancellationRequest request);
@@ -50,6 +47,9 @@ public interface RaceDayService {
     List<RaceResponse> getRefereeRaces(Long refereeId);
 
     List<RaceParticipantResponse> getRefereeRaceParticipants(Long refereeId, Long raceId);
+
+    RaceParticipantResponse updateRefereeParticipantGate(Long refereeId, Long raceId, Long participantId,
+                                                         RaceGateUpdateRequest request);
 
     RaceParticipantResponse checkInRaceParticipant(Long refereeId, Long raceId, Long participantId,
                                                    RaceParticipantCheckInRequest request);

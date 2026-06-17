@@ -105,16 +105,6 @@ public class RaceDayController {
                 raceDayService.getRaceParticipants(currentUser.getId(), id)));
     }
 
-    @PutMapping("/admin/races/{raceId}/participants/{participantId}/gate")
-    public ResponseEntity<ApiResponse<RaceParticipantResponse>> updateParticipantGate(
-            @AuthenticationPrincipal User currentUser,
-            @PathVariable Long raceId,
-            @PathVariable Long participantId,
-            @Valid @RequestBody RaceGateUpdateRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Participant gate updated",
-                raceDayService.updateParticipantGate(currentUser.getId(), raceId, participantId, request)));
-    }
-
     @PutMapping("/admin/races/{id}/referee")
     public ResponseEntity<ApiResponse<RaceResponse>> assignRaceReferee(
             @AuthenticationPrincipal User currentUser,
@@ -146,6 +136,16 @@ public class RaceDayController {
             @PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(
                 raceDayService.getRefereeRaceParticipants(currentUser.getId(), id)));
+    }
+
+    @PutMapping("/referee/races/{id}/participants/{participantId}/gate")
+    public ResponseEntity<ApiResponse<RaceParticipantResponse>> updateRefereeParticipantGate(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @PathVariable Long participantId,
+            @Valid @RequestBody RaceGateUpdateRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Participant gate updated",
+                raceDayService.updateRefereeParticipantGate(currentUser.getId(), id, participantId, request)));
     }
 
     @PutMapping("/referee/races/{id}/participants/{participantId}/check-in")

@@ -50,7 +50,7 @@ public class RaceParticipant {
     @JoinColumn(name = "jockey_id", nullable = false)
     private User jockey;
 
-    @Column(name = "gate_number", nullable = false)
+    @Column(name = "gate_number")
     private Integer gateNumber;
 
     @Enumerated(EnumType.STRING)

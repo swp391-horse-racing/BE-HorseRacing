@@ -175,15 +175,6 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (race.getParticipants().size() >= race.getMaxParticipants()) {
             throw new BadRequestException("Race is already full");
         }
-        int gateNumber = request != null && request.getGateNumber() != null
-                ? request.getGateNumber()
-                : nextGateNumber(race.getId());
-        if (gateNumber <= 0) {
-            throw new BadRequestException("Gate number must be greater than zero");
-        }
-        if (raceParticipantRepository.existsByRaceIdAndGateNumber(race.getId(), gateNumber)) {
-            throw new BadRequestException("Gate number already exists in this race");
-        }
         registration.setStatus(RaceRegistrationStatus.APPROVED);
         registration.setReviewedBy(adminId);
         registration.setReviewedAt(LocalDateTime.now());
@@ -195,7 +186,6 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .owner(saved.getOwner())
                 .horse(saved.getHorse())
                 .jockey(saved.getJockey())
-                .gateNumber(gateNumber)
                 .status(RaceParticipantStatus.REGISTERED)
                 .build();
         raceParticipantRepository.save(participant);
@@ -298,34 +288,6 @@ public class RaceDayServiceImpl implements RaceDayService {
 
     @Override
     @Transactional
-    public RaceParticipantResponse updateParticipantGate(Long adminId, Long raceId, Long participantId,
-                                                         RaceGateUpdateRequest request) {
-        requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can update participant gates");
-        if (request == null || request.getGateNumber() == null) {
-            throw new BadRequestException("Gate number is required");
-        }
-        if (request.getGateNumber() <= 0) {
-            throw new BadRequestException("Gate number must be greater than zero");
-        }
-        RaceParticipant participant = raceParticipantRepository.findById(participantId)
-                .orElseThrow(() -> new ResourceNotFoundException("RaceParticipant", "id", participantId));
-        if (!participant.getRace().getId().equals(raceId)) {
-            throw new BadRequestException("Participant does not belong to this race");
-        }
-        Race race = participant.getRace();
-        if (race.getStatus() == RaceStatus.RESULT_CONFIRMED || raceResultRepository.existsByRaceId(raceId)) {
-            throw new BadRequestException("Cannot update gate after race result is finalized");
-        }
-        if (raceParticipantRepository.existsByRaceIdAndGateNumberAndIdNot(
-                raceId, request.getGateNumber(), participantId)) {
-            throw new BadRequestException("Gate number already exists in this race");
-        }
-        participant.setGateNumber(request.getGateNumber());
-        return mapParticipant(raceParticipantRepository.save(participant));
-    }
-
-    @Override
-    @Transactional
     public RaceResponse assignRaceReferee(Long adminId, Long raceId, RaceRefereeAssignmentRequest request) {
         requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can assign race referees");
         if (request == null || request.getRefereeId() == null) {
@@ -402,6 +364,36 @@ public class RaceDayServiceImpl implements RaceDayService {
 
     @Override
     @Transactional
+    public RaceParticipantResponse updateRefereeParticipantGate(Long refereeId, Long raceId, Long participantId,
+                                                               RaceGateUpdateRequest request) {
+        Race race = requireAssignedRefereeRace(refereeId, raceId);
+        if (request == null || request.getGateNumber() == null) {
+            throw new BadRequestException("Gate number is required");
+        }
+        if (request.getGateNumber() <= 0) {
+            throw new BadRequestException("Gate number must be greater than zero");
+        }
+        if (race.getStatus() == RaceStatus.ONGOING
+                || race.getStatus() == RaceStatus.RESULT_CONFIRMED
+                || race.getStatus() == RaceStatus.CANCELLED
+                || raceResultRepository.existsByRaceId(raceId)) {
+            throw new BadRequestException("Cannot update gate after race has started, finished, or been cancelled");
+        }
+        RaceParticipant participant = raceParticipantRepository.findById(participantId)
+                .orElseThrow(() -> new ResourceNotFoundException("RaceParticipant", "id", participantId));
+        if (!participant.getRace().getId().equals(raceId)) {
+            throw new BadRequestException("Participant does not belong to this race");
+        }
+        if (raceParticipantRepository.existsByRaceIdAndGateNumberAndIdNot(
+                raceId, request.getGateNumber(), participantId)) {
+            throw new BadRequestException("Gate number already exists in this race");
+        }
+        participant.setGateNumber(request.getGateNumber());
+        return mapParticipant(raceParticipantRepository.save(participant));
+    }
+
+    @Override
+    @Transactional
     public RaceParticipantResponse checkInRaceParticipant(Long refereeId, Long raceId, Long participantId,
                                                           RaceParticipantCheckInRequest request) {
         Race race = requireAssignedRefereeRace(refereeId, raceId);
@@ -443,6 +435,7 @@ public class RaceDayServiceImpl implements RaceDayService {
             throw new BadRequestException("Only scheduled races can be started");
         }
         List<RaceParticipant> participants = raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(raceId);
+        validateRaceGatesReady(participants);
         long checkedInCount = participants.stream()
                 .filter(participant -> participant.getStatus() == RaceParticipantStatus.CHECKED_IN)
                 .count();
@@ -786,18 +779,21 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (participants.size() > race.getMaxParticipants()) {
             throw new BadRequestException("Race exceeds maximum participant capacity");
         }
+        if (race.getReferee() != null) {
+            validateRefereeAvailability(race, race.getReferee().getId());
+        }
+    }
+
+    private void validateRaceGatesReady(List<RaceParticipant> participants) {
         Set<Integer> gates = new HashSet<>();
         for (RaceParticipant participant : participants) {
             Integer gateNumber = participant.getGateNumber();
             if (gateNumber == null || gateNumber <= 0) {
-                throw new BadRequestException("Gate number must be greater than zero");
+                throw new BadRequestException("Gate number must be assigned before race starts");
             }
             if (!gates.add(gateNumber)) {
                 throw new BadRequestException("Gate number already exists in this race");
             }
-        }
-        if (race.getReferee() != null) {
-            validateRefereeAvailability(race, race.getReferee().getId());
         }
     }
 
@@ -1326,13 +1322,6 @@ public class RaceDayServiceImpl implements RaceDayService {
             case 3 -> tournament.getJockeyChallengeThirdPoints();
             default -> 0;
         };
-    }
-
-    private int nextGateNumber(Long raceId) {
-        return raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(raceId).stream()
-                .map(RaceParticipant::getGateNumber)
-                .max(Integer::compareTo)
-                .orElse(0) + 1;
     }
 
     private Race requireRace(Long raceId) {
