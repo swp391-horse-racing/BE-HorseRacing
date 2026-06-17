@@ -2,10 +2,15 @@ package com.minhthien.hoser_backend.repository;
 
 import com.minhthien.hoser_backend.entity.JockeyInvitation;
 import com.minhthien.hoser_backend.enums.AssignmentStatus;
+import com.minhthien.hoser_backend.enums.RaceStatus;
+import com.minhthien.hoser_backend.enums.TournamentStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 
@@ -49,7 +54,30 @@ public interface JockeyInvitationRepository extends JpaRepository<JockeyInvitati
             Collection<AssignmentStatus> statuses
     );
 
-    boolean existsByJockeyIdAndStatus(Long jockeyId, AssignmentStatus status);
+    @Query("""
+            select count(invitation) > 0
+            from JockeyInvitation invitation
+            where invitation.jockey.id = :jockeyId
+              and invitation.status = :status
+              and invitation.race is not null
+              and invitation.race.status not in :finishedRaceStatuses
+              and invitation.race.tournament.status not in :finishedTournamentStatuses
+              and (
+                    invitation.race.id = :raceId
+                    or (
+                        invitation.race.scheduledStartAt < :scheduledEndAt
+                        and invitation.race.scheduledEndAt > :scheduledStartAt
+                    )
+              )
+            """)
+    boolean existsAcceptedJockeyRaceConflict(@Param("jockeyId") Long jockeyId,
+                                             @Param("raceId") Long raceId,
+                                             @Param("scheduledStartAt") LocalDateTime scheduledStartAt,
+                                             @Param("scheduledEndAt") LocalDateTime scheduledEndAt,
+                                             @Param("status") AssignmentStatus status,
+                                             @Param("finishedRaceStatuses") Collection<RaceStatus> finishedRaceStatuses,
+                                             @Param("finishedTournamentStatuses")
+                                             Collection<TournamentStatus> finishedTournamentStatuses);
 
     boolean existsByHorseId(Long horseId);
 }

@@ -15,6 +15,7 @@ import com.minhthien.hoser_backend.enums.JockeyStatus;
 import com.minhthien.hoser_backend.enums.RaceStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
+import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.DuplicateResourceException;
 import com.minhthien.hoser_backend.repository.HorseRepository;
 import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
@@ -29,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import java.util.Optional;
@@ -72,8 +74,6 @@ class JockeyInvitationServiceImplTest {
         when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
         when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
-        when(jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED))
-                .thenReturn(false);
         when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
                 eq(race.getId()), eq(horse.getId()), anyCollection())).thenReturn(false);
         when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
@@ -118,7 +118,7 @@ class JockeyInvitationServiceImplTest {
         assertEquals("Accepted", response.getResponseNote());
         assertNotNull(response.getRespondedAt());
         assertEquals(AssignmentStatus.CANCELLED, otherPending.getStatus());
-        assertEquals("Jockey accepted another invitation", otherPending.getResponseNote());
+        assertEquals("Jockey accepted a conflicting invitation", otherPending.getResponseNote());
         assertNotNull(otherPending.getCancelledAt());
         assertEquals(AssignmentStatus.REJECTED, alreadyRejected.getStatus());
         verify(jockeyInvitationRepository).saveAll(List.of(otherPending));
@@ -158,7 +158,7 @@ class JockeyInvitationServiceImplTest {
     }
 
     @Test
-    void createInvitationRejectsJockeyWhoAlreadyAcceptedAnotherInvitation() {
+    void createInvitationRejectsJockeyWhoAlreadyAcceptedSameOrOverlappingRace() {
         User owner = owner();
         User jockey = jockey();
         Horse horse = horse(owner);
@@ -171,12 +171,48 @@ class JockeyInvitationServiceImplTest {
         when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
         when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
-        when(jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED))
+        when(jockeyInvitationRepository.existsAcceptedJockeyRaceConflict(
+                eq(jockey.getId()), eq(race.getId()), eq(race.getScheduledStartAt()),
+                eq(race.getScheduledEndAt()), eq(AssignmentStatus.ACCEPTED), anyCollection(), anyCollection()))
                 .thenReturn(true);
 
-        org.junit.jupiter.api.Assertions.assertThrows(
-                com.minhthien.hoser_backend.exception.BadRequestException.class,
+        BadRequestException exception = assertThrows(
+                BadRequestException.class,
                 () -> service.createInvitation(owner.getId(), request));
+
+        assertEquals("Jockey already accepted an invitation for this race or an overlapping race",
+                exception.getMessage());
+    }
+
+    @Test
+    void createInvitationAllowsWhenAcceptedRaceIsFinishedOrDoesNotOverlap() {
+        User owner = owner();
+        User jockey = jockey();
+        Horse horse = horse(owner);
+        Race race = race();
+        JockeyProfile profile = profile(jockey);
+        JockeyInvitationRequest request = invitationRequest(horse, jockey, "700000.00");
+
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
+        when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
+        when(jockeyInvitationRepository.existsAcceptedJockeyRaceConflict(
+                eq(jockey.getId()), eq(race.getId()), eq(race.getScheduledStartAt()),
+                eq(race.getScheduledEndAt()), eq(AssignmentStatus.ACCEPTED), anyCollection(), anyCollection()))
+                .thenReturn(false);
+        when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
+                eq(race.getId()), eq(horse.getId()), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
+            JockeyInvitation invitation = invocation.getArgument(0);
+            invitation.setId(102L);
+            return invitation;
+        });
+
+        JockeyInvitationResponse response = service.createInvitation(owner.getId(), request);
+
+        assertEquals(AssignmentStatus.PENDING, response.getStatus());
     }
 
     @Test
@@ -193,8 +229,6 @@ class JockeyInvitationServiceImplTest {
         when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
         when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
-        when(jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED))
-                .thenReturn(false);
         when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
                 eq(race.getId()), eq(horse.getId()), anyCollection())).thenReturn(false);
         when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
@@ -223,8 +257,6 @@ class JockeyInvitationServiceImplTest {
         when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
         when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
-        when(jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED))
-                .thenReturn(false);
         when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
                 eq(race.getId()), eq(horse.getId()), anyCollection())).thenReturn(true);
 
@@ -235,14 +267,58 @@ class JockeyInvitationServiceImplTest {
         assertEquals("Active invitation already exists for this horse in this race", exception.getMessage());
     }
 
+    @Test
+    void acceptInvitationCancelsOverlappingPendingInvitationsAndKeepsDifferentTimePending() {
+        User jockey = jockey();
+        JockeyInvitation invitation = pendingInvitation(owner(), jockey,
+                race(7L, LocalDateTime.of(2026, 7, 20, 10, 0),
+                        LocalDateTime.of(2026, 7, 20, 11, 0), RaceStatus.PUBLISHED,
+                        TournamentStatus.OPEN_REGISTRATION));
+        JockeyInvitation overlappingPending = pendingInvitation(owner(5L, "overlap-owner"), jockey,
+                race(8L, LocalDateTime.of(2026, 7, 20, 10, 30),
+                        LocalDateTime.of(2026, 7, 20, 11, 30), RaceStatus.PUBLISHED,
+                        TournamentStatus.OPEN_REGISTRATION));
+        overlappingPending.setId(11L);
+        JockeyInvitation differentTimePending = pendingInvitation(owner(6L, "later-owner"), jockey,
+                race(9L, LocalDateTime.of(2026, 7, 20, 11, 0),
+                        LocalDateTime.of(2026, 7, 20, 12, 0), RaceStatus.PUBLISHED,
+                        TournamentStatus.OPEN_REGISTRATION));
+        differentTimePending.setId(12L);
+        JockeyInvitation finishedRacePending = pendingInvitation(owner(7L, "finished-owner"), jockey,
+                race(10L, LocalDateTime.of(2026, 7, 20, 10, 30),
+                        LocalDateTime.of(2026, 7, 20, 11, 30), RaceStatus.RESULT_CONFIRMED,
+                        TournamentStatus.OPEN_REGISTRATION));
+        finishedRacePending.setId(13L);
+
+        when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
+        when(jockeyInvitationRepository.findById(invitation.getId())).thenReturn(Optional.of(invitation));
+        when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(jockeyInvitationRepository.findByJockeyIdAndStatusAndIdNotOrderByCreatedAtDesc(
+                jockey.getId(), AssignmentStatus.PENDING, invitation.getId()))
+                .thenReturn(List.of(overlappingPending, differentTimePending, finishedRacePending));
+        when(jockeyInvitationRepository.saveAll(anyCollection())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.acceptInvitation(jockey.getId(), invitation.getId(), null);
+
+        assertEquals(AssignmentStatus.CANCELLED, overlappingPending.getStatus());
+        assertEquals("Jockey accepted a conflicting invitation", overlappingPending.getResponseNote());
+        assertEquals(AssignmentStatus.PENDING, differentTimePending.getStatus());
+        assertEquals(AssignmentStatus.PENDING, finishedRacePending.getStatus());
+        verify(jockeyInvitationRepository).saveAll(List.of(overlappingPending));
+    }
+
     private JockeyInvitation pendingInvitation(User owner, User jockey) {
+        return pendingInvitation(owner, jockey, race());
+    }
+
+    private JockeyInvitation pendingInvitation(User owner, User jockey, Race race) {
         Horse horse = horse(owner);
         return JockeyInvitation.builder()
                 .id(10L)
                 .owner(owner)
                 .jockey(jockey)
                 .horse(horse)
-                .race(race())
+                .race(race)
                 .jockeyProfile(profile(jockey))
                 .status(AssignmentStatus.PENDING)
                 .message("Invite")
@@ -251,14 +327,23 @@ class JockeyInvitationServiceImplTest {
     }
 
     private Race race() {
+        return race(7L, LocalDateTime.of(2026, 7, 20, 10, 0),
+                LocalDateTime.of(2026, 7, 20, 11, 0), RaceStatus.PUBLISHED,
+                TournamentStatus.OPEN_REGISTRATION);
+    }
+
+    private Race race(Long id, LocalDateTime scheduledStartAt, LocalDateTime scheduledEndAt,
+                      RaceStatus raceStatus, TournamentStatus tournamentStatus) {
         return Race.builder()
-                .id(7L)
+                .id(id)
                 .name("Race 1")
-                .status(RaceStatus.PUBLISHED)
+                .scheduledStartAt(scheduledStartAt)
+                .scheduledEndAt(scheduledEndAt)
+                .status(raceStatus)
                 .tournament(Tournament.builder()
                         .id(9L)
                         .name("Summer Cup")
-                        .status(TournamentStatus.OPEN_REGISTRATION)
+                        .status(tournamentStatus)
                         .build())
                 .build();
     }

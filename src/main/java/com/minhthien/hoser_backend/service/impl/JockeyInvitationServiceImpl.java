@@ -44,6 +44,14 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
             AssignmentStatus.PENDING,
             AssignmentStatus.ACCEPTED
     );
+    private static final Set<RaceStatus> FINISHED_RACE_STATUSES = Set.of(
+            RaceStatus.RESULT_CONFIRMED,
+            RaceStatus.CANCELLED
+    );
+    private static final Set<TournamentStatus> FINISHED_TOURNAMENT_STATUSES = Set.of(
+            TournamentStatus.COMPLETED,
+            TournamentStatus.CANCELLED
+    );
 
     private final JockeyInvitationRepository jockeyInvitationRepository;
     private final HorseRepository horseRepository;
@@ -78,9 +86,7 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         if (profile.getStatus() != JockeyStatus.APPROVED) {
             throw new BadRequestException("Jockey profile must be approved before invitation");
         }
-        if (jockeyInvitationRepository.existsByJockeyIdAndStatus(jockey.getId(), AssignmentStatus.ACCEPTED)) {
-            throw new BadRequestException("Jockey already accepted another invitation");
-        }
+        validateJockeyRaceAvailability(jockey, race);
         if (jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
                 race.getId(), horse.getId(), ACTIVE_STATUSES)) {
             throw new DuplicateResourceException("Active invitation already exists for this horse in this race");
@@ -192,6 +198,9 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         requireInvitationOwner(invitation, jockeyId);
         requirePending(invitation);
         requireStillEligible(invitation);
+        if (invitation.getRace() != null) {
+            validateJockeyRaceAvailability(jockey, invitation.getRace());
+        }
 
         invitation.setStatus(AssignmentStatus.ACCEPTED);
         invitation.setResponseNote(resolveNote(request));
@@ -232,19 +241,59 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         List<JockeyInvitation> otherPendingInvitations =
                 jockeyInvitationRepository.findByJockeyIdAndStatusAndIdNotOrderByCreatedAtDesc(
                         jockey.getId(), AssignmentStatus.PENDING, acceptedInvitation.getId());
-        for (JockeyInvitation invitation : otherPendingInvitations) {
+        List<JockeyInvitation> conflictingPendingInvitations = otherPendingInvitations.stream()
+                .filter(invitation -> conflictsWithAcceptedInvitation(invitation, acceptedInvitation))
+                .toList();
+        if (conflictingPendingInvitations.isEmpty()) {
+            return;
+        }
+        for (JockeyInvitation invitation : conflictingPendingInvitations) {
             invitation.setStatus(AssignmentStatus.CANCELLED);
-            invitation.setResponseNote("Jockey accepted another invitation");
+            invitation.setResponseNote("Jockey accepted a conflicting invitation");
             invitation.setCancelledAt(now);
             invitation.setUpdatedBy(jockey.getUsername());
         }
-        List<JockeyInvitation> cancelledInvitations = jockeyInvitationRepository.saveAll(otherPendingInvitations);
+        List<JockeyInvitation> cancelledInvitations = jockeyInvitationRepository.saveAll(conflictingPendingInvitations);
         for (JockeyInvitation invitation : cancelledInvitations) {
             notify(invitation.getOwner(), NotificationType.INVITATION_CANCELLED,
                     "Jockey invitation cancelled",
-                    invitation.getJockey().getUsername() + " accepted another invitation",
+                    invitation.getJockey().getUsername() + " accepted a conflicting invitation",
                     invitation);
         }
+    }
+
+    private void validateJockeyRaceAvailability(User jockey, Race race) {
+        if (jockeyInvitationRepository.existsAcceptedJockeyRaceConflict(jockey.getId(), race.getId(),
+                race.getScheduledStartAt(), race.getScheduledEndAt(), AssignmentStatus.ACCEPTED,
+                FINISHED_RACE_STATUSES, FINISHED_TOURNAMENT_STATUSES)) {
+            throw new BadRequestException("Jockey already accepted an invitation for this race or an overlapping race");
+        }
+    }
+
+    private boolean conflictsWithAcceptedInvitation(JockeyInvitation invitation,
+                                                    JockeyInvitation acceptedInvitation) {
+        Race invitationRace = invitation.getRace();
+        Race acceptedRace = acceptedInvitation.getRace();
+        if (invitationRace == null || acceptedRace == null) {
+            return false;
+        }
+        if (invitationRace.getId().equals(acceptedRace.getId())) {
+            return true;
+        }
+        return isUnfinishedRaceContext(invitationRace)
+                && isUnfinishedRaceContext(acceptedRace)
+                && schedulesOverlap(invitationRace, acceptedRace);
+    }
+
+    private boolean isUnfinishedRaceContext(Race race) {
+        return !FINISHED_RACE_STATUSES.contains(race.getStatus())
+                && race.getTournament() != null
+                && !FINISHED_TOURNAMENT_STATUSES.contains(race.getTournament().getStatus());
+    }
+
+    private boolean schedulesOverlap(Race firstRace, Race secondRace) {
+        return firstRace.getScheduledStartAt().isBefore(secondRace.getScheduledEndAt())
+                && firstRace.getScheduledEndAt().isAfter(secondRace.getScheduledStartAt());
     }
 
     private void notify(User recipient, NotificationType type, String title, String message,
