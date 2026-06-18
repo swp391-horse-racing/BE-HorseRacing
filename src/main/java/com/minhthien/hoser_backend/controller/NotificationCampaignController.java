@@ -22,7 +22,11 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/admin/notification-campaigns")
 @SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = {
+        "http://localhost:5173",
+        "https://horseracing.id.vn",
+        "https://www.horseracing.id.vn"
+})
 public class NotificationCampaignController {
     private final NotificationCampaignService campaignService;
 

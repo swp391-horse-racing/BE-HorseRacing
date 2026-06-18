@@ -20,7 +20,11 @@ import java.util.List;
 @RequestMapping("/api/v1")
 @SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = {
+        "http://localhost:5173",
+        "https://horseracing.id.vn",
+        "https://www.horseracing.id.vn"
+})
 public class JockeyProfileController {
     private final JockeyProfileService jockeyProfileService;
 

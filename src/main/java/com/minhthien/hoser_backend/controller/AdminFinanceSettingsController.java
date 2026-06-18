@@ -18,7 +18,11 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/admin/finance-settings")
 @SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = {
+        "http://localhost:5173",
+        "https://horseracing.id.vn",
+        "https://www.horseracing.id.vn"
+})
 public class AdminFinanceSettingsController {
     private final FinanceSettingsService financeSettingsService;
 

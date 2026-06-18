@@ -25,7 +25,11 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/v1/role-applications")
 @SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = {
+        "http://localhost:5173",
+        "https://horseracing.id.vn",
+        "https://www.horseracing.id.vn"
+})
 public class RoleApplicationController {
     private final RoleApplicationService roleApplicationService;
     private final KycService kycService;
