@@ -50,6 +50,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -65,6 +66,7 @@ import java.util.stream.Collectors;
 public class TournamentServiceImpl implements TournamentService {
     private static final String REFERENCE_TYPE = "TOURNAMENT";
     private static final String TOURNAMENT_BANNER_FOLDER = "hoser/tournaments/banners";
+    private static final long MIN_RACE_DURATION_MINUTES = 45;
 
     private final TournamentRepository tournamentRepository;
     private final UserRepository userRepository;
@@ -694,6 +696,31 @@ public class TournamentServiceImpl implements TournamentService {
             }
             validateRacePrizes(race, requirePrizes);
         }
+        validateRaceVenueAvailability(tournament.getRaces());
+    }
+
+    private void validateRaceVenueAvailability(List<Race> races) {
+        for (int i = 0; i < races.size(); i++) {
+            Race first = races.get(i);
+            for (int j = i + 1; j < races.size(); j++) {
+                Race second = races.get(j);
+                if (isSameVenue(first, second) && hasScheduleOverlap(first, second)) {
+                    throw new BadRequestException("Race venue is already booked for an overlapping race");
+                }
+            }
+        }
+    }
+
+    private boolean isSameVenue(Race first, Race second) {
+        return first.getVenue() != null
+                && second.getVenue() != null
+                && first.getVenue().getId() != null
+                && first.getVenue().getId().equals(second.getVenue().getId());
+    }
+
+    private boolean hasScheduleOverlap(Race first, Race second) {
+        return first.getScheduledStartAt().isBefore(second.getScheduledEndAt())
+                && first.getScheduledEndAt().isAfter(second.getScheduledStartAt());
     }
 
     private void validateRace(Tournament tournament, Race race) {
@@ -712,6 +739,10 @@ public class TournamentServiceImpl implements TournamentService {
         }
         if (!race.getScheduledStartAt().isBefore(race.getScheduledEndAt())) {
             throw new BadRequestException("Race start time must be before end time");
+        }
+        if (Duration.between(race.getScheduledStartAt(), race.getScheduledEndAt()).toMinutes()
+                < MIN_RACE_DURATION_MINUTES) {
+            throw new BadRequestException("Race duration must be at least 45 minutes");
         }
         if (race.getScheduledStartAt().isBefore(tournament.getStartAt())
                 || race.getScheduledEndAt().isAfter(tournament.getEndAt())) {

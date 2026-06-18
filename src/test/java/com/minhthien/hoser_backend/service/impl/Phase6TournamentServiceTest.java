@@ -59,6 +59,7 @@ class Phase6TournamentServiceTest {
     private static final Long PROVINCE_ID = 50L;
     private static final Long VENUE_ID = 60L;
     private static final Long OTHER_VENUE_ID = 61L;
+    private static final Long SAME_PROVINCE_OTHER_VENUE_ID = 62L;
 
     @Mock
     private TournamentRepository tournamentRepository;
@@ -115,6 +116,8 @@ class Phase6TournamentServiceTest {
         lenient().when(locationSettingsService.requireActiveProvince(PROVINCE_ID)).thenReturn(province());
         lenient().when(locationSettingsService.requireActiveVenue(VENUE_ID)).thenReturn(venue());
         lenient().when(locationSettingsService.requireActiveVenue(OTHER_VENUE_ID)).thenReturn(otherProvinceVenue());
+        lenient().when(locationSettingsService.requireActiveVenue(SAME_PROVINCE_OTHER_VENUE_ID))
+                .thenReturn(sameProvinceOtherVenue());
     }
 
     @Test
@@ -235,6 +238,139 @@ class Phase6TournamentServiceTest {
     }
 
     @Test
+    void addRaceRejectsDurationBelowFortyFiveMinutes() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Short race");
+        request.setScheduledEndAt(request.getScheduledStartAt().plusMinutes(44));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+
+        assertEquals("Race duration must be at least 45 minutes", exception.getMessage());
+    }
+
+    @Test
+    void addRaceAcceptsDurationOfFortyFiveMinutes() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Forty five minute race");
+        request.setScheduledEndAt(request.getScheduledStartAt().plusMinutes(45));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.addTournamentRace(ADMIN_ID, 3L, request);
+
+        assertEquals(1, response.getRaces().size());
+        assertEquals(request.getScheduledEndAt(), tournament.getRaces().get(0).getScheduledEndAt());
+    }
+
+    @Test
+    void addRaceRejectsSameVenueScheduleOverlap() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race existingRace = race(10L, tournament, RaceStatus.DRAFT, "Existing race");
+        setRaceSchedule(existingRace, LocalDateTime.of(2026, 7, 10, 10, 0),
+                LocalDateTime.of(2026, 7, 10, 11, 0));
+        RaceRequest request = raceRequest("Overlapping race");
+        setRaceRequestSchedule(request, LocalDateTime.of(2026, 7, 10, 10, 30),
+                LocalDateTime.of(2026, 7, 10, 11, 30));
+        tournament.getRaces().add(existingRace);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+
+        assertEquals("Race venue is already booked for an overlapping race", exception.getMessage());
+    }
+
+    @Test
+    void addRaceAcceptsSameVenueBackToBackSchedule() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race existingRace = race(10L, tournament, RaceStatus.DRAFT, "Existing race");
+        setRaceSchedule(existingRace, LocalDateTime.of(2026, 7, 10, 10, 0),
+                LocalDateTime.of(2026, 7, 10, 11, 0));
+        RaceRequest request = raceRequest("Back to back race");
+        setRaceRequestSchedule(request, LocalDateTime.of(2026, 7, 10, 11, 0),
+                LocalDateTime.of(2026, 7, 10, 12, 0));
+        tournament.getRaces().add(existingRace);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.addTournamentRace(ADMIN_ID, 3L, request);
+
+        assertEquals(2, response.getRaces().size());
+    }
+
+    @Test
+    void addRaceAcceptsDifferentVenueSameSchedule() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race existingRace = race(10L, tournament, RaceStatus.DRAFT, "Existing race");
+        RaceRequest request = raceRequest("Different venue race");
+        request.setVenueId(SAME_PROVINCE_OTHER_VENUE_ID);
+        tournament.getRaces().add(existingRace);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.addTournamentRace(ADMIN_ID, 3L, request);
+
+        assertEquals(2, response.getRaces().size());
+    }
+
+    @Test
+    void updateRaceRejectsSameVenueScheduleOverlap() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race firstRace = race(10L, tournament, RaceStatus.DRAFT, "First race");
+        setRaceSchedule(firstRace, LocalDateTime.of(2026, 7, 10, 10, 0),
+                LocalDateTime.of(2026, 7, 10, 11, 0));
+        Race secondRace = race(11L, tournament, RaceStatus.DRAFT, "Second race");
+        setRaceSchedule(secondRace, LocalDateTime.of(2026, 7, 10, 12, 0),
+                LocalDateTime.of(2026, 7, 10, 13, 0));
+        RaceRequest request = raceRequest("Second race updated");
+        setRaceRequestSchedule(request, LocalDateTime.of(2026, 7, 10, 10, 30),
+                LocalDateTime.of(2026, 7, 10, 11, 30));
+        tournament.getRaces().add(firstRace);
+        tournament.getRaces().add(secondRace);
+        when(raceRepository.findById(11L)).thenReturn(Optional.of(secondRace));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.updateTournamentRace(ADMIN_ID, 11L, request));
+
+        assertEquals("Race venue is already booked for an overlapping race", exception.getMessage());
+    }
+
+    @Test
+    void replaceTournamentRacesRejectsSameVenueScheduleOverlap() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest firstRequest = raceRequest("First race");
+        setRaceRequestSchedule(firstRequest, LocalDateTime.of(2026, 7, 10, 10, 0),
+                LocalDateTime.of(2026, 7, 10, 11, 0));
+        RaceRequest secondRequest = raceRequest("Second race");
+        setRaceRequestSchedule(secondRequest, LocalDateTime.of(2026, 7, 10, 10, 30),
+                LocalDateTime.of(2026, 7, 10, 11, 30));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.replaceTournamentRaces(ADMIN_ID, 3L, List.of(firstRequest, secondRequest)));
+
+        assertEquals("Race venue is already booked for an overlapping race", exception.getMessage());
+    }
+
+    @Test
+    void publishTournamentRejectsSameVenueScheduleOverlap() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race firstRace = race(10L, tournament, RaceStatus.DRAFT, "First race");
+        setRaceSchedule(firstRace, LocalDateTime.of(2026, 7, 10, 10, 0),
+                LocalDateTime.of(2026, 7, 10, 11, 0));
+        Race secondRace = race(11L, tournament, RaceStatus.DRAFT, "Second race");
+        setRaceSchedule(secondRace, LocalDateTime.of(2026, 7, 10, 10, 30),
+                LocalDateTime.of(2026, 7, 10, 11, 30));
+        tournament.getRaces().add(firstRace);
+        tournament.getRaces().add(secondRace);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.PUBLISHED));
+
+        assertEquals("Race venue is already booked for an overlapping race", exception.getMessage());
+    }
+
+    @Test
     void addRaceNormalizesConfiguredDistanceWithoutUnit() {
         Tournament tournament = tournament(TournamentStatus.DRAFT);
         RaceRequest request = raceRequest("Normalized distance");
@@ -333,6 +469,8 @@ class Phase6TournamentServiceTest {
         Tournament tournament = tournament(TournamentStatus.DRAFT);
         Race draftRace = race(10L, tournament, RaceStatus.DRAFT, "Draft race");
         Race cancelledRace = race(11L, tournament, RaceStatus.CANCELLED, "Cancelled race");
+        setRaceSchedule(cancelledRace, LocalDateTime.of(2026, 7, 10, 11, 0),
+                LocalDateTime.of(2026, 7, 10, 12, 0));
         tournament.getRaces().addAll(List.of(draftRace, cancelledRace));
         when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
 
@@ -775,6 +913,11 @@ class Phase6TournamentServiceTest {
         return race;
     }
 
+    private void setRaceSchedule(Race race, LocalDateTime startAt, LocalDateTime endAt) {
+        race.setScheduledStartAt(startAt);
+        race.setScheduledEndAt(endAt);
+    }
+
     private void assertInvalidStatusTransition(TournamentStatus currentStatus, TournamentStatus targetStatus) {
         Tournament tournament = tournament(currentStatus);
         when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
@@ -796,6 +939,11 @@ class Phase6TournamentServiceTest {
         request.setLateCheckInFee(new BigDecimal("500000"));
         request.setPrizes(List.of(prizeRequest()));
         return request;
+    }
+
+    private void setRaceRequestSchedule(RaceRequest request, LocalDateTime startAt, LocalDateTime endAt) {
+        request.setScheduledStartAt(startAt);
+        request.setScheduledEndAt(endAt);
     }
 
     private RacePrizeRequest prizeRequest() {
@@ -856,6 +1004,15 @@ class Phase6TournamentServiceTest {
                 .id(VENUE_ID)
                 .province(province())
                 .name("Phu Tho Racecourse")
+                .active(true)
+                .build();
+    }
+
+    private RaceVenue sameProvinceOtherVenue() {
+        return RaceVenue.builder()
+                .id(SAME_PROVINCE_OTHER_VENUE_ID)
+                .province(province())
+                .name("Thong Nhat Racecourse")
                 .active(true)
                 .build();
     }
