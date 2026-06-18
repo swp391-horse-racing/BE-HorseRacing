@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -36,7 +37,7 @@ jobs:
           scp -P 22 -i ~/.ssh/oracle_key target/*.jar \
           ${{ secrets.ORACLE_USER }}@${{ secrets.ORACLE_HOST }}:/tmp/horse_backend.jar
 
-           - name: Restart backend
+      - name: Restart backend
         run: |
           ssh -p 22 -i ~/.ssh/oracle_key \
           ${{ secrets.ORACLE_USER }}@${{ secrets.ORACLE_HOST }} \
@@ -44,7 +45,7 @@ jobs:
           echo 'REPO=${{ github.repository }}' | sudo tee /opt/horse-racing/backend/deploy-info.txt && \
           echo 'BRANCH=${{ github.ref_name }}' | sudo tee -a /opt/horse-racing/backend/deploy-info.txt && \
           echo 'COMMIT=${{ github.sha }}' | sudo tee -a /opt/horse-racing/backend/deploy-info.txt && \
-          echo 'DEPLOYED_AT=$(date)' | sudo tee -a /opt/horse-racing/backend/deploy-info.txt && \
+          echo 'RUN_ID=${{ github.run_id }}' | sudo tee -a /opt/horse-racing/backend/deploy-info.txt && \
           sudo systemctl daemon-reload && \
           sudo systemctl restart horse-backend && \
           sudo systemctl status horse-backend --no-pager"
