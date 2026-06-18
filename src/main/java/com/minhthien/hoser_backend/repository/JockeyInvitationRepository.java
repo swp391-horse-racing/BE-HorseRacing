@@ -57,6 +57,31 @@ public interface JockeyInvitationRepository extends JpaRepository<JockeyInvitati
     @Query("""
             select count(invitation) > 0
             from JockeyInvitation invitation
+            where invitation.horse.id = :horseId
+              and invitation.status in :statuses
+              and invitation.race is not null
+              and invitation.race.status not in :finishedRaceStatuses
+              and invitation.race.tournament.status not in :finishedTournamentStatuses
+              and (
+                    invitation.race.id = :raceId
+                    or (
+                        invitation.race.scheduledStartAt < :scheduledEndAt
+                        and invitation.race.scheduledEndAt > :scheduledStartAt
+                    )
+              )
+            """)
+    boolean existsActiveHorseRaceConflict(@Param("horseId") Long horseId,
+                                          @Param("raceId") Long raceId,
+                                          @Param("scheduledStartAt") LocalDateTime scheduledStartAt,
+                                          @Param("scheduledEndAt") LocalDateTime scheduledEndAt,
+                                          @Param("statuses") Collection<AssignmentStatus> statuses,
+                                          @Param("finishedRaceStatuses") Collection<RaceStatus> finishedRaceStatuses,
+                                          @Param("finishedTournamentStatuses")
+                                          Collection<TournamentStatus> finishedTournamentStatuses);
+
+    @Query("""
+            select count(invitation) > 0
+            from JockeyInvitation invitation
             where invitation.jockey.id = :jockeyId
               and invitation.status = :status
               and invitation.race is not null

@@ -74,8 +74,9 @@ class JockeyInvitationServiceImplTest {
         when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
         when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
-        when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
-                eq(race.getId()), eq(horse.getId()), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.existsActiveHorseRaceConflict(
+                eq(horse.getId()), eq(race.getId()), eq(race.getScheduledStartAt()),
+                eq(race.getScheduledEndAt()), anyCollection(), anyCollection(), anyCollection())).thenReturn(false);
         when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
             JockeyInvitation invitation = invocation.getArgument(0);
             invitation.setId(100L);
@@ -202,8 +203,9 @@ class JockeyInvitationServiceImplTest {
                 eq(jockey.getId()), eq(race.getId()), eq(race.getScheduledStartAt()),
                 eq(race.getScheduledEndAt()), eq(AssignmentStatus.ACCEPTED), anyCollection(), anyCollection()))
                 .thenReturn(false);
-        when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
-                eq(race.getId()), eq(horse.getId()), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.existsActiveHorseRaceConflict(
+                eq(horse.getId()), eq(race.getId()), eq(race.getScheduledStartAt()),
+                eq(race.getScheduledEndAt()), anyCollection(), anyCollection(), anyCollection())).thenReturn(false);
         when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
             JockeyInvitation invitation = invocation.getArgument(0);
             invitation.setId(102L);
@@ -229,8 +231,9 @@ class JockeyInvitationServiceImplTest {
         when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
         when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
-        when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
-                eq(race.getId()), eq(horse.getId()), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.existsActiveHorseRaceConflict(
+                eq(horse.getId()), eq(race.getId()), eq(race.getScheduledStartAt()),
+                eq(race.getScheduledEndAt()), anyCollection(), anyCollection(), anyCollection())).thenReturn(false);
         when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
             JockeyInvitation invitation = invocation.getArgument(0);
             invitation.setId(101L);
@@ -257,14 +260,15 @@ class JockeyInvitationServiceImplTest {
         when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
         when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
         when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
-        when(jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
-                eq(race.getId()), eq(horse.getId()), anyCollection())).thenReturn(true);
+        when(jockeyInvitationRepository.existsActiveHorseRaceConflict(
+                eq(horse.getId()), eq(race.getId()), eq(race.getScheduledStartAt()),
+                eq(race.getScheduledEndAt()), anyCollection(), anyCollection(), anyCollection())).thenReturn(true);
 
         DuplicateResourceException exception = assertThrows(
                 DuplicateResourceException.class,
                 () -> service.createInvitation(owner.getId(), request));
 
-        assertEquals("Active invitation already exists for this horse in this race", exception.getMessage());
+        assertEquals("Active invitation already exists for this horse in this race or an overlapping race", exception.getMessage());
     }
 
     @Test

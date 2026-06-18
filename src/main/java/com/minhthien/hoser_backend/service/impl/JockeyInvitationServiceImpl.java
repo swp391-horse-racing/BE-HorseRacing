@@ -87,9 +87,10 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
             throw new BadRequestException("Jockey profile must be approved before invitation");
         }
         validateJockeyRaceAvailability(jockey, race);
-        if (jockeyInvitationRepository.existsByRaceIdAndHorseIdAndStatusIn(
-                race.getId(), horse.getId(), ACTIVE_STATUSES)) {
-            throw new DuplicateResourceException("Active invitation already exists for this horse in this race");
+        if (jockeyInvitationRepository.existsActiveHorseRaceConflict(
+                horse.getId(), race.getId(), race.getScheduledStartAt(), race.getScheduledEndAt(),
+                ACTIVE_STATUSES, FINISHED_RACE_STATUSES, FINISHED_TOURNAMENT_STATUSES)) {
+            throw new DuplicateResourceException("Active invitation already exists for this horse in this race or an overlapping race");
         }
 
         JockeyInvitation invitation = JockeyInvitation.builder()
