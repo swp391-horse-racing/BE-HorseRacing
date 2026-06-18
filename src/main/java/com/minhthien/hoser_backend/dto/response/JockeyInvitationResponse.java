@@ -24,6 +24,11 @@ public class JockeyInvitationResponse {
     private String horseName;
     private Long raceId;
     private String raceName;
+    private LocalDateTime raceScheduledStartAt;
+    private LocalDateTime raceScheduledEndAt;
+    private Long venueId;
+    private String venueName;
+    private String venueAddress;
     private Long tournamentId;
     private String tournamentName;
     private AssignmentStatus status;

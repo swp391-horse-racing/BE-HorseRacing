@@ -362,6 +362,8 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
     }
 
     private JockeyInvitationResponse mapToResponse(JockeyInvitation invitation) {
+        Race race = invitation.getRace();
+        var venue = race == null ? null : race.getVenue();
         return JockeyInvitationResponse.builder()
                 .id(invitation.getId())
                 .ownerId(invitation.getOwner().getId())
@@ -371,10 +373,15 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
                 .jockeyProfileId(invitation.getJockeyProfile().getId())
                 .horseId(invitation.getHorse().getId())
                 .horseName(invitation.getHorse().getName())
-                .raceId(invitation.getRace() == null ? null : invitation.getRace().getId())
-                .raceName(invitation.getRace() == null ? null : invitation.getRace().getName())
-                .tournamentId(invitation.getRace() == null ? null : invitation.getRace().getTournament().getId())
-                .tournamentName(invitation.getRace() == null ? null : invitation.getRace().getTournament().getName())
+                .raceId(race == null ? null : race.getId())
+                .raceName(race == null ? null : race.getName())
+                .raceScheduledStartAt(race == null ? null : race.getScheduledStartAt())
+                .raceScheduledEndAt(race == null ? null : race.getScheduledEndAt())
+                .venueId(venue == null ? null : venue.getId())
+                .venueName(venue == null ? null : venue.getName())
+                .venueAddress(venue == null ? null : venue.getAddress())
+                .tournamentId(race == null ? null : race.getTournament().getId())
+                .tournamentName(race == null ? null : race.getTournament().getName())
                 .status(invitation.getStatus())
                 .message(invitation.getMessage())
                 .responseNote(invitation.getResponseNote())
