@@ -3,6 +3,7 @@ package com.minhthien.hoser_backend.repository;
 import com.minhthien.hoser_backend.entity.JockeyInvitation;
 import com.minhthien.hoser_backend.enums.AssignmentStatus;
 import com.minhthien.hoser_backend.enums.RaceStatus;
+import com.minhthien.hoser_backend.enums.RaceRegistrationStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -53,6 +54,32 @@ public interface JockeyInvitationRepository extends JpaRepository<JockeyInvitati
             Long horseId,
             Collection<AssignmentStatus> statuses
     );
+
+    boolean existsByRaceIdAndOwnerIdAndStatusIn(
+            Long raceId,
+            Long ownerId,
+            Collection<AssignmentStatus> statuses
+    );
+
+    @Query("""
+            select count(invitation)
+            from JockeyInvitation invitation
+            where invitation.owner.id = :ownerId
+              and invitation.race.tournament.id = :tournamentId
+              and invitation.status in :invitationStatuses
+              and not exists (
+                    select registration.id
+                    from RaceRegistration registration
+                    where registration.jockeyInvitation.id = invitation.id
+                      and registration.status in :registrationStatuses
+              )
+            """)
+    long countUnusedActiveByOwnerTournament(@Param("ownerId") Long ownerId,
+                                            @Param("tournamentId") Long tournamentId,
+                                            @Param("invitationStatuses")
+                                            Collection<AssignmentStatus> invitationStatuses,
+                                            @Param("registrationStatuses")
+                                            Collection<RaceRegistrationStatus> registrationStatuses);
 
     @Query("""
             select count(invitation) > 0

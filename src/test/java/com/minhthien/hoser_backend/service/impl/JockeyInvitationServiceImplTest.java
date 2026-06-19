@@ -20,6 +20,7 @@ import com.minhthien.hoser_backend.exception.DuplicateResourceException;
 import com.minhthien.hoser_backend.repository.HorseRepository;
 import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
 import com.minhthien.hoser_backend.repository.JockeyProfileRepository;
+import com.minhthien.hoser_backend.repository.RaceRegistrationRepository;
 import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -56,6 +58,8 @@ class JockeyInvitationServiceImplTest {
     private RaceRepository raceRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private RaceRegistrationRepository raceRegistrationRepository;
 
     @InjectMocks
     private JockeyInvitationServiceImpl service;
@@ -156,6 +160,42 @@ class JockeyInvitationServiceImplTest {
 
         assertEquals(AssignmentStatus.CANCELLED, response.getStatus());
         assertNotNull(response.getCancelledAt());
+    }
+
+    @Test
+    void cancelInvitationAllowsAcceptedInvitationWhenNotUsedInActiveRegistration() {
+        User owner = owner();
+        JockeyInvitation invitation = pendingInvitation(owner, jockey());
+        invitation.setStatus(AssignmentStatus.ACCEPTED);
+
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(jockeyInvitationRepository.findById(invitation.getId())).thenReturn(Optional.of(invitation));
+        when(raceRegistrationRepository.existsByJockeyInvitationIdAndStatusIn(
+                eq(invitation.getId()), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        JockeyInvitationResponse response = service.cancelInvitation(owner.getId(), invitation.getId());
+
+        assertEquals(AssignmentStatus.CANCELLED, response.getStatus());
+        assertNotNull(response.getCancelledAt());
+    }
+
+    @Test
+    void cancelInvitationRejectsAcceptedInvitationUsedInActiveRegistration() {
+        User owner = owner();
+        JockeyInvitation invitation = pendingInvitation(owner, jockey());
+        invitation.setStatus(AssignmentStatus.ACCEPTED);
+
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(jockeyInvitationRepository.findById(invitation.getId())).thenReturn(Optional.of(invitation));
+        when(raceRegistrationRepository.existsByJockeyInvitationIdAndStatusIn(
+                eq(invitation.getId()), anyCollection())).thenReturn(true);
+
+        BadRequestException exception = assertThrows(
+                BadRequestException.class,
+                () -> service.cancelInvitation(owner.getId(), invitation.getId()));
+
+        assertEquals("Cannot cancel an accepted invitation used in an active race registration", exception.getMessage());
     }
 
     @Test
@@ -269,6 +309,243 @@ class JockeyInvitationServiceImplTest {
                 () -> service.createInvitation(owner.getId(), request));
 
         assertEquals("Active invitation already exists for this horse in this race or an overlapping race", exception.getMessage());
+    }
+
+    @Test
+    void createInvitationRejectsWhenTournamentOwnerSlotsAreFull() {
+        User owner = owner();
+        User jockey = jockey();
+        Horse horse = horse(owner);
+        Race race = race();
+        JockeyInvitationRequest request = invitationRequest(horse, jockey, "800000.00");
+
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(jockeyInvitationRepository.existsByRaceIdAndOwnerIdAndStatusIn(
+                eq(race.getId()), eq(owner.getId()), anyCollection())).thenReturn(false);
+        when(raceRegistrationRepository.countByRaceTournamentIdAndOwnerIdAndStatusIn(
+                eq(race.getTournament().getId()), eq(owner.getId()), anyCollection())).thenReturn(7L);
+        when(jockeyInvitationRepository.countUnusedActiveByOwnerTournament(
+                eq(owner.getId()), eq(race.getTournament().getId()), anyCollection(), anyCollection())).thenReturn(3L);
+
+        BadRequestException exception = assertThrows(
+                BadRequestException.class,
+                () -> service.createInvitation(owner.getId(), request));
+
+        assertEquals("Owner has reached the maximum horses allowed for this tournament", exception.getMessage());
+    }
+
+    @Test
+    void createInvitationAllowsWhenTournamentOwnerSlotsAreBelowMax() {
+        User owner = owner();
+        User jockey = jockey();
+        Horse horse = horse(owner);
+        Race race = race();
+        JockeyProfile profile = profile(jockey);
+        JockeyInvitationRequest request = invitationRequest(horse, jockey, "800000.00");
+
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
+        when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
+        when(jockeyInvitationRepository.existsByRaceIdAndOwnerIdAndStatusIn(
+                eq(race.getId()), eq(owner.getId()), anyCollection())).thenReturn(false);
+        when(raceRegistrationRepository.countByRaceTournamentIdAndOwnerIdAndStatusIn(
+                eq(race.getTournament().getId()), eq(owner.getId()), anyCollection())).thenReturn(6L);
+        when(jockeyInvitationRepository.countUnusedActiveByOwnerTournament(
+                eq(owner.getId()), eq(race.getTournament().getId()), anyCollection(), anyCollection())).thenReturn(3L);
+        when(jockeyInvitationRepository.existsActiveHorseRaceConflict(
+                eq(horse.getId()), eq(race.getId()), eq(race.getScheduledStartAt()),
+                eq(race.getScheduledEndAt()), anyCollection(), anyCollection(), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
+            JockeyInvitation invitation = invocation.getArgument(0);
+            invitation.setId(106L);
+            return invitation;
+        });
+
+        JockeyInvitationResponse response = service.createInvitation(owner.getId(), request);
+
+        assertEquals(AssignmentStatus.PENDING, response.getStatus());
+    }
+
+    @Test
+    void createInvitationDoesNotDoubleCountInvitationAlreadyUsedByActiveRegistration() {
+        User owner = owner();
+        User jockey = jockey();
+        Horse horse = horse(owner);
+        Race race = race();
+        JockeyProfile profile = profile(jockey);
+        JockeyInvitationRequest request = invitationRequest(horse, jockey, "800000.00");
+
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
+        when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
+        when(jockeyInvitationRepository.existsByRaceIdAndOwnerIdAndStatusIn(
+                eq(race.getId()), eq(owner.getId()), anyCollection())).thenReturn(false);
+        when(raceRegistrationRepository.countByRaceTournamentIdAndOwnerIdAndStatusIn(
+                eq(race.getTournament().getId()), eq(owner.getId()), anyCollection())).thenReturn(9L);
+        when(jockeyInvitationRepository.countUnusedActiveByOwnerTournament(
+                eq(owner.getId()), eq(race.getTournament().getId()), anyCollection(), anyCollection())).thenReturn(0L);
+        when(jockeyInvitationRepository.existsActiveHorseRaceConflict(
+                eq(horse.getId()), eq(race.getId()), eq(race.getScheduledStartAt()),
+                eq(race.getScheduledEndAt()), anyCollection(), anyCollection(), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
+            JockeyInvitation invitation = invocation.getArgument(0);
+            invitation.setId(107L);
+            return invitation;
+        });
+
+        JockeyInvitationResponse response = service.createInvitation(owner.getId(), request);
+
+        assertEquals(AssignmentStatus.PENDING, response.getStatus());
+    }
+
+    @Test
+    void createInvitationRejectsSecondInvitationForSameRaceWhenOwnerHasPendingInvitation() {
+        User owner = owner();
+        User jockey = jockey();
+        Horse horse = horse(owner);
+        Race race = race();
+        JockeyInvitationRequest request = invitationRequest(horse, jockey, "800000.00");
+
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(jockeyInvitationRepository.existsByRaceIdAndOwnerIdAndStatusIn(
+                eq(race.getId()), eq(owner.getId()),
+                argThat(statuses -> statuses.contains(AssignmentStatus.PENDING)))).thenReturn(true);
+
+        BadRequestException exception = assertThrows(
+                BadRequestException.class,
+                () -> service.createInvitation(owner.getId(), request));
+
+        assertEquals("Owner already has an active jockey invitation for this race", exception.getMessage());
+    }
+
+    @Test
+    void createInvitationRejectsSecondInvitationForSameRaceWhenOwnerHasAcceptedInvitation() {
+        User owner = owner();
+        User jockey = jockey();
+        Horse horse = horse(owner);
+        Race race = race();
+        JockeyInvitationRequest request = invitationRequest(horse, jockey, "800000.00");
+
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(jockeyInvitationRepository.existsByRaceIdAndOwnerIdAndStatusIn(
+                eq(race.getId()), eq(owner.getId()),
+                argThat(statuses -> statuses.contains(AssignmentStatus.ACCEPTED)))).thenReturn(true);
+
+        BadRequestException exception = assertThrows(
+                BadRequestException.class,
+                () -> service.createInvitation(owner.getId(), request));
+
+        assertEquals("Owner already has an active jockey invitation for this race", exception.getMessage());
+    }
+
+    @Test
+    void createInvitationAllowsSameRaceWhenPreviousInvitationWasRejected() {
+        User owner = owner();
+        User jockey = jockey();
+        Horse horse = horse(owner);
+        Race race = race();
+        JockeyProfile profile = profile(jockey);
+        JockeyInvitationRequest request = invitationRequest(horse, jockey, "800000.00");
+
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
+        when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
+        when(jockeyInvitationRepository.existsByRaceIdAndOwnerIdAndStatusIn(
+                eq(race.getId()), eq(owner.getId()), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.existsActiveHorseRaceConflict(
+                eq(horse.getId()), eq(race.getId()), eq(race.getScheduledStartAt()),
+                eq(race.getScheduledEndAt()), anyCollection(), anyCollection(), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
+            JockeyInvitation invitation = invocation.getArgument(0);
+            invitation.setId(103L);
+            return invitation;
+        });
+
+        JockeyInvitationResponse response = service.createInvitation(owner.getId(), request);
+
+        assertEquals(AssignmentStatus.PENDING, response.getStatus());
+        verify(jockeyInvitationRepository).existsByRaceIdAndOwnerIdAndStatusIn(
+                eq(race.getId()), eq(owner.getId()), anyCollection());
+    }
+
+    @Test
+    void createInvitationAllowsSameRaceWhenPreviousInvitationWasCancelled() {
+        User owner = owner();
+        User jockey = jockey();
+        Horse horse = horse(owner);
+        Race race = race();
+        JockeyProfile profile = profile(jockey);
+        JockeyInvitationRequest request = invitationRequest(horse, jockey, "800000.00");
+
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
+        when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
+        when(jockeyInvitationRepository.existsByRaceIdAndOwnerIdAndStatusIn(
+                eq(race.getId()), eq(owner.getId()), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.existsActiveHorseRaceConflict(
+                eq(horse.getId()), eq(race.getId()), eq(race.getScheduledStartAt()),
+                eq(race.getScheduledEndAt()), anyCollection(), anyCollection(), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
+            JockeyInvitation invitation = invocation.getArgument(0);
+            invitation.setId(104L);
+            return invitation;
+        });
+
+        JockeyInvitationResponse response = service.createInvitation(owner.getId(), request);
+
+        assertEquals(AssignmentStatus.PENDING, response.getStatus());
+        verify(jockeyInvitationRepository).existsByRaceIdAndOwnerIdAndStatusIn(
+                eq(race.getId()), eq(owner.getId()), anyCollection());
+    }
+
+    @Test
+    void createInvitationAllowsOwnerInvitationForDifferentRace() {
+        User owner = owner();
+        User jockey = jockey();
+        Horse horse = horse(owner);
+        Race race = race(8L, LocalDateTime.of(2026, 7, 21, 10, 0),
+                LocalDateTime.of(2026, 7, 21, 11, 0), RaceStatus.PUBLISHED,
+                TournamentStatus.OPEN_REGISTRATION);
+        JockeyProfile profile = profile(jockey);
+        JockeyInvitationRequest request = invitationRequest(horse, jockey, "800000.00");
+        request.setRaceId(race.getId());
+
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(jockey.getId())).thenReturn(Optional.of(jockey));
+        when(horseRepository.findByIdAndOwnerId(horse.getId(), owner.getId())).thenReturn(Optional.of(horse));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(jockeyProfileRepository.findByUserId(jockey.getId())).thenReturn(Optional.of(profile));
+        when(jockeyInvitationRepository.existsByRaceIdAndOwnerIdAndStatusIn(
+                eq(race.getId()), eq(owner.getId()), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.existsActiveHorseRaceConflict(
+                eq(horse.getId()), eq(race.getId()), eq(race.getScheduledStartAt()),
+                eq(race.getScheduledEndAt()), anyCollection(), anyCollection(), anyCollection())).thenReturn(false);
+        when(jockeyInvitationRepository.save(any(JockeyInvitation.class))).thenAnswer(invocation -> {
+            JockeyInvitation invitation = invocation.getArgument(0);
+            invitation.setId(105L);
+            return invitation;
+        });
+
+        JockeyInvitationResponse response = service.createInvitation(owner.getId(), request);
+
+        assertEquals(AssignmentStatus.PENDING, response.getStatus());
+        assertEquals(race.getId(), response.getRaceId());
+        verify(jockeyInvitationRepository).existsByRaceIdAndOwnerIdAndStatusIn(
+                eq(race.getId()), eq(owner.getId()), anyCollection());
     }
 
     @Test

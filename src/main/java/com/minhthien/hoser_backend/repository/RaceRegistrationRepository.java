@@ -34,6 +34,9 @@ public interface RaceRegistrationRepository extends JpaRepository<RaceRegistrati
     long countByRaceTournamentIdAndOwnerIdAndStatusIn(Long tournamentId, Long ownerId,
                                                       Collection<RaceRegistrationStatus> statuses);
 
+    boolean existsByJockeyInvitationIdAndStatusIn(Long jockeyInvitationId,
+                                                  Collection<RaceRegistrationStatus> statuses);
+
     @Query("""
             select rr.owner.id, rr.owner.username, count(rr)
             from RaceRegistration rr

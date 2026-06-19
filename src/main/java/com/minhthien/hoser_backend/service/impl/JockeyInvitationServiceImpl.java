@@ -13,6 +13,7 @@ import com.minhthien.hoser_backend.enums.HorseStatus;
 import com.minhthien.hoser_backend.enums.JockeyStatus;
 import com.minhthien.hoser_backend.enums.NotificationType;
 import com.minhthien.hoser_backend.enums.RaceStatus;
+import com.minhthien.hoser_backend.enums.RaceRegistrationStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.exception.BadRequestException;
@@ -22,6 +23,7 @@ import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.HorseRepository;
 import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
 import com.minhthien.hoser_backend.repository.JockeyProfileRepository;
+import com.minhthien.hoser_backend.repository.RaceRegistrationRepository;
 import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.JockeyInvitationService;
@@ -44,6 +46,10 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
             AssignmentStatus.PENDING,
             AssignmentStatus.ACCEPTED
     );
+    private static final Set<RaceRegistrationStatus> ACTIVE_REGISTRATION_STATUSES = Set.of(
+            RaceRegistrationStatus.PENDING,
+            RaceRegistrationStatus.APPROVED
+    );
     private static final Set<RaceStatus> FINISHED_RACE_STATUSES = Set.of(
             RaceStatus.RESULT_CONFIRMED,
             RaceStatus.CANCELLED
@@ -58,6 +64,7 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
     private final JockeyProfileRepository jockeyProfileRepository;
     private final RaceRepository raceRepository;
     private final UserRepository userRepository;
+    private final RaceRegistrationRepository raceRegistrationRepository;
     private NotificationService notificationService;
 
     @Autowired(required = false)
@@ -78,6 +85,11 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         Race race = raceRepository.findById(request.getRaceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Race", "id", request.getRaceId()));
         validateInvitableRace(race);
+        if (jockeyInvitationRepository.existsByRaceIdAndOwnerIdAndStatusIn(
+                race.getId(), ownerId, ACTIVE_STATUSES)) {
+            throw new BadRequestException("Owner already has an active jockey invitation for this race");
+        }
+        validateOwnerTournamentCapacity(owner, race);
 
         User jockey = requireUser(request.getJockeyId());
         requireRole(jockey, UserRole.JOCKEY, "Invitation target must be a jockey");
@@ -155,8 +167,14 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         if (!invitation.getOwner().getId().equals(ownerId)) {
             throw new UnauthorizedException("Cannot cancel another owner's invitation");
         }
-        if (invitation.getStatus() != AssignmentStatus.PENDING) {
-            throw new BadRequestException("Only pending invitations can be cancelled");
+        if (invitation.getStatus() != AssignmentStatus.PENDING
+                && invitation.getStatus() != AssignmentStatus.ACCEPTED) {
+            throw new BadRequestException("Only pending or accepted invitations can be cancelled");
+        }
+        if (invitation.getStatus() == AssignmentStatus.ACCEPTED
+                && raceRegistrationRepository.existsByJockeyInvitationIdAndStatusIn(
+                invitation.getId(), ACTIVE_REGISTRATION_STATUSES)) {
+            throw new BadRequestException("Cannot cancel an accepted invitation used in an active race registration");
         }
 
         invitation.setStatus(AssignmentStatus.CANCELLED);
@@ -268,6 +286,17 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
                 race.getScheduledStartAt(), race.getScheduledEndAt(), AssignmentStatus.ACCEPTED,
                 FINISHED_RACE_STATUSES, FINISHED_TOURNAMENT_STATUSES)) {
             throw new BadRequestException("Jockey already accepted an invitation for this race or an overlapping race");
+        }
+    }
+
+    private void validateOwnerTournamentCapacity(User owner, Race race) {
+        Long tournamentId = race.getTournament().getId();
+        long activeRegistrationCount = raceRegistrationRepository.countByRaceTournamentIdAndOwnerIdAndStatusIn(
+                tournamentId, owner.getId(), ACTIVE_REGISTRATION_STATUSES);
+        long unusedInvitationCount = jockeyInvitationRepository.countUnusedActiveByOwnerTournament(
+                owner.getId(), tournamentId, ACTIVE_STATUSES, ACTIVE_REGISTRATION_STATUSES);
+        if (activeRegistrationCount + unusedInvitationCount >= race.getTournament().getMaxHorsesPerOwner()) {
+            throw new BadRequestException("Owner has reached the maximum horses allowed for this tournament");
         }
     }
 
