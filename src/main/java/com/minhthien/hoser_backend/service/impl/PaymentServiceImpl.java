@@ -306,7 +306,7 @@ public class PaymentServiceImpl implements PaymentService {
         long amount = order.getAmount().longValueExact();
         long appTime = System.currentTimeMillis();
         String item = "[]";
-        String embedData = "{}";
+        String embedData = buildZaloPayEmbedData();
         String macData = String.join("|",
                 zaloPayAppId,
                 appTransId,
@@ -335,6 +335,16 @@ public class PaymentServiceImpl implements PaymentService {
                     + response.getOrDefault("return_message", response));
         }
         return response;
+    }
+
+    private String buildZaloPayEmbedData() {
+        try {
+            return objectMapper.writeValueAsString(Map.of(
+                    "preferred_payment_method", List.of("vietqr")
+            ));
+        } catch (JsonProcessingException e) {
+            throw new BadRequestException("Could not build ZaloPay embed data");
+        }
     }
 
     private Map<String, Object> queryZaloPayOrder(String appTransId) {
