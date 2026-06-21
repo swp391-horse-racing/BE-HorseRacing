@@ -20,6 +20,13 @@ public interface RaceRepository extends JpaRepository<Race, Long> {
 
     List<Race> findByRefereeIdOrderByScheduledStartAtAsc(Long refereeId);
 
+    @EntityGraph(attributePaths = {"tournament", "referee", "prizes"})
+    List<Race> findByRefereeIdAndScheduledStartAtBetweenOrderByScheduledStartAtAsc(
+            Long refereeId,
+            LocalDateTime startAt,
+            LocalDateTime endAt
+    );
+
     @EntityGraph(attributePaths = {"tournament", "referee"})
     List<Race> findByRefereeIdOrderByScheduledStartAtAsc(Long refereeId, Pageable pageable);
 

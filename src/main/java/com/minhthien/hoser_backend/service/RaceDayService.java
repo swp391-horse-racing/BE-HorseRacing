@@ -47,6 +47,8 @@ public interface RaceDayService {
 
     List<RaceResponse> getRefereeRaces(Long refereeId);
 
+    List<RaceResponse> getTodayRefereeRaces(Long refereeId);
+
     List<RaceParticipantResponse> getRefereeRaceParticipants(Long refereeId, Long raceId);
 
     RaceParticipantResponse updateRefereeParticipantGate(Long refereeId, Long raceId, Long participantId,

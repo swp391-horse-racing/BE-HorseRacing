@@ -148,6 +148,13 @@ public class RaceDayController {
                 raceDayService.getRefereeRaces(currentUser.getId())));
     }
 
+    @GetMapping("/referee/races/today")
+    public ResponseEntity<ApiResponse<List<RaceResponse>>> getTodayRefereeRaces(
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(
+                raceDayService.getTodayRefereeRaces(currentUser.getId())));
+    }
+
     @GetMapping("/referee/payments")
     public ResponseEntity<ApiResponse<List<RefereeRacePaymentResponse>>> getRefereePayments(
             @AuthenticationPrincipal User currentUser) {

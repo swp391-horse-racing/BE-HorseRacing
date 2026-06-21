@@ -42,6 +42,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
@@ -366,6 +367,20 @@ public class RaceDayServiceImpl implements RaceDayService {
         User referee = requireUser(refereeId);
         requireRole(referee, UserRole.REFEREE, "Only referees can view assigned races");
         return raceRepository.findByRefereeIdOrderByScheduledStartAtAsc(refereeId).stream()
+                .map(tournamentService::mapRace)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<RaceResponse> getTodayRefereeRaces(Long refereeId) {
+        User referee = requireUser(refereeId);
+        requireRole(referee, UserRole.REFEREE, "Only referees can view assigned races");
+        LocalDate today = LocalDate.now();
+        LocalDateTime startOfDay = today.atStartOfDay();
+        LocalDateTime startOfTomorrow = today.plusDays(1).atStartOfDay();
+        return raceRepository.findByRefereeIdAndScheduledStartAtBetweenOrderByScheduledStartAtAsc(
+                        refereeId, startOfDay, startOfTomorrow).stream()
                 .map(tournamentService::mapRace)
                 .toList();
     }

@@ -1,6 +1,7 @@
 package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.dto.request.RaceGateUpdateRequest;
+import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import com.minhthien.hoser_backend.entity.Horse;
 import com.minhthien.hoser_backend.entity.JockeyInvitation;
@@ -36,6 +37,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -115,6 +117,51 @@ class RaceDayGateAssignmentTest {
 
         assertThrows(UnauthorizedException.class,
                 () -> service.updateRefereeParticipantGate(otherReferee.getId(), race.getId(), 10L, gateRequest(2)));
+    }
+
+    @Test
+    void getTodayRefereeRacesUsesCurrentDayRange() {
+        User referee = user(1L, UserRole.REFEREE);
+        Race race = race(referee, RaceStatus.SCHEDULED);
+        RaceResponse mapped = RaceResponse.builder().id(race.getId()).name(race.getName()).build();
+        LocalDate today = LocalDate.now();
+        when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
+        when(raceRepository.findByRefereeIdAndScheduledStartAtBetweenOrderByScheduledStartAtAsc(
+                eq(referee.getId()), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of(race));
+        when(tournamentService.mapRace(race)).thenReturn(mapped);
+
+        var responses = service.getTodayRefereeRaces(referee.getId());
+
+        assertEquals(1, responses.size());
+        assertEquals(race.getId(), responses.get(0).getId());
+        ArgumentCaptor<LocalDateTime> startCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<LocalDateTime> endCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(raceRepository).findByRefereeIdAndScheduledStartAtBetweenOrderByScheduledStartAtAsc(
+                eq(referee.getId()), startCaptor.capture(), endCaptor.capture());
+        assertEquals(today.atStartOfDay(), startCaptor.getValue());
+        assertEquals(today.plusDays(1).atStartOfDay(), endCaptor.getValue());
+    }
+
+    @Test
+    void getTodayRefereeRacesReturnsEmptyListWhenNoAssignedRaceToday() {
+        User referee = user(1L, UserRole.REFEREE);
+        when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
+        when(raceRepository.findByRefereeIdAndScheduledStartAtBetweenOrderByScheduledStartAtAsc(
+                eq(referee.getId()), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+
+        var responses = service.getTodayRefereeRaces(referee.getId());
+
+        assertEquals(0, responses.size());
+    }
+
+    @Test
+    void getTodayRefereeRacesRejectsNonReferee() {
+        User owner = user(3L, UserRole.OWNER);
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+
+        assertThrows(UnauthorizedException.class, () -> service.getTodayRefereeRaces(owner.getId()));
     }
 
     @Test
