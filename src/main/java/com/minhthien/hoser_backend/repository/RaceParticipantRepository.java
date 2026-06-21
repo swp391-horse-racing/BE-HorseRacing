@@ -1,6 +1,7 @@
 package com.minhthien.hoser_backend.repository;
 
 import com.minhthien.hoser_backend.entity.RaceParticipant;
+import com.minhthien.hoser_backend.enums.RaceParticipantStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -32,6 +33,8 @@ public interface RaceParticipantRepository extends JpaRepository<RaceParticipant
     boolean existsByHorseId(Long horseId);
 
     long countByRaceTournamentId(Long tournamentId);
+
+    long countByRaceRefereeIdAndStatus(Long refereeId, RaceParticipantStatus status);
 
     @Query("""
             select rp.race.id, count(rp)

@@ -15,6 +15,10 @@ public interface DashboardService {
 
     DashboardResponse getRefereeDashboard(Long userId);
 
+    RefereeCheckInCountResponse getRefereeCheckedInCount(Long userId);
+
+    RefereeCheckInCountResponse getRefereePendingCheckInCount(Long userId);
+
     DashboardResponse getSpectatorDashboard(Long userId);
 
     DashboardResponse getAdminDashboard(Long userId);

@@ -85,6 +85,20 @@ public class DashboardController {
         return ResponseEntity.ok(ApiResponse.success(dashboardService.getRefereeDashboard(currentUser.getId())));
     }
 
+    @GetMapping("/referee/dashboard/checked-in-count")
+    public ResponseEntity<ApiResponse<RefereeCheckInCountResponse>> getRefereeCheckedInCount(
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(
+                dashboardService.getRefereeCheckedInCount(currentUser.getId())));
+    }
+
+    @GetMapping("/referee/dashboard/pending-check-in-count")
+    public ResponseEntity<ApiResponse<RefereeCheckInCountResponse>> getRefereePendingCheckInCount(
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(
+                dashboardService.getRefereePendingCheckInCount(currentUser.getId())));
+    }
+
     @GetMapping("/spectator/dashboard")
     public ResponseEntity<ApiResponse<DashboardResponse>> getSpectatorDashboard(
             @AuthenticationPrincipal User currentUser) {

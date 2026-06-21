@@ -1,7 +1,10 @@
 package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.dto.response.*;
+import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.enums.RaceParticipantStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
+import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.repository.*;
 import com.minhthien.hoser_backend.service.WalletService;
@@ -16,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,6 +38,7 @@ class DashboardServiceImplTest {
     @Mock private JockeyProfileRepository jockeyProfileRepository;
     @Mock private TournamentRepository tournamentRepository;
     @Mock private RaceRepository raceRepository;
+    @Mock private RaceParticipantRepository raceParticipantRepository;
     @Mock private RaceResultRepository raceResultRepository;
     @Mock private BetRepository betRepository;
     @Mock private BetMarketRepository betMarketRepository;
@@ -45,6 +50,42 @@ class DashboardServiceImplTest {
 
     @InjectMocks
     private DashboardServiceImpl service;
+
+    @Test
+    void refereeCheckedInCountOnlyQueriesCheckedInStatus() {
+        long refereeId = 7L;
+        User referee = User.builder().id(refereeId).role(UserRole.REFEREE).build();
+        when(userRepository.findById(refereeId)).thenReturn(Optional.of(referee));
+        when(raceParticipantRepository.countByRaceRefereeIdAndStatus(
+                refereeId, RaceParticipantStatus.CHECKED_IN)).thenReturn(37L);
+
+        RefereeCheckInCountResponse response = service.getRefereeCheckedInCount(refereeId);
+
+        assertEquals(37L, response.getCount());
+    }
+
+    @Test
+    void refereePendingCheckInCountOnlyQueriesRegisteredStatus() {
+        long refereeId = 7L;
+        User referee = User.builder().id(refereeId).role(UserRole.REFEREE).build();
+        when(userRepository.findById(refereeId)).thenReturn(Optional.of(referee));
+        when(raceParticipantRepository.countByRaceRefereeIdAndStatus(
+                refereeId, RaceParticipantStatus.REGISTERED)).thenReturn(23L);
+
+        RefereeCheckInCountResponse response = service.getRefereePendingCheckInCount(refereeId);
+
+        assertEquals(23L, response.getCount());
+    }
+
+    @Test
+    void refereeCheckInCountsRejectNonRefereeUsers() {
+        long userId = 8L;
+        User owner = User.builder().id(userId).role(UserRole.OWNER).build();
+        when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+
+        assertThrows(BadRequestException.class, () -> service.getRefereeCheckedInCount(userId));
+        assertThrows(BadRequestException.class, () -> service.getRefereePendingCheckInCount(userId));
+    }
 
     @Test
     void revenueReturnsEveryRequestedMonthIncludingZeroMonths() {

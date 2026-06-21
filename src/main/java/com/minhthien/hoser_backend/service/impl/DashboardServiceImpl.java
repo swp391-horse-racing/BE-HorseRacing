@@ -44,6 +44,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final JockeyProfileRepository jockeyProfileRepository;
     private final TournamentRepository tournamentRepository;
     private final RaceRepository raceRepository;
+    private final RaceParticipantRepository raceParticipantRepository;
     private final RaceResultRepository raceResultRepository;
     private final BetRepository betRepository;
     private final BetMarketRepository betMarketRepository;
@@ -149,6 +150,24 @@ public class DashboardServiceImpl implements DashboardService {
                 races.stream().filter(race -> race.getStatus() == RaceStatus.ONGOING).count());
 
         return buildDashboard(user, summary, alerts, refereeQuickLinks(), upcomingRaceItems(races));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public RefereeCheckInCountResponse getRefereeCheckedInCount(Long userId) {
+        requireRole(userId, UserRole.REFEREE);
+        long count = raceParticipantRepository.countByRaceRefereeIdAndStatus(
+                userId, RaceParticipantStatus.CHECKED_IN);
+        return new RefereeCheckInCountResponse(count);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public RefereeCheckInCountResponse getRefereePendingCheckInCount(Long userId) {
+        requireRole(userId, UserRole.REFEREE);
+        long count = raceParticipantRepository.countByRaceRefereeIdAndStatus(
+                userId, RaceParticipantStatus.REGISTERED);
+        return new RefereeCheckInCountResponse(count);
     }
 
     @Override
