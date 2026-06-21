@@ -10,6 +10,8 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 
@@ -55,10 +57,32 @@ public class TournamentStatusScheduler {
             tournament.setUpdatedBy(SYSTEM_USER);
             TournamentStatusSync.syncPreRaceStatuses(tournament, TournamentStatus.OPEN_REGISTRATION);
             tournamentRepository.save(tournament);
-            registrationOpenBroadcastService.broadcast(tournament);
+            scheduleRegistrationOpenBroadcast(tournament.getId());
             updated++;
         }
         return updated;
+    }
+
+    private void scheduleRegistrationOpenBroadcast(Long tournamentId) {
+        Runnable broadcast = () -> {
+            try {
+                registrationOpenBroadcastService.broadcastRegistrationOpen(tournamentId);
+            } catch (RuntimeException ex) {
+                log.warn("Could not schedule registration-open email broadcast: tournamentId={}", tournamentId, ex);
+            }
+        };
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    broadcast.run();
+                }
+            });
+            return;
+        }
+
+        broadcast.run();
     }
 
     private int closeDueRegistrations(LocalDateTime now) {

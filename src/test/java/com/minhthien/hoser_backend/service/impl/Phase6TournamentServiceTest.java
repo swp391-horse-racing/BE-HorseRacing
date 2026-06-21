@@ -45,12 +45,16 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -462,6 +466,48 @@ class Phase6TournamentServiceTest {
         assertEquals(RaceStatus.REGISTRATION_CLOSED, race.getStatus());
         assertEquals(RaceStatus.OPEN_REGISTRATION, openResponse.getRaces().get(0).getStatus());
         assertEquals(RaceStatus.REGISTRATION_CLOSED, closedResponse.getRaces().get(0).getStatus());
+    }
+
+    @Test
+    void openRegistrationSchedulesRegistrationOpenBroadcast() {
+        Tournament tournament = tournament(TournamentStatus.PUBLISHED);
+        Race race = race(10L, tournament, RaceStatus.PUBLISHED, "Race");
+        tournament.getRaces().add(race);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.updateTournamentStatus(
+                ADMIN_ID, 3L, TournamentStatus.OPEN_REGISTRATION);
+
+        assertEquals(TournamentStatus.OPEN_REGISTRATION, response.getStatus());
+        verify(registrationOpenBroadcastService).broadcastRegistrationOpen(3L);
+    }
+
+    @Test
+    void publishTournamentDoesNotScheduleRegistrationOpenBroadcast() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        Race race = race(10L, tournament, RaceStatus.DRAFT, "Race");
+        tournament.getRaces().add(race);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.PUBLISHED);
+
+        verify(registrationOpenBroadcastService, never()).broadcastRegistrationOpen(any());
+    }
+
+    @Test
+    void openRegistrationSucceedsWhenBroadcastSchedulingFails() {
+        Tournament tournament = tournament(TournamentStatus.PUBLISHED);
+        Race race = race(10L, tournament, RaceStatus.PUBLISHED, "Race");
+        tournament.getRaces().add(race);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+        doThrow(new RuntimeException("executor rejected task"))
+                .when(registrationOpenBroadcastService).broadcastRegistrationOpen(3L);
+
+        TournamentResponse response = assertDoesNotThrow(() -> service.updateTournamentStatus(
+                ADMIN_ID, 3L, TournamentStatus.OPEN_REGISTRATION));
+
+        assertEquals(TournamentStatus.OPEN_REGISTRATION, response.getStatus());
+        assertEquals(TournamentStatus.OPEN_REGISTRATION, tournament.getStatus());
     }
 
     @Test

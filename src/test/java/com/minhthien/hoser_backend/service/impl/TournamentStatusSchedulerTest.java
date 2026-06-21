@@ -50,6 +50,7 @@ class TournamentStatusSchedulerTest {
         assertNotNull(tournament.getOpenedRegistrationAt());
         assertEquals("SYSTEM", tournament.getUpdatedBy());
         verify(tournamentRepository).save(tournament);
+        verify(registrationOpenBroadcastService).broadcastRegistrationOpen(3L);
     }
 
     @Test
@@ -86,6 +87,7 @@ class TournamentStatusSchedulerTest {
         assertEquals(TournamentStatus.OPEN_REGISTRATION, tournament.getStatus());
         assertEquals(RaceStatus.OPEN_REGISTRATION, race.getStatus());
         verify(tournamentRepository).save(tournament);
+        verify(registrationOpenBroadcastService).broadcastRegistrationOpen(3L);
     }
 
     @Test
@@ -116,6 +118,7 @@ class TournamentStatusSchedulerTest {
         scheduler.updateRegistrationStatuses();
 
         verify(tournamentRepository, never()).save(any(Tournament.class));
+        verify(registrationOpenBroadcastService, never()).broadcastRegistrationOpen(any());
     }
 
     private Tournament tournament(TournamentStatus status) {

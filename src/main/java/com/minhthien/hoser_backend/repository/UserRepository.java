@@ -3,6 +3,7 @@ package com.minhthien.hoser_backend.repository;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.RoleApprovalStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -22,6 +23,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByRoleAndActiveOrderByCreatedAtDesc(UserRole role, Boolean active);
     List<User> findByActive(Boolean active);
     List<User> findByActiveAndRoleNotOrderByIdAsc(Boolean active, UserRole role);
+    List<User> findByActiveAndRoleNotAndIdGreaterThanOrderByIdAsc(Boolean active, UserRole role, Long id,
+                                                                  Pageable pageable);
     List<User> findByActiveAndRoleOrderByIdAsc(Boolean active, UserRole role);
     Optional<User> findFirstByRole(UserRole role);
     long countByActive(Boolean active);

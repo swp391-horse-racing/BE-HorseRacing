@@ -43,9 +43,12 @@ import com.minhthien.hoser_backend.service.SystemSettingsService;
 import com.minhthien.hoser_backend.service.TournamentService;
 import com.minhthien.hoser_backend.service.RegistrationOpenBroadcastService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -63,6 +66,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TournamentServiceImpl implements TournamentService {
     private static final String REFERENCE_TYPE = "TOURNAMENT";
     private static final String TOURNAMENT_BANNER_FOLDER = "hoser/tournaments/banners";
@@ -357,11 +361,33 @@ public class TournamentServiceImpl implements TournamentService {
         Tournament saved = tournamentRepository.save(tournament);
         if (oldStatus != TournamentStatus.OPEN_REGISTRATION
                 && status == TournamentStatus.OPEN_REGISTRATION) {
-            registrationOpenBroadcastService.broadcast(saved);
+            scheduleRegistrationOpenBroadcast(saved.getId());
         }
         recordAudit(admin, "TOURNAMENT_STATUS_UPDATED", saved,
                 "Tournament status changed from " + oldStatus + " to " + status);
         return mapToResponse(saved);
+    }
+
+    private void scheduleRegistrationOpenBroadcast(Long tournamentId) {
+        Runnable broadcast = () -> {
+            try {
+                registrationOpenBroadcastService.broadcastRegistrationOpen(tournamentId);
+            } catch (RuntimeException ex) {
+                log.warn("Could not schedule registration-open email broadcast: tournamentId={}", tournamentId, ex);
+            }
+        };
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    broadcast.run();
+                }
+            });
+            return;
+        }
+
+        broadcast.run();
     }
 
     @Override
