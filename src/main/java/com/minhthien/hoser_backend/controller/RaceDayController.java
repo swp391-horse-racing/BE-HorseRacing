@@ -17,10 +17,12 @@ import com.minhthien.hoser_backend.dto.response.RaceParticipantResponse;
 import com.minhthien.hoser_backend.dto.response.RaceRegistrationResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResultResponse;
+import com.minhthien.hoser_backend.dto.response.RefereeRacePaymentResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.RaceComplaintStatus;
 import com.minhthien.hoser_backend.service.RaceDayService;
+import com.minhthien.hoser_backend.service.RefereePaymentService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +46,7 @@ import java.util.List;
 })
 public class RaceDayController {
     private final RaceDayService raceDayService;
+    private final RefereePaymentService refereePaymentService;
 
     @PostMapping("/races/{id}/registrations")
     public ResponseEntity<ApiResponse<RaceRegistrationResponse>> registerForRace(
@@ -130,11 +133,26 @@ public class RaceDayController {
                 raceDayService.cancelRace(currentUser.getId(), id, request)));
     }
 
+    @GetMapping("/admin/races/{id}/referee-payment")
+    public ResponseEntity<ApiResponse<RefereeRacePaymentResponse>> getAdminRaceRefereePayment(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                refereePaymentService.getAdminRacePayment(currentUser.getId(), id)));
+    }
+
     @GetMapping("/referee/races")
     public ResponseEntity<ApiResponse<List<RaceResponse>>> getRefereeRaces(
             @AuthenticationPrincipal User currentUser) {
         return ResponseEntity.ok(ApiResponse.success(
                 raceDayService.getRefereeRaces(currentUser.getId())));
+    }
+
+    @GetMapping("/referee/payments")
+    public ResponseEntity<ApiResponse<List<RefereeRacePaymentResponse>>> getRefereePayments(
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(
+                refereePaymentService.getRefereePayments(currentUser.getId())));
     }
 
     @GetMapping("/referee/races/{id}/participants")

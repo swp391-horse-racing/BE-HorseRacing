@@ -7,4 +7,7 @@ import lombok.Data;
 public class RaceRefereeAssignmentRequest {
     @NotNull(message = "Referee id is required")
     private Long refereeId;
+
+    @NotNull(message = "Salary config id is required")
+    private Long salaryConfigId;
 }

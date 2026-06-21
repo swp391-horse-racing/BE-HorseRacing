@@ -31,6 +31,7 @@ import com.minhthien.hoser_backend.service.MailService;
 import com.minhthien.hoser_backend.service.NotificationService;
 import com.minhthien.hoser_backend.service.RaceDayService;
 import com.minhthien.hoser_backend.service.RealtimeEventService;
+import com.minhthien.hoser_backend.service.RefereePaymentService;
 import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -72,6 +73,7 @@ public class RaceDayServiceImpl implements RaceDayService {
     private final MailService mailService;
     private final BettingService bettingService;
     private final CloudinaryUploadService cloudinaryUploadService;
+    private final RefereePaymentService refereePaymentService;
     private NotificationService notificationService;
     private RealtimeEventService realtimeEventService;
 
@@ -297,13 +299,23 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (request == null || request.getRefereeId() == null) {
             throw new BadRequestException("Referee id is required");
         }
+        if (request.getSalaryConfigId() == null) {
+            throw new BadRequestException("Salary config id is required");
+        }
         Race race = requireRace(raceId);
+        if (race.getStatus() == RaceStatus.CANCELLED) {
+            throw new BadRequestException("Cannot assign referee to a cancelled race");
+        }
         if (race.getStatus() == RaceStatus.RESULT_CONFIRMED || raceResultRepository.existsByRaceId(raceId)) {
             throw new BadRequestException("Cannot update referee after race result is finalized");
         }
         User referee = requireUser(request.getRefereeId());
         requireRole(referee, UserRole.REFEREE, "Race referee must have REFEREE role");
+        if (race.getReferee() != null && !race.getReferee().getId().equals(referee.getId())) {
+            throw new BadRequestException("Race referee cannot be changed after assignment");
+        }
         validateRefereeAvailability(race, referee.getId());
+        refereePaymentService.reserveForAssignment(adminId, race, referee, request.getSalaryConfigId());
         race.setReferee(referee);
         Race saved = raceRepository.save(race);
         if (saved.getTournament().getStatus() == TournamentStatus.SCHEDULED) {
@@ -339,6 +351,7 @@ public class RaceDayServiceImpl implements RaceDayService {
                             false);
                 });
         bettingService.cancelRaceBets(raceId);
+        refereePaymentService.releaseForCancelledRace(adminId, race);
         race.setStatus(RaceStatus.CANCELLED);
         Race saved = raceRepository.save(race);
         notifyRaceEvent(saved, NotificationType.RACE_CANCELLED, "Race cancelled",
@@ -488,6 +501,7 @@ public class RaceDayServiceImpl implements RaceDayService {
         race.setResultFinalizedAt(now);
         race.setResultFinalizedBy(refereeId);
         raceRepository.save(race);
+        refereePaymentService.payForCompletedRace(race);
         bettingService.settleRaceBets(raceId);
         List<RaceResult> savedResults = raceResultRepository.findByRaceIdOrderByRankAsc(raceId);
         publishRaceResults(race);

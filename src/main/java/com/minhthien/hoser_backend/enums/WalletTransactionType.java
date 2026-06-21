@@ -8,6 +8,7 @@ public enum WalletTransactionType {
     LATE_CHECK_IN_FEE,
     JOCKEY_HIRE,
     JOCKEY_PAYOUT,
+    REFEREE_PAYOUT,
     JOCKEY_HIRE_TAX,
     BET_STAKE,
     BET_PAYOUT,
