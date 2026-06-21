@@ -69,6 +69,44 @@ public interface RaceResultRepository extends JpaRepository<RaceResult, Long> {
     List<Object[]> findTopHorseStatistics(Pageable pageable);
 
     @Query("""
+            select rr.horse.id, rr.horse.name, rr.owner.id,
+                   coalesce(rr.owner.fullName, rr.owner.username),
+                   sum(case when rr.rank = 1 then 1 else 0 end),
+                   sum(case when rr.rank in (1, 2, 3) then 1 else 0 end),
+                   count(rr),
+                   coalesce(sum(rr.prizeAmount), 0)
+            from RaceResult rr
+            where rr.race.resultFinalizedAt is not null
+            group by rr.horse.id, rr.horse.name, rr.owner.id,
+                     rr.owner.fullName, rr.owner.username
+            order by sum(case when rr.rank = 1 then 1 else 0 end) desc,
+                     sum(case when rr.rank in (1, 2, 3) then 1 else 0 end) desc,
+                     coalesce(sum(rr.prizeAmount), 0) desc,
+                     count(rr) desc,
+                     rr.horse.id asc
+            """)
+    List<Object[]> findHorseRankingStatistics(Pageable pageable);
+
+    @Query("""
+            select rr.jockey.id, rr.jockey.username,
+                   coalesce(rr.jockey.fullName, rr.jockey.username),
+                   sum(case when rr.rank = 1 then 1 else 0 end),
+                   sum(case when rr.rank in (1, 2, 3) then 1 else 0 end),
+                   count(rr),
+                   coalesce(sum(rr.jockeyPrizeAmount), 0)
+            from RaceResult rr
+            where rr.race.resultFinalizedAt is not null
+            group by rr.jockey.id, rr.jockey.username,
+                     rr.jockey.fullName
+            order by sum(case when rr.rank = 1 then 1 else 0 end) desc,
+                     sum(case when rr.rank in (1, 2, 3) then 1 else 0 end) desc,
+                     coalesce(sum(rr.jockeyPrizeAmount), 0) desc,
+                     count(rr) desc,
+                     rr.jockey.id asc
+            """)
+    List<Object[]> findJockeyRankingStatistics(Pageable pageable);
+
+    @Query("""
             select coalesce(sum(rr.prizeAmount), 0)
             from RaceResult rr
             where rr.race.resultFinalizedAt is not null
