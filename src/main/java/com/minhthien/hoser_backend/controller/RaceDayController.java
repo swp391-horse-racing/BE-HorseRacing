@@ -9,7 +9,6 @@ import com.minhthien.hoser_backend.dto.request.RaceParticipantCheckInRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationReviewRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationWithdrawRequest;
-import com.minhthien.hoser_backend.dto.request.RaceRefereeAssignmentRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengeStandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceComplaintResponse;
@@ -113,15 +112,6 @@ public class RaceDayController {
             @PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(
                 raceDayService.getRaceParticipants(currentUser.getId(), id)));
-    }
-
-    @PutMapping("/admin/races/{id}/referee")
-    public ResponseEntity<ApiResponse<RaceResponse>> assignRaceReferee(
-            @AuthenticationPrincipal User currentUser,
-            @PathVariable Long id,
-            @Valid @RequestBody RaceRefereeAssignmentRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Race referee assigned",
-                raceDayService.assignRaceReferee(currentUser.getId(), id, request)));
     }
 
     @PutMapping("/admin/races/{id}/cancel")

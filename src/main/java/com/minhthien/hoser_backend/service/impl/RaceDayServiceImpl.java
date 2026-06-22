@@ -9,7 +9,6 @@ import com.minhthien.hoser_backend.dto.request.RaceParticipantCheckInRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationReviewRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationWithdrawRequest;
-import com.minhthien.hoser_backend.dto.request.RaceRefereeAssignmentRequest;
 import com.minhthien.hoser_backend.dto.request.RaceResultEntryRequest;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengeStandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceComplaintResponse;
@@ -32,6 +31,7 @@ import com.minhthien.hoser_backend.service.NotificationService;
 import com.minhthien.hoser_backend.service.RaceDayService;
 import com.minhthien.hoser_backend.service.RealtimeEventService;
 import com.minhthien.hoser_backend.service.RefereePaymentService;
+import com.minhthien.hoser_backend.service.RefereeInvitationService;
 import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -75,6 +75,7 @@ public class RaceDayServiceImpl implements RaceDayService {
     private final BettingService bettingService;
     private final CloudinaryUploadService cloudinaryUploadService;
     private final RefereePaymentService refereePaymentService;
+    private final RefereeInvitationService refereeInvitationService;
     private NotificationService notificationService;
     private RealtimeEventService realtimeEventService;
 
@@ -295,44 +296,10 @@ public class RaceDayServiceImpl implements RaceDayService {
 
     @Override
     @Transactional
-    public RaceResponse assignRaceReferee(Long adminId, Long raceId, RaceRefereeAssignmentRequest request) {
-        requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can assign race referees");
-        if (request == null || request.getRefereeId() == null) {
-            throw new BadRequestException("Referee id is required");
-        }
-        if (request.getSalaryConfigId() == null) {
-            throw new BadRequestException("Salary config id is required");
-        }
-        Race race = requireRace(raceId);
-        if (race.getStatus() == RaceStatus.CANCELLED) {
-            throw new BadRequestException("Cannot assign referee to a cancelled race");
-        }
-        if (race.getStatus() == RaceStatus.RESULT_CONFIRMED || raceResultRepository.existsByRaceId(raceId)) {
-            throw new BadRequestException("Cannot update referee after race result is finalized");
-        }
-        User referee = requireUser(request.getRefereeId());
-        requireRole(referee, UserRole.REFEREE, "Race referee must have REFEREE role");
-        if (race.getReferee() != null && !race.getReferee().getId().equals(referee.getId())) {
-            throw new BadRequestException("Race referee cannot be changed after assignment");
-        }
-        validateRefereeAvailability(race, referee.getId());
-        refereePaymentService.reserveForAssignment(adminId, race, referee, request.getSalaryConfigId());
-        race.setReferee(referee);
-        Race saved = raceRepository.save(race);
-        if (saved.getTournament().getStatus() == TournamentStatus.SCHEDULED) {
-            safeSendMail(() -> mailService.sendRaceScheduled(saved, referee), "race referee assignment",
-                    saved.getId(), referee.getId());
-        }
-        notifyRaceRefereeAssigned(saved, referee);
-        publishRaceStatus(saved, "RACE_REFEREE_ASSIGNED");
-        return tournamentService.mapRace(saved);
-    }
-
-    @Override
-    @Transactional
     public RaceResponse cancelRace(Long adminId, Long raceId, RaceCancellationRequest request) {
         requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can cancel races");
-        Race race = requireRace(raceId);
+        Race race = raceRepository.findByIdForUpdate(raceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Race", "id", raceId));
         if (!canCancelRace(race.getStatus())) {
             throw new BadRequestException("Only pre-race or scheduled races can be cancelled");
         }
@@ -352,6 +319,8 @@ public class RaceDayServiceImpl implements RaceDayService {
                             false);
                 });
         bettingService.cancelRaceBets(raceId);
+        refereeInvitationService.cancelPendingInvitationsForRace(
+                raceId, "Race was cancelled");
         refereePaymentService.releaseForCancelledRace(adminId, race);
         race.setStatus(RaceStatus.CANCELLED);
         Race saved = raceRepository.save(race);

@@ -602,7 +602,6 @@ public class TournamentServiceImpl implements TournamentService {
                 .lateCheckInFee(request.getLateCheckInFee() == null
                         ? settings.getLateCheckInFee()
                         : request.getLateCheckInFee())
-                .referee(request.getRefereeId() == null ? null : requireReferee(request.getRefereeId()))
                 .status(RaceStatus.DRAFT)
                 .note(request.getNote())
                 .build();
@@ -624,7 +623,6 @@ public class TournamentServiceImpl implements TournamentService {
         if (request.getLateCheckInFee() != null) {
             race.setLateCheckInFee(request.getLateCheckInFee());
         }
-        race.setReferee(request.getRefereeId() == null ? null : requireReferee(request.getRefereeId()));
         race.setNote(request.getNote());
         race.syncPrizes(mapRacePrizes(request.getPrizes(), !requiresPrizeConfiguration(race.getTournament())));
     }
@@ -964,15 +962,6 @@ public class TournamentServiceImpl implements TournamentService {
             throw new UnauthorizedException("Only admins can manage tournaments");
         }
         return admin;
-    }
-
-    private User requireReferee(Long refereeId) {
-        User referee = userRepository.findById(refereeId)
-                .orElseThrow(() -> new ResourceNotFoundException("User", "id", refereeId));
-        if (referee.getRole() != UserRole.REFEREE) {
-            throw new BadRequestException("Race referee must have REFEREE role");
-        }
-        return referee;
     }
 
     private RaceVenue requireVenueForTournament(Long venueId, Tournament tournament) {

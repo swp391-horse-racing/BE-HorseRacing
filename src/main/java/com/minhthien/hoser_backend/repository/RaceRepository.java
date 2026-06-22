@@ -2,9 +2,11 @@ package com.minhthien.hoser_backend.repository;
 
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.enums.RaceStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -15,6 +17,10 @@ import java.util.List;
 
 @Repository
 public interface RaceRepository extends JpaRepository<Race, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select race from Race race where race.id = :id")
+    java.util.Optional<Race> findByIdForUpdate(@Param("id") Long id);
+
     @EntityGraph(attributePaths = {"tournament", "referee", "prizes"})
     List<Race> findByTournamentIdOrderByScheduledStartAtAsc(Long tournamentId);
 

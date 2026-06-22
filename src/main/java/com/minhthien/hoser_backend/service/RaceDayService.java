@@ -9,7 +9,6 @@ import com.minhthien.hoser_backend.dto.request.RaceParticipantCheckInRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationReviewRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationWithdrawRequest;
-import com.minhthien.hoser_backend.dto.request.RaceRefereeAssignmentRequest;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengeStandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceComplaintResponse;
 import com.minhthien.hoser_backend.dto.response.RaceParticipantResponse;
@@ -40,8 +39,6 @@ public interface RaceDayService {
     TournamentResponse scheduleTournament(Long adminId, Long tournamentId);
 
     List<RaceParticipantResponse> getRaceParticipants(Long adminId, Long raceId);
-
-    RaceResponse assignRaceReferee(Long adminId, Long raceId, RaceRefereeAssignmentRequest request);
 
     RaceResponse cancelRace(Long adminId, Long raceId, RaceCancellationRequest request);
 

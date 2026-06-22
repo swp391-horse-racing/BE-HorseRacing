@@ -49,8 +49,6 @@ public class RaceRequest {
     @Schema(description = "Late check-in fee charged for this race only", example = "500000")
     private BigDecimal lateCheckInFee;
 
-    private Long refereeId;
-
     @Size(max = 1000, message = "Race note must be at most 1000 characters")
     private String note;
 
