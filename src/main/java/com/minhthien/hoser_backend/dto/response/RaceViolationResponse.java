@@ -1,7 +1,6 @@
 package com.minhthien.hoser_backend.dto.response;
 
 import com.minhthien.hoser_backend.enums.RaceViolationSeverity;
-import com.minhthien.hoser_backend.enums.RaceViolationType;
 import com.minhthien.hoser_backend.enums.ViolationResultAction;
 import lombok.Builder;
 import lombok.Data;
@@ -24,7 +23,8 @@ public class RaceViolationResponse {
     private String jockeyUsername;
     private Long refereeId;
     private String refereeUsername;
-    private RaceViolationType type;
+    private String type;
+    private String typeLabel;
     private RaceViolationSeverity severity;
     private String description;
     private String penaltyText;

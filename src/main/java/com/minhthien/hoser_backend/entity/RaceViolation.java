@@ -1,7 +1,6 @@
 package com.minhthien.hoser_backend.entity;
 
 import com.minhthien.hoser_backend.enums.RaceViolationSeverity;
-import com.minhthien.hoser_backend.enums.RaceViolationType;
 import com.minhthien.hoser_backend.enums.ViolationResultAction;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -54,9 +53,11 @@ public class RaceViolation {
     @JoinColumn(name = "referee_id", nullable = false)
     private User referee;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 40)
-    private RaceViolationType type;
+    @Column(nullable = false, length = 80)
+    private String type;
+
+    @Column(name = "type_label", length = 100)
+    private String typeLabel;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 40)

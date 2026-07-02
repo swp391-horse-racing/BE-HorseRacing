@@ -1,7 +1,6 @@
 package com.minhthien.hoser_backend.dto.request;
 
 import com.minhthien.hoser_backend.enums.RaceViolationSeverity;
-import com.minhthien.hoser_backend.enums.RaceViolationType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -14,8 +13,9 @@ public class RaceViolationRequest {
     @NotNull(message = "Participant id is required")
     private Long participantId;
 
-    @NotNull(message = "Violation type is required")
-    private RaceViolationType type;
+    @NotBlank(message = "Violation type is required")
+    @Size(max = 80, message = "Violation type must be at most 80 characters")
+    private String type;
 
     @NotNull(message = "Violation severity is required")
     private RaceViolationSeverity severity;

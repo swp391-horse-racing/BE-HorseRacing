@@ -4,6 +4,7 @@ import com.minhthien.hoser_backend.dto.request.*;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
 import com.minhthien.hoser_backend.dto.response.PublicBrandingResponse;
 import com.minhthien.hoser_backend.dto.response.SystemSettingsResponse;
+import com.minhthien.hoser_backend.dto.response.ViolationTypeOptionResponse;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.service.SystemSettingsService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -12,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
@@ -27,6 +30,11 @@ public class SystemSettingsController {
     @GetMapping("/api/v1/system-settings/branding")
     public ResponseEntity<ApiResponse<PublicBrandingResponse>> getPublicBranding() {
         return ResponseEntity.ok(ApiResponse.success(settingsService.getPublicBranding()));
+    }
+
+    @GetMapping("/api/v1/system-settings/violation-types")
+    public ResponseEntity<ApiResponse<List<ViolationTypeOptionResponse>>> getViolationTypes() {
+        return ResponseEntity.ok(ApiResponse.success(settingsService.getViolationTypes()));
     }
 
     @SecurityRequirement(name = "bearerAuth")
@@ -89,6 +97,14 @@ public class SystemSettingsController {
             @AuthenticationPrincipal User admin,
             @Valid @RequestBody SystemViolationRulesSettingsRequest request) {
         return ok(settingsService.updateViolationRules(admin.getId(), request));
+    }
+
+    @SecurityRequirement(name = "bearerAuth")
+    @PutMapping("/api/v1/admin/system-settings/violation-types")
+    public ResponseEntity<ApiResponse<SystemSettingsResponse>> updateViolationTypes(
+            @AuthenticationPrincipal User admin,
+            @Valid @RequestBody SystemViolationTypesSettingsRequest request) {
+        return ok(settingsService.updateViolationTypes(admin.getId(), request));
     }
 
     private ResponseEntity<ApiResponse<SystemSettingsResponse>> ok(SystemSettingsResponse response) {

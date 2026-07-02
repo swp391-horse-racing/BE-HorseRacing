@@ -42,6 +42,15 @@ public class SystemSettings {
               {"severity":"MAJOR","resultAction":"TIME_PENALTY","timePenaltyMillis":10000},
               {"severity":"DISQUALIFICATION","resultAction":"DISQUALIFY","timePenaltyMillis":0}
             ]""";
+    public static final String DEFAULT_VIOLATION_TYPE_OPTIONS_JSON = """
+            [
+              {"code":"FALSE_START","label":"Xuất phát sai","active":true},
+              {"code":"DANGEROUS_RIDING","label":"Lái nguy hiểm","active":true},
+              {"code":"EQUIPMENT_VIOLATION","label":"Vi phạm trang bị","active":true},
+              {"code":"DOPING_SUSPECTED","label":"Nghi doping","active":true},
+              {"code":"LATE_CHECK_IN","label":"Check-in muộn","active":true},
+              {"code":"OTHER","label":"Khác","active":true}
+            ]""";
 
     @Id
     private Long id;
@@ -85,6 +94,10 @@ public class SystemSettings {
     @Lob
     @Column(name = "violation_penalty_rules_json", nullable = false)
     private String violationPenaltyRulesJson;
+
+    @Lob
+    @Column(name = "violation_type_options_json", nullable = false)
+    private String violationTypeOptionsJson;
 
     @Column(name = "created_at", nullable = false)
     @Builder.Default
@@ -131,6 +144,9 @@ public class SystemSettings {
         }
         if (violationPenaltyRulesJson == null || violationPenaltyRulesJson.isBlank()) {
             violationPenaltyRulesJson = DEFAULT_VIOLATION_PENALTY_RULES_JSON;
+        }
+        if (violationTypeOptionsJson == null || violationTypeOptionsJson.isBlank()) {
+            violationTypeOptionsJson = DEFAULT_VIOLATION_TYPE_OPTIONS_JSON;
         }
     }
 }

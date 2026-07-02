@@ -1,20 +1,26 @@
 package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.dto.request.RaceGateUpdateRequest;
+import com.minhthien.hoser_backend.dto.request.RaceViolationRequest;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
+import com.minhthien.hoser_backend.dto.response.ViolationPenaltyRuleResponse;
+import com.minhthien.hoser_backend.dto.response.ViolationTypeOptionResponse;
 import com.minhthien.hoser_backend.entity.Horse;
 import com.minhthien.hoser_backend.entity.JockeyInvitation;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RaceParticipant;
 import com.minhthien.hoser_backend.entity.RaceRegistration;
+import com.minhthien.hoser_backend.entity.RaceViolation;
 import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.RaceParticipantStatus;
 import com.minhthien.hoser_backend.enums.RaceRegistrationStatus;
 import com.minhthien.hoser_backend.enums.RaceStatus;
+import com.minhthien.hoser_backend.enums.RaceViolationSeverity;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
+import com.minhthien.hoser_backend.enums.ViolationResultAction;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.JockeyChallengeResultRepository;
@@ -22,12 +28,17 @@ import com.minhthien.hoser_backend.repository.JockeyInvitationRepository;
 import com.minhthien.hoser_backend.repository.RaceComplaintRepository;
 import com.minhthien.hoser_backend.repository.RaceParticipantRepository;
 import com.minhthien.hoser_backend.repository.RaceRegistrationRepository;
+import com.minhthien.hoser_backend.repository.RaceViolationRepository;
 import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.BettingService;
+import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.MailService;
+import com.minhthien.hoser_backend.service.RefereeInvitationService;
+import com.minhthien.hoser_backend.service.RefereePaymentService;
+import com.minhthien.hoser_backend.service.SystemSettingsService;
 import com.minhthien.hoser_backend.service.WalletService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +46,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -59,6 +71,7 @@ class RaceDayGateAssignmentTest {
     @Mock private RaceParticipantRepository raceParticipantRepository;
     @Mock private com.minhthien.hoser_backend.repository.RaceResultRepository raceResultRepository;
     @Mock private RaceComplaintRepository raceComplaintRepository;
+    @Mock private RaceViolationRepository raceViolationRepository;
     @Mock private JockeyChallengeResultRepository jockeyChallengeResultRepository;
     @Mock private JockeyInvitationRepository jockeyInvitationRepository;
     @Mock private TournamentRepository tournamentRepository;
@@ -68,6 +81,10 @@ class RaceDayGateAssignmentTest {
     @Mock private FinanceSettingsService financeSettingsService;
     @Mock private MailService mailService;
     @Mock private BettingService bettingService;
+    @Mock private CloudinaryUploadService cloudinaryUploadService;
+    @Mock private RefereePaymentService refereePaymentService;
+    @Mock private RefereeInvitationService refereeInvitationService;
+    @Mock private SystemSettingsService systemSettingsService;
 
     @InjectMocks
     private RaceDayServiceImpl service;
@@ -228,6 +245,75 @@ class RaceDayGateAssignmentTest {
         assertThrows(BadRequestException.class, () -> service.startRace(referee.getId(), race.getId()));
     }
 
+    @Test
+    void createViolationSnapshotsConfiguredTypeLabel() {
+        User referee = user(1L, UserRole.REFEREE);
+        Race race = race(referee, RaceStatus.SCHEDULED);
+        RaceParticipant participant = participant(race, 3);
+        RaceViolationRequest request = violationRequest("CUSTOM_BLOCK");
+        MockMultipartFile evidence = new MockMultipartFile(
+                "evidence", "clip.mp4", "video/mp4", new byte[]{1, 2, 3});
+        when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(raceResultRepository.existsByRaceId(race.getId())).thenReturn(false);
+        when(raceParticipantRepository.findById(participant.getId())).thenReturn(Optional.of(participant));
+        when(systemSettingsService.getViolationPenaltyRules()).thenReturn(List.of(
+                ViolationPenaltyRuleResponse.builder()
+                        .severity(RaceViolationSeverity.MINOR)
+                        .resultAction(ViolationResultAction.TIME_PENALTY)
+                        .timePenaltyMillis(3000L)
+                        .build()));
+        when(systemSettingsService.requireActiveViolationType("CUSTOM_BLOCK")).thenReturn(
+                ViolationTypeOptionResponse.builder()
+                        .code("CUSTOM_BLOCK")
+                        .label("Cản đường đua")
+                        .active(true)
+                        .build());
+        when(cloudinaryUploadService.upload(any(), eq("hoser/race-violations/evidence"))).thenReturn("https://cdn/evidence.mp4");
+        when(raceViolationRepository.save(any(RaceViolation.class))).thenAnswer(invocation -> {
+            RaceViolation violation = invocation.getArgument(0);
+            violation.setId(99L);
+            return violation;
+        });
+
+        var response = service.createRaceViolation(referee.getId(), race.getId(), request, evidence);
+
+        assertEquals("CUSTOM_BLOCK", response.getType());
+        assertEquals("Cản đường đua", response.getTypeLabel());
+        assertEquals(ViolationResultAction.TIME_PENALTY, response.getResultAction());
+        assertEquals(3000L, response.getTimePenaltyMillis());
+        ArgumentCaptor<RaceViolation> violationCaptor = ArgumentCaptor.forClass(RaceViolation.class);
+        verify(raceViolationRepository).save(violationCaptor.capture());
+        assertEquals("CUSTOM_BLOCK", violationCaptor.getValue().getType());
+        assertEquals("Cản đường đua", violationCaptor.getValue().getTypeLabel());
+    }
+
+    @Test
+    void createViolationRejectsInactiveOrUnknownType() {
+        User referee = user(1L, UserRole.REFEREE);
+        Race race = race(referee, RaceStatus.SCHEDULED);
+        RaceParticipant participant = participant(race, 3);
+        RaceViolationRequest request = violationRequest("INACTIVE_TYPE");
+        MockMultipartFile evidence = new MockMultipartFile(
+                "evidence", "photo.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(raceResultRepository.existsByRaceId(race.getId())).thenReturn(false);
+        when(raceParticipantRepository.findById(participant.getId())).thenReturn(Optional.of(participant));
+        when(systemSettingsService.getViolationPenaltyRules()).thenReturn(List.of(
+                ViolationPenaltyRuleResponse.builder()
+                        .severity(RaceViolationSeverity.MINOR)
+                        .resultAction(ViolationResultAction.TIME_PENALTY)
+                        .timePenaltyMillis(3000L)
+                        .build()));
+        when(systemSettingsService.requireActiveViolationType("INACTIVE_TYPE"))
+                .thenThrow(new BadRequestException("Violation type is not configured or active"));
+
+        assertThrows(BadRequestException.class,
+                () -> service.createRaceViolation(referee.getId(), race.getId(), request, evidence));
+        verify(raceViolationRepository, never()).save(any());
+    }
+
     private RaceRegistration registration() {
         User owner = user(3L, UserRole.OWNER);
         User jockey = user(4L, UserRole.JOCKEY);
@@ -259,6 +345,17 @@ class RaceDayGateAssignmentTest {
                 .gateNumber(gateNumber)
                 .status(RaceParticipantStatus.REGISTERED)
                 .build();
+    }
+
+    private RaceViolationRequest violationRequest(String type) {
+        RaceViolationRequest request = new RaceViolationRequest();
+        request.setParticipantId(10L);
+        request.setType(type);
+        request.setSeverity(RaceViolationSeverity.MINOR);
+        request.setDescription("Blocked the lane");
+        request.setPenaltyText("Add 3 seconds");
+        request.setOccurredAt(LocalDateTime.now());
+        return request;
     }
 
     private Race race(User referee, RaceStatus status) {

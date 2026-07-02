@@ -4,7 +4,9 @@ import com.minhthien.hoser_backend.dto.request.SystemEmailTemplatesSettingsReque
 import com.minhthien.hoser_backend.dto.request.SystemFeesSettingsRequest;
 import com.minhthien.hoser_backend.dto.request.SystemRaceDistancesSettingsRequest;
 import com.minhthien.hoser_backend.dto.request.SystemViolationRulesSettingsRequest;
+import com.minhthien.hoser_backend.dto.request.SystemViolationTypesSettingsRequest;
 import com.minhthien.hoser_backend.dto.request.ViolationPenaltyRuleRequest;
+import com.minhthien.hoser_backend.dto.request.ViolationTypeOptionRequest;
 import com.minhthien.hoser_backend.entity.SystemSettings;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.RaceViolationSeverity;
@@ -212,6 +214,62 @@ class SystemSettingsServiceImplTest {
         verify(settingsRepository, never()).save(any());
     }
 
+    @Test
+    void getSettingsReturnsDefaultViolationTypes() {
+        SystemSettings settings = settings();
+        when(settingsRepository.findById(SystemSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
+
+        var response = service.getSettings();
+
+        assertEquals(6, response.getViolationTypes().size());
+        assertEquals("FALSE_START", response.getViolationTypes().get(0).getCode());
+        assertEquals("Xuất phát sai", response.getViolationTypes().get(0).getLabel());
+        assertTrue(response.getViolationTypes().get(0).getActive());
+    }
+
+    @Test
+    void updateViolationTypesAcceptsCustomTypesAndGeneratedCodes() {
+        User admin = User.builder().id(1L).username("admin").role(UserRole.ADMIN).build();
+        SystemSettings settings = settings();
+        SystemViolationTypesSettingsRequest request = violationTypesRequest(
+                type("FALSE_START", "Xuất phát sai", true),
+                type(null, "Cản đường đua", true),
+                type("OLD_TYPE", "Loại cũ", false)
+        );
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+        when(settingsRepository.findById(SystemSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
+        when(settingsRepository.save(settings)).thenReturn(settings);
+
+        var response = service.updateViolationTypes(1L, request);
+
+        assertEquals(3, response.getViolationTypes().size());
+        assertEquals("CAN_DUONG_DUA", response.getViolationTypes().get(1).getCode());
+        assertEquals("Cản đường đua", response.getViolationTypes().get(1).getLabel());
+        assertFalse(response.getViolationTypes().get(2).getActive());
+        assertTrue(settings.getViolationTypeOptionsJson().contains("CAN_DUONG_DUA"));
+        verify(auditLogRepository).save(any());
+    }
+
+    @Test
+    void updateViolationTypesRejectsInvalidLists() {
+        User admin = User.builder().id(1L).username("admin").role(UserRole.ADMIN).build();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+
+        assertThrows(BadRequestException.class, () ->
+                service.updateViolationTypes(1L, violationTypesRequest(type("ONE", "Một", false))));
+        assertThrows(BadRequestException.class, () ->
+                service.updateViolationTypes(1L, violationTypesRequest(type("ONE", "", true))));
+        assertThrows(BadRequestException.class, () ->
+                service.updateViolationTypes(1L, violationTypesRequest(
+                        type("ONE", "Trùng", true),
+                        type("TWO", "trùng", true))));
+        assertThrows(BadRequestException.class, () ->
+                service.updateViolationTypes(1L, violationTypesRequest(
+                        type("DUPLICATE", "Một", true),
+                        type("duplicate", "Hai", true))));
+        verify(settingsRepository, never()).save(any());
+    }
+
     private SystemViolationRulesSettingsRequest violationRulesRequest(ViolationPenaltyRuleRequest... rules) {
         SystemViolationRulesSettingsRequest request = new SystemViolationRulesSettingsRequest();
         request.setRules(List.of(rules));
@@ -224,6 +282,20 @@ class SystemSettingsServiceImplTest {
         request.setSeverity(severity);
         request.setResultAction(action);
         request.setTimePenaltyMillis(timePenaltyMillis);
+        return request;
+    }
+
+    private SystemViolationTypesSettingsRequest violationTypesRequest(ViolationTypeOptionRequest... types) {
+        SystemViolationTypesSettingsRequest request = new SystemViolationTypesSettingsRequest();
+        request.setTypes(List.of(types));
+        return request;
+    }
+
+    private ViolationTypeOptionRequest type(String code, String label, boolean active) {
+        ViolationTypeOptionRequest request = new ViolationTypeOptionRequest();
+        request.setCode(code);
+        request.setLabel(label);
+        request.setActive(active);
         return request;
     }
 
@@ -241,6 +313,8 @@ class SystemSettingsServiceImplTest {
                 .systemName(SystemSettings.DEFAULT_SYSTEM_NAME)
                 .primaryColor(SystemSettings.DEFAULT_PRIMARY_COLOR)
                 .raceDistancesMetersJson(SystemSettings.DEFAULT_RACE_DISTANCES_METERS_JSON)
+                .violationPenaltyRulesJson(SystemSettings.DEFAULT_VIOLATION_PENALTY_RULES_JSON)
+                .violationTypeOptionsJson(SystemSettings.DEFAULT_VIOLATION_TYPE_OPTIONS_JSON)
                 .build();
     }
 }

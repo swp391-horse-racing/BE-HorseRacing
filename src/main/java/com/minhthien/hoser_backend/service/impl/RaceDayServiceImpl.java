@@ -20,6 +20,7 @@ import com.minhthien.hoser_backend.dto.response.RaceResultResponse;
 import com.minhthien.hoser_backend.dto.response.RaceViolationResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import com.minhthien.hoser_backend.dto.response.ViolationPenaltyRuleResponse;
+import com.minhthien.hoser_backend.dto.response.ViolationTypeOptionResponse;
 import com.minhthien.hoser_backend.entity.*;
 import com.minhthien.hoser_backend.enums.*;
 import com.minhthien.hoser_backend.exception.BadRequestException;
@@ -545,6 +546,7 @@ public class RaceDayServiceImpl implements RaceDayService {
         RaceParticipant participant = requireRaceViolationParticipant(raceId, request);
         validateViolationEvidence(evidence, true);
         ViolationPenaltyRuleResponse rule = ruleForSeverity(request.getSeverity());
+        ViolationTypeOptionResponse type = systemSettingsService.requireActiveViolationType(request.getType());
         String evidenceUrl = cloudinaryUploadService.upload(evidence, RACE_VIOLATION_EVIDENCE_FOLDER);
         RaceViolation violation = RaceViolation.builder()
                 .race(race)
@@ -553,7 +555,8 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .horse(participant.getHorse())
                 .jockey(participant.getJockey())
                 .referee(referee)
-                .type(request.getType())
+                .type(type.getCode())
+                .typeLabel(type.getLabel())
                 .severity(request.getSeverity())
                 .description(request.getDescription().trim())
                 .penaltyText(trimToNull(request.getPenaltyText()))
@@ -585,12 +588,14 @@ public class RaceDayServiceImpl implements RaceDayService {
         RaceParticipant participant = requireRaceViolationParticipant(raceId, request);
         validateViolationEvidence(evidence, false);
         ViolationPenaltyRuleResponse rule = ruleForSeverity(request.getSeverity());
+        ViolationTypeOptionResponse type = systemSettingsService.requireActiveViolationType(request.getType());
 
         violation.setParticipant(participant);
         violation.setOwner(participant.getOwner());
         violation.setHorse(participant.getHorse());
         violation.setJockey(participant.getJockey());
-        violation.setType(request.getType());
+        violation.setType(type.getCode());
+        violation.setTypeLabel(type.getLabel());
         violation.setSeverity(request.getSeverity());
         violation.setDescription(request.getDescription().trim());
         violation.setPenaltyText(trimToNull(request.getPenaltyText()));
@@ -894,7 +899,7 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (request == null || request.getParticipantId() == null) {
             throw new BadRequestException("Violation participant is required");
         }
-        if (request.getType() == null) {
+        if (request.getType() == null || request.getType().isBlank()) {
             throw new BadRequestException("Violation type is required");
         }
         if (request.getSeverity() == null) {
@@ -1714,6 +1719,7 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .refereeId(violation.getReferee().getId())
                 .refereeUsername(violation.getReferee().getUsername())
                 .type(violation.getType())
+                .typeLabel(resolveViolationTypeLabel(violation))
                 .severity(violation.getSeverity())
                 .description(violation.getDescription())
                 .penaltyText(violation.getPenaltyText())
@@ -1727,6 +1733,21 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .createdAt(violation.getCreatedAt())
                 .updatedAt(violation.getUpdatedAt())
                 .build();
+    }
+
+    private String resolveViolationTypeLabel(RaceViolation violation) {
+        if (violation.getTypeLabel() != null && !violation.getTypeLabel().isBlank()) {
+            return violation.getTypeLabel();
+        }
+        String typeCode = violation.getType();
+        if (typeCode == null || typeCode.isBlank()) {
+            return typeCode;
+        }
+        return systemSettingsService.getViolationTypes().stream()
+                .filter(type -> typeCode.equals(type.getCode()))
+                .map(ViolationTypeOptionResponse::getLabel)
+                .findFirst()
+                .orElse(typeCode);
     }
 
     private RaceResultResponse mapResult(RaceResult result) {

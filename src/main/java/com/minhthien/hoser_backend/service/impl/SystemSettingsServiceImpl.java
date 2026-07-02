@@ -8,6 +8,7 @@ import com.minhthien.hoser_backend.dto.response.PublicBrandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceDistanceOptionResponse;
 import com.minhthien.hoser_backend.dto.response.SystemSettingsResponse;
 import com.minhthien.hoser_backend.dto.response.ViolationPenaltyRuleResponse;
+import com.minhthien.hoser_backend.dto.response.ViolationTypeOptionResponse;
 import com.minhthien.hoser_backend.entity.AdminAuditLog;
 import com.minhthien.hoser_backend.entity.SystemSettings;
 import com.minhthien.hoser_backend.entity.User;
@@ -29,8 +30,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.Normalizer;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,8 +49,11 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
     private static final TypeReference<List<Integer>> INTEGER_LIST_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<ViolationPenaltyRuleRequest>> VIOLATION_RULE_LIST_TYPE =
             new TypeReference<>() {};
+    private static final TypeReference<List<ViolationTypeOptionRequest>> VIOLATION_TYPE_LIST_TYPE =
+            new TypeReference<>() {};
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{\\{([^{}]+)}}");
     private static final Pattern DISTANCE_PATTERN = Pattern.compile("^(\\d+)\\s*m?$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CODE_CLEANUP_PATTERN = Pattern.compile("[^A-Z0-9]+");
     private static final Set<String> ALLOWED_PLACEHOLDERS = Set.of("tournament", "race");
 
     private final SystemSettingsRepository settingsRepository;
@@ -149,6 +155,17 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "systemSettings", allEntries = true)
+    public SystemSettingsResponse updateViolationTypes(Long adminId, SystemViolationTypesSettingsRequest request) {
+        User admin = requireAdmin(adminId);
+        List<ViolationTypeOptionResponse> types = normalizeViolationTypes(request == null ? null : request.getTypes());
+        SystemSettings settings = getOrCreate();
+        settings.setViolationTypeOptionsJson(writeViolationTypes(types));
+        return save(admin, settings, "SYSTEM_VIOLATION_TYPES_UPDATED");
+    }
+
+    @Override
+    @Transactional
     @Cacheable(value = "systemSettings", key = "'singleton'")
     public SystemSettings getCurrent() {
         return getOrCreate();
@@ -164,6 +181,12 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
     @Transactional
     public List<ViolationPenaltyRuleResponse> getViolationPenaltyRules() {
         return violationPenaltyRules(getCurrent());
+    }
+
+    @Override
+    @Transactional
+    public List<ViolationTypeOptionResponse> getViolationTypes() {
+        return violationTypes(getCurrent());
     }
 
     @Override
@@ -186,6 +209,17 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
             throw new BadRequestException("Race distance is not configured");
         }
         return meters + "m";
+    }
+
+    @Override
+    @Transactional
+    public ViolationTypeOptionResponse requireActiveViolationType(String typeCode) {
+        String normalizedCode = normalizeExistingCode(typeCode);
+        return violationTypes(getCurrent()).stream()
+                .filter(type -> Boolean.TRUE.equals(type.getActive()))
+                .filter(type -> type.getCode().equals(normalizedCode))
+                .findFirst()
+                .orElseThrow(() -> new BadRequestException("Violation type is not configured or active"));
     }
 
     @Override
@@ -225,6 +259,7 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
                 .primaryColor(SystemSettings.DEFAULT_PRIMARY_COLOR)
                 .raceDistancesMetersJson(SystemSettings.DEFAULT_RACE_DISTANCES_METERS_JSON)
                 .violationPenaltyRulesJson(SystemSettings.DEFAULT_VIOLATION_PENALTY_RULES_JSON)
+                .violationTypeOptionsJson(SystemSettings.DEFAULT_VIOLATION_TYPE_OPTIONS_JSON)
                 .build();
     }
 
@@ -376,6 +411,108 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         }
     }
 
+    private List<ViolationTypeOptionResponse> normalizeViolationTypes(List<ViolationTypeOptionRequest> types) {
+        if (types == null || types.isEmpty()) {
+            throw new BadRequestException("Violation types are required");
+        }
+        Set<String> labels = new HashSet<>();
+        Set<String> codes = new HashSet<>();
+        List<ViolationTypeOptionResponse> normalized = new java.util.ArrayList<>();
+        int activeCount = 0;
+        for (ViolationTypeOptionRequest type : types) {
+            if (type == null || type.getLabel() == null || type.getLabel().isBlank()) {
+                throw new BadRequestException("Violation type label is required");
+            }
+            String label = type.getLabel().trim();
+            if (label.length() > 100) {
+                throw new BadRequestException("Violation type label must be at most 100 characters");
+            }
+            String labelKey = label.toLowerCase(java.util.Locale.ROOT);
+            if (!labels.add(labelKey)) {
+                throw new BadRequestException("Duplicate violation type label: " + label);
+            }
+            String code = type.getCode() == null || type.getCode().isBlank()
+                    ? generateViolationTypeCode(label, codes)
+                    : normalizeExistingCode(type.getCode());
+            if (!codes.add(code)) {
+                throw new BadRequestException("Duplicate violation type code: " + code);
+            }
+            boolean active = type.getActive() == null || type.getActive();
+            if (active) {
+                activeCount++;
+            }
+            normalized.add(ViolationTypeOptionResponse.builder()
+                    .code(code)
+                    .label(label)
+                    .active(active)
+                    .build());
+        }
+        if (activeCount == 0) {
+            throw new BadRequestException("At least one violation type must be active");
+        }
+        return normalized;
+    }
+
+    private List<ViolationTypeOptionResponse> readViolationTypes(SystemSettings settings) {
+        try {
+            String source = settings.getViolationTypeOptionsJson();
+            if (source == null || source.isBlank()) {
+                source = SystemSettings.DEFAULT_VIOLATION_TYPE_OPTIONS_JSON;
+            }
+            List<ViolationTypeOptionRequest> types = OBJECT_MAPPER.readValue(source, VIOLATION_TYPE_LIST_TYPE);
+            return normalizeViolationTypes(types);
+        } catch (JsonProcessingException | IllegalArgumentException ex) {
+            throw new BadRequestException("Violation type settings are invalid");
+        }
+    }
+
+    private String writeViolationTypes(List<ViolationTypeOptionResponse> types) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(types);
+        } catch (JsonProcessingException ex) {
+            throw new BadRequestException("Violation type settings are invalid");
+        }
+    }
+
+    private String normalizeExistingCode(String code) {
+        if (code == null || code.isBlank()) {
+            throw new BadRequestException("Violation type code is required");
+        }
+        String normalized = CODE_CLEANUP_PATTERN.matcher(code.trim().toUpperCase(java.util.Locale.ROOT))
+                .replaceAll("_")
+                .replaceAll("^_+|_+$", "");
+        if (normalized.isBlank()) {
+            throw new BadRequestException("Violation type code is required");
+        }
+        if (normalized.length() > 80) {
+            throw new BadRequestException("Violation type code must be at most 80 characters");
+        }
+        return normalized;
+    }
+
+    private String generateViolationTypeCode(String label, Set<String> usedCodes) {
+        String ascii = Normalizer.normalize(label, Normalizer.Form.NFD)
+                .replace("đ", "d")
+                .replace("Đ", "D")
+                .replaceAll("\\p{M}", "");
+        String base = CODE_CLEANUP_PATTERN.matcher(ascii.toUpperCase(java.util.Locale.ROOT))
+                .replaceAll("_")
+                .replaceAll("^_+|_+$", "");
+        if (base.isBlank()) {
+            base = "VIOLATION_TYPE";
+        }
+        if (base.length() > 72) {
+            base = base.substring(0, 72).replaceAll("_+$", "");
+        }
+        String candidate = base;
+        int suffix = 2;
+        while (usedCodes.contains(candidate)) {
+            candidate = base + "_" + suffix;
+            suffix++;
+        }
+        return candidate;
+    }
+
     private List<RaceDistanceOptionResponse> raceDistanceOptions(SystemSettings settings) {
         return readDistances(settings).stream()
                 .map(meters -> RaceDistanceOptionResponse.builder()
@@ -387,6 +524,10 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
 
     private List<ViolationPenaltyRuleResponse> violationPenaltyRules(SystemSettings settings) {
         return readViolationRules(settings);
+    }
+
+    private List<ViolationTypeOptionResponse> violationTypes(SystemSettings settings) {
+        return readViolationTypes(settings);
     }
 
     private SystemSettingsResponse map(SystemSettings settings) {
@@ -403,6 +544,7 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
                 .primaryColor(settings.getPrimaryColor())
                 .raceDistances(raceDistanceOptions(settings))
                 .violationPenaltyRules(violationPenaltyRules(settings))
+                .violationTypes(violationTypes(settings))
                 .createdAt(settings.getCreatedAt())
                 .updatedAt(settings.getUpdatedAt())
                 .updatedBy(settings.getUpdatedBy())

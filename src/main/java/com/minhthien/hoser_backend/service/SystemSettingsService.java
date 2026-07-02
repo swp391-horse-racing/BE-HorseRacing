@@ -5,6 +5,7 @@ import com.minhthien.hoser_backend.dto.response.PublicBrandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceDistanceOptionResponse;
 import com.minhthien.hoser_backend.dto.response.SystemSettingsResponse;
 import com.minhthien.hoser_backend.dto.response.ViolationPenaltyRuleResponse;
+import com.minhthien.hoser_backend.dto.response.ViolationTypeOptionResponse;
 import com.minhthien.hoser_backend.entity.SystemSettings;
 import com.minhthien.hoser_backend.enums.UserRole;
 
@@ -29,13 +30,19 @@ public interface SystemSettingsService {
 
     SystemSettingsResponse updateViolationRules(Long adminId, SystemViolationRulesSettingsRequest request);
 
+    SystemSettingsResponse updateViolationTypes(Long adminId, SystemViolationTypesSettingsRequest request);
+
     List<ViolationPenaltyRuleResponse> getViolationPenaltyRules();
+
+    List<ViolationTypeOptionResponse> getViolationTypes();
 
     SystemSettings getCurrent();
 
     List<RaceDistanceOptionResponse> getRaceDistanceOptions();
 
     String normalizeRaceDistance(String distance);
+
+    ViolationTypeOptionResponse requireActiveViolationType(String typeCode);
 
     boolean requiresTwoFactor(UserRole role);
 
