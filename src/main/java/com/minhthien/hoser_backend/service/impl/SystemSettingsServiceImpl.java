@@ -7,11 +7,14 @@ import com.minhthien.hoser_backend.dto.request.*;
 import com.minhthien.hoser_backend.dto.response.PublicBrandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceDistanceOptionResponse;
 import com.minhthien.hoser_backend.dto.response.SystemSettingsResponse;
+import com.minhthien.hoser_backend.dto.response.ViolationPenaltyRuleResponse;
 import com.minhthien.hoser_backend.entity.AdminAuditLog;
 import com.minhthien.hoser_backend.entity.SystemSettings;
 import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.enums.RaceViolationSeverity;
 import com.minhthien.hoser_backend.enums.TwoFactorPolicy;
 import com.minhthien.hoser_backend.enums.UserRole;
+import com.minhthien.hoser_backend.enums.ViolationResultAction;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
@@ -26,7 +29,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -38,6 +44,8 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
     private static final String REFERENCE_TYPE = "SYSTEM_SETTINGS";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<List<Integer>> INTEGER_LIST_TYPE = new TypeReference<>() {};
+    private static final TypeReference<List<ViolationPenaltyRuleRequest>> VIOLATION_RULE_LIST_TYPE =
+            new TypeReference<>() {};
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{\\{([^{}]+)}}");
     private static final Pattern DISTANCE_PATTERN = Pattern.compile("^(\\d+)\\s*m?$", Pattern.CASE_INSENSITIVE);
     private static final Set<String> ALLOWED_PLACEHOLDERS = Set.of("tournament", "race");
@@ -130,6 +138,17 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "systemSettings", allEntries = true)
+    public SystemSettingsResponse updateViolationRules(Long adminId, SystemViolationRulesSettingsRequest request) {
+        User admin = requireAdmin(adminId);
+        List<ViolationPenaltyRuleResponse> rules = normalizeViolationRules(request == null ? null : request.getRules());
+        SystemSettings settings = getOrCreate();
+        settings.setViolationPenaltyRulesJson(writeViolationRules(rules));
+        return save(admin, settings, "SYSTEM_VIOLATION_RULES_UPDATED");
+    }
+
+    @Override
+    @Transactional
     @Cacheable(value = "systemSettings", key = "'singleton'")
     public SystemSettings getCurrent() {
         return getOrCreate();
@@ -139,6 +158,12 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
     @Transactional
     public List<RaceDistanceOptionResponse> getRaceDistanceOptions() {
         return raceDistanceOptions(getCurrent());
+    }
+
+    @Override
+    @Transactional
+    public List<ViolationPenaltyRuleResponse> getViolationPenaltyRules() {
+        return violationPenaltyRules(getCurrent());
     }
 
     @Override
@@ -199,6 +224,7 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
                 .systemName(SystemSettings.DEFAULT_SYSTEM_NAME)
                 .primaryColor(SystemSettings.DEFAULT_PRIMARY_COLOR)
                 .raceDistancesMetersJson(SystemSettings.DEFAULT_RACE_DISTANCES_METERS_JSON)
+                .violationPenaltyRulesJson(SystemSettings.DEFAULT_VIOLATION_PENALTY_RULES_JSON)
                 .build();
     }
 
@@ -292,6 +318,64 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         }
     }
 
+    private List<ViolationPenaltyRuleResponse> normalizeViolationRules(List<ViolationPenaltyRuleRequest> rules) {
+        if (rules == null || rules.isEmpty()) {
+            throw new BadRequestException("Violation penalty rules are required");
+        }
+        Map<RaceViolationSeverity, ViolationPenaltyRuleResponse> bySeverity =
+                new EnumMap<>(RaceViolationSeverity.class);
+        for (ViolationPenaltyRuleRequest rule : rules) {
+            if (rule == null || rule.getSeverity() == null || rule.getResultAction() == null) {
+                throw new BadRequestException("Violation penalty rule severity and action are required");
+            }
+            if (bySeverity.containsKey(rule.getSeverity())) {
+                throw new BadRequestException("Duplicate violation penalty rule for " + rule.getSeverity());
+            }
+            long timePenaltyMillis = rule.getTimePenaltyMillis() == null ? 0L : rule.getTimePenaltyMillis();
+            if (timePenaltyMillis < 0) {
+                throw new BadRequestException("Violation time penalty must not be negative");
+            }
+            if (rule.getResultAction() == ViolationResultAction.TIME_PENALTY && timePenaltyMillis <= 0) {
+                throw new BadRequestException("Time penalty action requires a positive time penalty");
+            }
+            if (rule.getResultAction() != ViolationResultAction.TIME_PENALTY) {
+                timePenaltyMillis = 0L;
+            }
+            bySeverity.put(rule.getSeverity(), ViolationPenaltyRuleResponse.builder()
+                    .severity(rule.getSeverity())
+                    .resultAction(rule.getResultAction())
+                    .timePenaltyMillis(timePenaltyMillis)
+                    .build());
+        }
+        if (!bySeverity.keySet().equals(EnumSet.allOf(RaceViolationSeverity.class))) {
+            throw new BadRequestException("Violation penalty rules must include every severity");
+        }
+        return EnumSet.allOf(RaceViolationSeverity.class).stream()
+                .map(bySeverity::get)
+                .toList();
+    }
+
+    private List<ViolationPenaltyRuleResponse> readViolationRules(SystemSettings settings) {
+        try {
+            String source = settings.getViolationPenaltyRulesJson();
+            if (source == null || source.isBlank()) {
+                source = SystemSettings.DEFAULT_VIOLATION_PENALTY_RULES_JSON;
+            }
+            List<ViolationPenaltyRuleRequest> rules = OBJECT_MAPPER.readValue(source, VIOLATION_RULE_LIST_TYPE);
+            return normalizeViolationRules(rules);
+        } catch (JsonProcessingException | IllegalArgumentException ex) {
+            throw new BadRequestException("Violation penalty rule settings are invalid");
+        }
+    }
+
+    private String writeViolationRules(List<ViolationPenaltyRuleResponse> rules) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(rules);
+        } catch (JsonProcessingException ex) {
+            throw new BadRequestException("Violation penalty rule settings are invalid");
+        }
+    }
+
     private List<RaceDistanceOptionResponse> raceDistanceOptions(SystemSettings settings) {
         return readDistances(settings).stream()
                 .map(meters -> RaceDistanceOptionResponse.builder()
@@ -299,6 +383,10 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
                         .label(meters + "m")
                         .build())
                 .toList();
+    }
+
+    private List<ViolationPenaltyRuleResponse> violationPenaltyRules(SystemSettings settings) {
+        return readViolationRules(settings);
     }
 
     private SystemSettingsResponse map(SystemSettings settings) {
@@ -314,6 +402,7 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
                 .systemName(settings.getSystemName())
                 .primaryColor(settings.getPrimaryColor())
                 .raceDistances(raceDistanceOptions(settings))
+                .violationPenaltyRules(violationPenaltyRules(settings))
                 .createdAt(settings.getCreatedAt())
                 .updatedAt(settings.getUpdatedAt())
                 .updatedBy(settings.getUpdatedBy())

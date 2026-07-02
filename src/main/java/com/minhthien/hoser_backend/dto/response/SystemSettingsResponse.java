@@ -22,6 +22,7 @@ public class SystemSettingsResponse {
     private String systemName;
     private String primaryColor;
     private List<RaceDistanceOptionResponse> raceDistances;
+    private List<ViolationPenaltyRuleResponse> violationPenaltyRules;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private String updatedBy;

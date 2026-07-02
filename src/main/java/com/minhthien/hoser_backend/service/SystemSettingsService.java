@@ -4,6 +4,7 @@ import com.minhthien.hoser_backend.dto.request.*;
 import com.minhthien.hoser_backend.dto.response.PublicBrandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceDistanceOptionResponse;
 import com.minhthien.hoser_backend.dto.response.SystemSettingsResponse;
+import com.minhthien.hoser_backend.dto.response.ViolationPenaltyRuleResponse;
 import com.minhthien.hoser_backend.entity.SystemSettings;
 import com.minhthien.hoser_backend.enums.UserRole;
 
@@ -25,6 +26,10 @@ public interface SystemSettingsService {
     SystemSettingsResponse updateBranding(Long adminId, SystemBrandingSettingsRequest request);
 
     SystemSettingsResponse updateRaceDistances(Long adminId, SystemRaceDistancesSettingsRequest request);
+
+    SystemSettingsResponse updateViolationRules(Long adminId, SystemViolationRulesSettingsRequest request);
+
+    List<ViolationPenaltyRuleResponse> getViolationPenaltyRules();
 
     SystemSettings getCurrent();
 

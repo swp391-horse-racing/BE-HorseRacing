@@ -10,13 +10,16 @@ import com.minhthien.hoser_backend.dto.request.RaceRegistrationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationReviewRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationWithdrawRequest;
 import com.minhthien.hoser_backend.dto.request.RaceResultEntryRequest;
+import com.minhthien.hoser_backend.dto.request.RaceViolationRequest;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengeStandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceComplaintResponse;
 import com.minhthien.hoser_backend.dto.response.RaceParticipantResponse;
 import com.minhthien.hoser_backend.dto.response.RaceRegistrationResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResultResponse;
+import com.minhthien.hoser_backend.dto.response.RaceViolationResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
+import com.minhthien.hoser_backend.dto.response.ViolationPenaltyRuleResponse;
 import com.minhthien.hoser_backend.entity.*;
 import com.minhthien.hoser_backend.enums.*;
 import com.minhthien.hoser_backend.exception.BadRequestException;
@@ -32,6 +35,7 @@ import com.minhthien.hoser_backend.service.RaceDayService;
 import com.minhthien.hoser_backend.service.RealtimeEventService;
 import com.minhthien.hoser_backend.service.RefereePaymentService;
 import com.minhthien.hoser_backend.service.RefereeInvitationService;
+import com.minhthien.hoser_backend.service.SystemSettingsService;
 import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,6 +61,8 @@ public class RaceDayServiceImpl implements RaceDayService {
     private static final String JOCKEY_CHALLENGE_REF = "JOCKEY_CHALLENGE";
     private static final String RACE_COMPLAINT_REF = "RACE_COMPLAINT";
     private static final String RACE_COMPLAINT_EVIDENCE_FOLDER = "hoser/race-complaints/evidence";
+    private static final String RACE_VIOLATION_EVIDENCE_FOLDER = "hoser/race-violations/evidence";
+    private static final long MAX_VIOLATION_EVIDENCE_BYTES = 100L * 1024L * 1024L;
     private static final String LATE_CHECK_IN_REF = "RACE_PARTICIPANT";
 
     private final RaceRepository raceRepository;
@@ -64,6 +70,7 @@ public class RaceDayServiceImpl implements RaceDayService {
     private final RaceParticipantRepository raceParticipantRepository;
     private final RaceResultRepository raceResultRepository;
     private final RaceComplaintRepository raceComplaintRepository;
+    private final RaceViolationRepository raceViolationRepository;
     private final JockeyChallengeResultRepository jockeyChallengeResultRepository;
     private final JockeyInvitationRepository jockeyInvitationRepository;
     private final TournamentRepository tournamentRepository;
@@ -76,6 +83,7 @@ public class RaceDayServiceImpl implements RaceDayService {
     private final CloudinaryUploadService cloudinaryUploadService;
     private final RefereePaymentService refereePaymentService;
     private final RefereeInvitationService refereeInvitationService;
+    private final SystemSettingsService systemSettingsService;
     private NotificationService notificationService;
     private RealtimeEventService realtimeEventService;
 
@@ -473,6 +481,8 @@ public class RaceDayServiceImpl implements RaceDayService {
         Map<Long, RaceParticipant> participantById = participants.stream()
                 .collect(Collectors.toMap(RaceParticipant::getId, Function.identity()));
         List<RaceResultEntryRequest> resultEntries = completeResultEntries(request.getResults(), participants);
+        List<RaceViolation> violations = raceViolationRepository.findByRaceIdOrderByOccurredAtDesc(raceId);
+        resultEntries = applyViolationResultActions(resultEntries, violations);
         validateResultEntries(resultEntries, participantById);
 
         LocalDateTime now = LocalDateTime.now();
@@ -503,6 +513,108 @@ public class RaceDayServiceImpl implements RaceDayService {
         }
         return raceResultRepository.findByRaceIdOrderByRankAsc(raceId).stream()
                 .map(this::mapResult)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<RaceViolationResponse> getRefereeViolations(Long refereeId) {
+        User referee = requireUser(refereeId);
+        requireRole(referee, UserRole.REFEREE, "Only referees can view race violations");
+        return raceViolationRepository.findByRefereeIdOrderByOccurredAtDesc(refereeId).stream()
+                .map(this::mapViolation)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<RaceViolationResponse> getRefereeRaceViolations(Long refereeId, Long raceId) {
+        requireAssignedRefereeRace(refereeId, raceId);
+        return raceViolationRepository.findByRaceIdOrderByOccurredAtDesc(raceId).stream()
+                .map(this::mapViolation)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public RaceViolationResponse createRaceViolation(Long refereeId, Long raceId, RaceViolationRequest request,
+                                                     MultipartFile evidence) {
+        User referee = requireUser(refereeId);
+        Race race = requireAssignedRefereeRace(refereeId, raceId);
+        validateRaceCanAcceptViolation(race);
+        RaceParticipant participant = requireRaceViolationParticipant(raceId, request);
+        validateViolationEvidence(evidence, true);
+        ViolationPenaltyRuleResponse rule = ruleForSeverity(request.getSeverity());
+        String evidenceUrl = cloudinaryUploadService.upload(evidence, RACE_VIOLATION_EVIDENCE_FOLDER);
+        RaceViolation violation = RaceViolation.builder()
+                .race(race)
+                .participant(participant)
+                .owner(participant.getOwner())
+                .horse(participant.getHorse())
+                .jockey(participant.getJockey())
+                .referee(referee)
+                .type(request.getType())
+                .severity(request.getSeverity())
+                .description(request.getDescription().trim())
+                .penaltyText(trimToNull(request.getPenaltyText()))
+                .occurredAt(request.getOccurredAt())
+                .resultAction(rule.getResultAction())
+                .timePenaltyMillis(defaultLong(rule.getTimePenaltyMillis()))
+                .evidenceUrl(evidenceUrl)
+                .evidenceName(safeEvidenceName(evidence))
+                .evidenceType(safeEvidenceType(evidence))
+                .evidenceSize(evidence.getSize())
+                .build();
+        return mapViolation(raceViolationRepository.save(violation));
+    }
+
+    @Override
+    @Transactional
+    public RaceViolationResponse updateRaceViolation(Long refereeId, Long raceId, Long violationId,
+                                                     RaceViolationRequest request, MultipartFile evidence) {
+        Race race = requireAssignedRefereeRace(refereeId, raceId);
+        validateRaceCanAcceptViolation(race);
+        RaceViolation violation = raceViolationRepository.findById(violationId)
+                .orElseThrow(() -> new ResourceNotFoundException("RaceViolation", "id", violationId));
+        if (!violation.getRace().getId().equals(raceId)) {
+            throw new BadRequestException("Violation does not belong to this race");
+        }
+        if (!violation.getReferee().getId().equals(refereeId)) {
+            throw new UnauthorizedException("Cannot update another referee's race violation");
+        }
+        RaceParticipant participant = requireRaceViolationParticipant(raceId, request);
+        validateViolationEvidence(evidence, false);
+        ViolationPenaltyRuleResponse rule = ruleForSeverity(request.getSeverity());
+
+        violation.setParticipant(participant);
+        violation.setOwner(participant.getOwner());
+        violation.setHorse(participant.getHorse());
+        violation.setJockey(participant.getJockey());
+        violation.setType(request.getType());
+        violation.setSeverity(request.getSeverity());
+        violation.setDescription(request.getDescription().trim());
+        violation.setPenaltyText(trimToNull(request.getPenaltyText()));
+        violation.setOccurredAt(request.getOccurredAt());
+        violation.setResultAction(rule.getResultAction());
+        violation.setTimePenaltyMillis(defaultLong(rule.getTimePenaltyMillis()));
+        if (evidence != null && !evidence.isEmpty()) {
+            violation.setEvidenceUrl(cloudinaryUploadService.upload(evidence, RACE_VIOLATION_EVIDENCE_FOLDER));
+            violation.setEvidenceName(safeEvidenceName(evidence));
+            violation.setEvidenceType(safeEvidenceType(evidence));
+            violation.setEvidenceSize(evidence.getSize());
+        }
+        return mapViolation(raceViolationRepository.save(violation));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<RaceViolationResponse> getAdminRaceViolations(Long adminId, Long raceId) {
+        requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can view race violations");
+        if (!raceRepository.existsById(raceId)) {
+            throw new ResourceNotFoundException("Race", "id", raceId);
+        }
+        return raceViolationRepository.findByRaceIdOrderByOccurredAtDesc(raceId).stream()
+                .map(this::mapViolation)
                 .toList();
     }
 
@@ -767,6 +879,88 @@ public class RaceDayServiceImpl implements RaceDayService {
             throw new UnauthorizedException("Referee is not assigned to this race");
         }
         return race;
+    }
+
+    private void validateRaceCanAcceptViolation(Race race) {
+        if (race.getStatus() != RaceStatus.SCHEDULED && race.getStatus() != RaceStatus.ONGOING) {
+            throw new BadRequestException("Race violations can only be recorded before result confirmation");
+        }
+        if (race.getStatus() == RaceStatus.RESULT_CONFIRMED || raceResultRepository.existsByRaceId(race.getId())) {
+            throw new BadRequestException("Cannot update race violations after result confirmation");
+        }
+    }
+
+    private RaceParticipant requireRaceViolationParticipant(Long raceId, RaceViolationRequest request) {
+        if (request == null || request.getParticipantId() == null) {
+            throw new BadRequestException("Violation participant is required");
+        }
+        if (request.getType() == null) {
+            throw new BadRequestException("Violation type is required");
+        }
+        if (request.getSeverity() == null) {
+            throw new BadRequestException("Violation severity is required");
+        }
+        if (request.getDescription() == null || request.getDescription().isBlank()) {
+            throw new BadRequestException("Violation description is required");
+        }
+        if (request.getOccurredAt() == null) {
+            throw new BadRequestException("Violation occurred time is required");
+        }
+        RaceParticipant participant = raceParticipantRepository.findById(request.getParticipantId())
+                .orElseThrow(() -> new ResourceNotFoundException("RaceParticipant", "id", request.getParticipantId()));
+        if (!participant.getRace().getId().equals(raceId)) {
+            throw new BadRequestException("Violation participant does not belong to this race");
+        }
+        return participant;
+    }
+
+    private ViolationPenaltyRuleResponse ruleForSeverity(RaceViolationSeverity severity) {
+        return systemSettingsService.getViolationPenaltyRules().stream()
+                .filter(rule -> rule.getSeverity() == severity)
+                .findFirst()
+                .orElseThrow(() -> new BadRequestException("Violation penalty rule is not configured for " + severity));
+    }
+
+    private void validateViolationEvidence(MultipartFile evidence, boolean required) {
+        if (evidence == null || evidence.isEmpty()) {
+            if (required) {
+                throw new BadRequestException("Violation evidence is required");
+            }
+            return;
+        }
+        if (evidence.getSize() > MAX_VIOLATION_EVIDENCE_BYTES) {
+            throw new BadRequestException("Violation evidence must not exceed 100MB");
+        }
+        String contentType = safeEvidenceType(evidence).toLowerCase(Locale.ROOT);
+        String filename = safeEvidenceName(evidence).toLowerCase(Locale.ROOT);
+        boolean allowedByType = List.of(
+                "image/jpeg",
+                "image/png",
+                "image/webp",
+                "image/gif",
+                "video/mp4",
+                "video/quicktime"
+        ).contains(contentType);
+        boolean allowedByName = filename.endsWith(".jpg")
+                || filename.endsWith(".jpeg")
+                || filename.endsWith(".png")
+                || filename.endsWith(".webp")
+                || filename.endsWith(".gif")
+                || filename.endsWith(".mp4")
+                || filename.endsWith(".mov");
+        if (!allowedByType && !allowedByName) {
+            throw new BadRequestException("Only JPG, PNG, WEBP, GIF, MP4, or MOV evidence files are allowed");
+        }
+    }
+
+    private String safeEvidenceName(MultipartFile evidence) {
+        String filename = evidence == null ? null : evidence.getOriginalFilename();
+        return filename == null || filename.isBlank() ? "evidence" : filename;
+    }
+
+    private String safeEvidenceType(MultipartFile evidence) {
+        String contentType = evidence == null ? null : evidence.getContentType();
+        return contentType == null || contentType.isBlank() ? "application/octet-stream" : contentType;
     }
 
     private boolean canCancelRace(RaceStatus status) {
@@ -1112,6 +1306,67 @@ public class RaceDayServiceImpl implements RaceDayService {
         }
     }
 
+    private List<RaceResultEntryRequest> applyViolationResultActions(List<RaceResultEntryRequest> entries,
+                                                                     List<RaceViolation> violations) {
+        if (violations == null || violations.isEmpty()) {
+            return entries;
+        }
+        Map<Long, List<RaceViolation>> byParticipantId = violations.stream()
+                .collect(Collectors.groupingBy(violation -> violation.getParticipant().getId()));
+        for (RaceResultEntryRequest entry : entries) {
+            List<RaceViolation> participantViolations = byParticipantId.get(entry.getParticipantId());
+            if (participantViolations == null || participantViolations.isEmpty()) {
+                continue;
+            }
+            boolean disqualified = participantViolations.stream()
+                    .anyMatch(violation -> violation.getResultAction() == ViolationResultAction.DISQUALIFY);
+            long timePenaltyMillis = participantViolations.stream()
+                    .filter(violation -> violation.getResultAction() == ViolationResultAction.TIME_PENALTY)
+                    .mapToLong(violation -> defaultLong(violation.getTimePenaltyMillis()))
+                    .filter(value -> value > 0)
+                    .sum();
+            if (disqualified) {
+                entry.setStatus(RaceParticipantStatus.DISQUALIFIED);
+                entry.setRank(null);
+                entry.setFinishTimeMillis(0L);
+                entry.setNote(appendResultNote(entry.getNote(), "DQ by violations "
+                        + violationIds(participantViolations)));
+            } else if (timePenaltyMillis > 0 && entry.getStatus() == RaceParticipantStatus.FINISHED) {
+                entry.setFinishTimeMillis(defaultLong(entry.getFinishTimeMillis()) + timePenaltyMillis);
+                entry.setNote(appendResultNote(entry.getNote(), "Penalty +"
+                        + timePenaltyMillis + "ms by violations " + violationIds(participantViolations)));
+            }
+        }
+        rerankFinishedEntries(entries);
+        return entries;
+    }
+
+    private void rerankFinishedEntries(List<RaceResultEntryRequest> entries) {
+        List<RaceResultEntryRequest> finished = entries.stream()
+                .filter(entry -> entry.getStatus() == RaceParticipantStatus.FINISHED)
+                .sorted(Comparator
+                        .comparing((RaceResultEntryRequest entry) -> defaultLong(entry.getFinishTimeMillis()))
+                        .thenComparing(RaceResultEntryRequest::getParticipantId))
+                .toList();
+        for (int index = 0; index < finished.size(); index++) {
+            finished.get(index).setRank(index + 1);
+        }
+        entries.stream()
+                .filter(entry -> entry.getStatus() != RaceParticipantStatus.FINISHED)
+                .forEach(entry -> entry.setRank(null));
+    }
+
+    private String violationIds(List<RaceViolation> violations) {
+        return violations.stream()
+                .map(violation -> "#" + violation.getId())
+                .collect(Collectors.joining(", "));
+    }
+
+    private String appendResultNote(String current, String addition) {
+        String base = current == null || current.isBlank() ? addition : current.trim() + " | " + addition;
+        return base.length() <= 1000 ? base : base.substring(0, 1000);
+    }
+
     private void autoMarkRegisteredParticipantsAbsent(List<RaceParticipant> participants, Long refereeId) {
         LocalDateTime now = LocalDateTime.now();
         participants.stream()
@@ -1443,6 +1698,37 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .build();
     }
 
+    private RaceViolationResponse mapViolation(RaceViolation violation) {
+        return RaceViolationResponse.builder()
+                .id(violation.getId())
+                .raceId(violation.getRace().getId())
+                .raceName(violation.getRace().getName())
+                .participantId(violation.getParticipant().getId())
+                .gateNumber(violation.getParticipant().getGateNumber())
+                .ownerId(violation.getOwner().getId())
+                .ownerUsername(violation.getOwner().getUsername())
+                .horseId(violation.getHorse().getId())
+                .horseName(violation.getHorse().getName())
+                .jockeyId(violation.getJockey().getId())
+                .jockeyUsername(violation.getJockey().getUsername())
+                .refereeId(violation.getReferee().getId())
+                .refereeUsername(violation.getReferee().getUsername())
+                .type(violation.getType())
+                .severity(violation.getSeverity())
+                .description(violation.getDescription())
+                .penaltyText(violation.getPenaltyText())
+                .occurredAt(violation.getOccurredAt())
+                .resultAction(violation.getResultAction())
+                .timePenaltyMillis(defaultLong(violation.getTimePenaltyMillis()))
+                .evidenceUrl(violation.getEvidenceUrl())
+                .evidenceName(violation.getEvidenceName())
+                .evidenceType(violation.getEvidenceType())
+                .evidenceSize(violation.getEvidenceSize())
+                .createdAt(violation.getCreatedAt())
+                .updatedAt(violation.getUpdatedAt())
+                .build();
+    }
+
     private RaceResultResponse mapResult(RaceResult result) {
         return RaceResultResponse.builder()
                 .id(result.getId())
@@ -1486,6 +1772,17 @@ public class RaceDayServiceImpl implements RaceDayService {
 
     private BigDecimal defaultZero(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private long defaultLong(Long value) {
+        return value == null ? 0L : value;
+    }
+
+    private String trimToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     private BigDecimal ownerRacePrizeAmount(RaceResult result) {

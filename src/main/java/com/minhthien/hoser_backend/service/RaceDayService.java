@@ -9,12 +9,14 @@ import com.minhthien.hoser_backend.dto.request.RaceParticipantCheckInRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationReviewRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationWithdrawRequest;
+import com.minhthien.hoser_backend.dto.request.RaceViolationRequest;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengeStandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceComplaintResponse;
 import com.minhthien.hoser_backend.dto.response.RaceParticipantResponse;
 import com.minhthien.hoser_backend.dto.response.RaceRegistrationResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResultResponse;
+import com.minhthien.hoser_backend.dto.response.RaceViolationResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -59,6 +61,18 @@ public interface RaceDayService {
     List<RaceResultResponse> finalizeRaceResult(Long refereeId, Long raceId, RaceFinalizeResultRequest request);
 
     List<RaceResultResponse> getRaceResults(Long raceId);
+
+    List<RaceViolationResponse> getRefereeViolations(Long refereeId);
+
+    List<RaceViolationResponse> getRefereeRaceViolations(Long refereeId, Long raceId);
+
+    RaceViolationResponse createRaceViolation(Long refereeId, Long raceId, RaceViolationRequest request,
+                                              MultipartFile evidence);
+
+    RaceViolationResponse updateRaceViolation(Long refereeId, Long raceId, Long violationId,
+                                              RaceViolationRequest request, MultipartFile evidence);
+
+    List<RaceViolationResponse> getAdminRaceViolations(Long adminId, Long raceId);
 
     RaceComplaintResponse createRaceComplaint(Long ownerId, Long raceId, RaceComplaintRequest request,
                                               MultipartFile evidence);

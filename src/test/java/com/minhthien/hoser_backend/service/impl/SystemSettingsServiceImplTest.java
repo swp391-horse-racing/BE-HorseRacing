@@ -3,10 +3,14 @@ package com.minhthien.hoser_backend.service.impl;
 import com.minhthien.hoser_backend.dto.request.SystemEmailTemplatesSettingsRequest;
 import com.minhthien.hoser_backend.dto.request.SystemFeesSettingsRequest;
 import com.minhthien.hoser_backend.dto.request.SystemRaceDistancesSettingsRequest;
+import com.minhthien.hoser_backend.dto.request.SystemViolationRulesSettingsRequest;
+import com.minhthien.hoser_backend.dto.request.ViolationPenaltyRuleRequest;
 import com.minhthien.hoser_backend.entity.SystemSettings;
 import com.minhthien.hoser_backend.entity.User;
+import com.minhthien.hoser_backend.enums.RaceViolationSeverity;
 import com.minhthien.hoser_backend.enums.TwoFactorPolicy;
 import com.minhthien.hoser_backend.enums.UserRole;
+import com.minhthien.hoser_backend.enums.ViolationResultAction;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.repository.AdminAuditLogRepository;
 import com.minhthien.hoser_backend.repository.SystemSettingsRepository;
@@ -168,6 +172,59 @@ class SystemSettingsServiceImplTest {
         assertEquals("1000m", service.normalizeRaceDistance("1000"));
         assertEquals("1200m", service.normalizeRaceDistance("1200m"));
         assertThrows(BadRequestException.class, () -> service.normalizeRaceDistance("1300m"));
+    }
+
+    @Test
+    void updateViolationRulesNormalizesAndStoresJson() {
+        User admin = User.builder().id(1L).username("admin").role(UserRole.ADMIN).build();
+        SystemSettings settings = settings();
+        SystemViolationRulesSettingsRequest request = violationRulesRequest(
+                rule(RaceViolationSeverity.WARNING, ViolationResultAction.NONE, 5000L),
+                rule(RaceViolationSeverity.MINOR, ViolationResultAction.TIME_PENALTY, 3000L),
+                rule(RaceViolationSeverity.MAJOR, ViolationResultAction.TIME_PENALTY, 10000L),
+                rule(RaceViolationSeverity.DISQUALIFICATION, ViolationResultAction.DISQUALIFY, 2000L)
+        );
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+        when(settingsRepository.findById(SystemSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
+        when(settingsRepository.save(settings)).thenReturn(settings);
+
+        var response = service.updateViolationRules(1L, request);
+
+        assertEquals(4, response.getViolationPenaltyRules().size());
+        assertEquals(0L, response.getViolationPenaltyRules().get(0).getTimePenaltyMillis());
+        assertEquals(3000L, response.getViolationPenaltyRules().get(1).getTimePenaltyMillis());
+        assertTrue(settings.getViolationPenaltyRulesJson().contains("\"MINOR\""));
+        verify(auditLogRepository).save(any());
+    }
+
+    @Test
+    void updateViolationRulesRejectsTimePenaltyWithoutPositiveMillis() {
+        User admin = User.builder().id(1L).username("admin").role(UserRole.ADMIN).build();
+        SystemViolationRulesSettingsRequest request = violationRulesRequest(
+                rule(RaceViolationSeverity.WARNING, ViolationResultAction.NONE, 0L),
+                rule(RaceViolationSeverity.MINOR, ViolationResultAction.TIME_PENALTY, 0L),
+                rule(RaceViolationSeverity.MAJOR, ViolationResultAction.TIME_PENALTY, 10000L),
+                rule(RaceViolationSeverity.DISQUALIFICATION, ViolationResultAction.DISQUALIFY, 0L)
+        );
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+
+        assertThrows(BadRequestException.class, () -> service.updateViolationRules(1L, request));
+        verify(settingsRepository, never()).save(any());
+    }
+
+    private SystemViolationRulesSettingsRequest violationRulesRequest(ViolationPenaltyRuleRequest... rules) {
+        SystemViolationRulesSettingsRequest request = new SystemViolationRulesSettingsRequest();
+        request.setRules(List.of(rules));
+        return request;
+    }
+
+    private ViolationPenaltyRuleRequest rule(RaceViolationSeverity severity, ViolationResultAction action,
+                                             Long timePenaltyMillis) {
+        ViolationPenaltyRuleRequest request = new ViolationPenaltyRuleRequest();
+        request.setSeverity(severity);
+        request.setResultAction(action);
+        request.setTimePenaltyMillis(timePenaltyMillis);
+        return request;
     }
 
     private SystemSettings settings() {

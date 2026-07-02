@@ -9,6 +9,7 @@ import com.minhthien.hoser_backend.dto.request.RaceParticipantCheckInRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationReviewRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationWithdrawRequest;
+import com.minhthien.hoser_backend.dto.request.RaceViolationRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengeStandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceComplaintResponse;
@@ -16,6 +17,7 @@ import com.minhthien.hoser_backend.dto.response.RaceParticipantResponse;
 import com.minhthien.hoser_backend.dto.response.RaceRegistrationResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResultResponse;
+import com.minhthien.hoser_backend.dto.response.RaceViolationResponse;
 import com.minhthien.hoser_backend.dto.response.RefereeRacePaymentResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import com.minhthien.hoser_backend.entity.User;
@@ -114,6 +116,14 @@ public class RaceDayController {
                 raceDayService.getRaceParticipants(currentUser.getId(), id)));
     }
 
+    @GetMapping("/admin/races/{id}/violations")
+    public ResponseEntity<ApiResponse<List<RaceViolationResponse>>> getAdminRaceViolations(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                raceDayService.getAdminRaceViolations(currentUser.getId(), id)));
+    }
+
     @PutMapping("/admin/races/{id}/cancel")
     public ResponseEntity<ApiResponse<RaceResponse>> cancelRace(
             @AuthenticationPrincipal User currentUser,
@@ -158,6 +168,42 @@ public class RaceDayController {
             @PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(
                 raceDayService.getRefereeRaceParticipants(currentUser.getId(), id)));
+    }
+
+    @GetMapping("/referee/violations")
+    public ResponseEntity<ApiResponse<List<RaceViolationResponse>>> getRefereeViolations(
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(
+                raceDayService.getRefereeViolations(currentUser.getId())));
+    }
+
+    @GetMapping("/referee/races/{id}/violations")
+    public ResponseEntity<ApiResponse<List<RaceViolationResponse>>> getRefereeRaceViolations(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                raceDayService.getRefereeRaceViolations(currentUser.getId(), id)));
+    }
+
+    @PostMapping(value = "/referee/races/{id}/violations", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<RaceViolationResponse>> createRaceViolation(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @Valid @RequestPart("request") RaceViolationRequest request,
+            @RequestPart("evidence") MultipartFile evidence) {
+        return ResponseEntity.ok(ApiResponse.success("Race violation created",
+                raceDayService.createRaceViolation(currentUser.getId(), id, request, evidence)));
+    }
+
+    @PutMapping(value = "/referee/races/{id}/violations/{violationId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<RaceViolationResponse>> updateRaceViolation(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @PathVariable Long violationId,
+            @Valid @RequestPart("request") RaceViolationRequest request,
+            @RequestPart(value = "evidence", required = false) MultipartFile evidence) {
+        return ResponseEntity.ok(ApiResponse.success("Race violation updated",
+                raceDayService.updateRaceViolation(currentUser.getId(), id, violationId, request, evidence)));
     }
 
     @PutMapping("/referee/races/{id}/participants/{participantId}/gate")

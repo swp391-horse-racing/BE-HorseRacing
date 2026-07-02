@@ -35,6 +35,13 @@ public class SystemSettings {
     public static final String DEFAULT_SYSTEM_NAME = "Horse Racing Admin";
     public static final String DEFAULT_PRIMARY_COLOR = "#D4A017";
     public static final String DEFAULT_RACE_DISTANCES_METERS_JSON = "[1000,1200,1500]";
+    public static final String DEFAULT_VIOLATION_PENALTY_RULES_JSON = """
+            [
+              {"severity":"WARNING","resultAction":"NONE","timePenaltyMillis":0},
+              {"severity":"MINOR","resultAction":"TIME_PENALTY","timePenaltyMillis":3000},
+              {"severity":"MAJOR","resultAction":"TIME_PENALTY","timePenaltyMillis":10000},
+              {"severity":"DISQUALIFICATION","resultAction":"DISQUALIFY","timePenaltyMillis":0}
+            ]""";
 
     @Id
     private Long id;
@@ -74,6 +81,10 @@ public class SystemSettings {
     @Lob
     @Column(name = "race_distances_meters_json", nullable = false)
     private String raceDistancesMetersJson;
+
+    @Lob
+    @Column(name = "violation_penalty_rules_json", nullable = false)
+    private String violationPenaltyRulesJson;
 
     @Column(name = "created_at", nullable = false)
     @Builder.Default
@@ -117,6 +128,9 @@ public class SystemSettings {
         if (primaryColor == null) primaryColor = DEFAULT_PRIMARY_COLOR;
         if (raceDistancesMetersJson == null || raceDistancesMetersJson.isBlank()) {
             raceDistancesMetersJson = DEFAULT_RACE_DISTANCES_METERS_JSON;
+        }
+        if (violationPenaltyRulesJson == null || violationPenaltyRulesJson.isBlank()) {
+            violationPenaltyRulesJson = DEFAULT_VIOLATION_PENALTY_RULES_JSON;
         }
     }
 }

@@ -83,6 +83,14 @@ public class SystemSettingsController {
         return ok(settingsService.updateRaceDistances(admin.getId(), request));
     }
 
+    @SecurityRequirement(name = "bearerAuth")
+    @PutMapping("/api/v1/admin/system-settings/violation-rules")
+    public ResponseEntity<ApiResponse<SystemSettingsResponse>> updateViolationRules(
+            @AuthenticationPrincipal User admin,
+            @Valid @RequestBody SystemViolationRulesSettingsRequest request) {
+        return ok(settingsService.updateViolationRules(admin.getId(), request));
+    }
+
     private ResponseEntity<ApiResponse<SystemSettingsResponse>> ok(SystemSettingsResponse response) {
         return ResponseEntity.ok(ApiResponse.success("System settings updated", response));
     }
