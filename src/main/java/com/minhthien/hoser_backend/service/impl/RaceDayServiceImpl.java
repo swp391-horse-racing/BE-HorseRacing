@@ -496,7 +496,11 @@ public class RaceDayServiceImpl implements RaceDayService {
         race.setResultFinalizedAt(now);
         race.setResultFinalizedBy(refereeId);
         raceRepository.save(race);
-        refereePaymentService.payForCompletedRace(race);
+        try {
+            refereePaymentService.payForCompletedRace(race);
+        } catch (BadRequestException ex) {
+            log.warn("Referee salary payout skipped for race {}: {}", race.getId(), ex.getMessage());
+        }
         bettingService.settleRaceBets(raceId);
         List<RaceResult> savedResults = raceResultRepository.findByRaceIdOrderByRankAsc(raceId);
         publishRaceResults(race);
