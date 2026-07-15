@@ -444,6 +444,9 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (race.getStatus() != RaceStatus.SCHEDULED) {
             throw new BadRequestException("Only scheduled races can be started");
         }
+        if (race.getTournament() == null || race.getTournament().getStatus() != TournamentStatus.ONGOING) {
+            throw new BadRequestException("Tournament must be ongoing before a race can be started");
+        }
         List<RaceParticipant> participants = raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(raceId);
         validateRaceGatesReady(participants);
         long checkedInCount = participants.stream()

@@ -27,6 +27,7 @@ final class TournamentStatusSync {
             case PUBLISHED -> RaceStatus.PUBLISHED;
             case OPEN_REGISTRATION -> RaceStatus.OPEN_REGISTRATION;
             case REGISTRATION_CLOSED -> RaceStatus.REGISTRATION_CLOSED;
+            case SCHEDULED -> RaceStatus.SCHEDULED;
             default -> null;
         };
     }

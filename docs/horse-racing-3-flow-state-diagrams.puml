@@ -1,0 +1,140 @@
+@startuml
+title State Diagram 1 - Tournament Setup and Configuration
+
+left to right direction
+hide empty description
+
+skinparam shadowing false
+skinparam state {
+  BackgroundColor #24245F
+  BorderColor #24245F
+  FontColor #FFFFFF
+  FontStyle bold
+  RoundCorner 12
+}
+
+state Draft as "DRAFT"
+state InvalidConfig as "INVALID_CONFIG"
+state Configured as "CONFIGURED"
+state OpenRegistration as "OPEN_REGISTRATION"
+state RegistrationClosed as "REGISTRATION_CLOSED"
+state Scheduled as "SCHEDULED"
+state Cancelled as "CANCELLED"
+
+[*] --> Draft : Beginning\nAdmin creates tournament
+Draft --> InvalidConfig : submit incomplete setup
+InvalidConfig --> Draft : update configuration
+Draft --> Configured : valid basic info,\nrounds, races, rules, prizes
+Configured --> OpenRegistration : open registration
+OpenRegistration --> RegistrationClosed : close registration\nor deadline passes
+RegistrationClosed --> Scheduled : schedule approved participants
+
+Draft --> Cancelled : cancel
+Configured --> Cancelled : cancel
+OpenRegistration --> Cancelled : cancel
+RegistrationClosed --> Cancelled : cancel
+Scheduled --> Cancelled : cancel
+
+Scheduled --> [*] : Ending\nready for race operation
+Cancelled --> [*] : Ending\ncancelled tournament
+@enduml
+
+@startuml
+title State Diagram 2 - Owner Invites Jockey and Registers for Tournament
+
+left to right direction
+hide empty description
+
+skinparam shadowing false
+skinparam state {
+  BackgroundColor #24245F
+  BorderColor #24245F
+  FontColor #FFFFFF
+  FontStyle bold
+  RoundCorner 12
+}
+
+state InvitationPending as "INVITATION_PENDING"
+state InvitationInvalid as "INVITATION_INVALID"
+state InvitationRejected as "INVITATION_REJECTED"
+state InvitationAccepted as "INVITATION_ACCEPTED"
+state RegistrationPending as "REGISTRATION_PENDING"
+state RegistrationInvalid as "REGISTRATION_INVALID"
+state RegistrationApproved as "REGISTRATION_APPROVED"
+state RegistrationRejected as "REGISTRATION_REJECTED"
+state ParticipantCreated as "PARTICIPANT_CREATED"
+state FeeRefunded as "FEE_REFUNDED"
+
+[*] --> InvitationPending : Beginning\nOwner sends invitation
+InvitationPending --> InvitationInvalid : invalid owner/horse/jockey\nor schedule conflict
+InvitationInvalid --> InvitationPending : owner updates invitation
+InvitationPending --> InvitationRejected : jockey rejects
+InvitationPending --> InvitationAccepted : jockey accepts
+
+InvitationAccepted --> RegistrationPending : owner submits registration\nwith horse + accepted jockey
+RegistrationPending --> RegistrationInvalid : invalid tournament,\ncapacity, wallet, duplicate
+RegistrationInvalid --> RegistrationPending : owner updates registration
+RegistrationPending --> RegistrationApproved : Admin approves
+RegistrationPending --> RegistrationRejected : Admin rejects
+RegistrationApproved --> ParticipantCreated : System creates participant
+RegistrationRejected --> FeeRefunded : refund entry fee\nif applicable
+
+InvitationRejected --> [*] : Ending\nowner must invite another jockey
+ParticipantCreated --> [*] : Ending\nregistration completed
+FeeRefunded --> [*] : Ending\nregistration rejected
+@enduml
+
+@startuml
+title State Diagram 3 - Referee Assignment and Race Result Confirmation
+
+left to right direction
+hide empty description
+
+skinparam shadowing false
+skinparam state {
+  BackgroundColor #24245F
+  BorderColor #24245F
+  FontColor #FFFFFF
+  FontStyle bold
+  RoundCorner 12
+}
+
+state Draft as "DRAFT"
+state AssignmentConflict as "ASSIGNMENT_CONFLICT"
+state Scheduled as "SCHEDULED"
+state CheckInOpen as "CHECK_IN_OPEN"
+state NotReady as "NOT_READY"
+state Ready as "READY"
+state Ongoing as "ONGOING"
+state PendingResult as "PENDING_RESULT"
+state ChangeRequested as "CHANGE_REQUESTED"
+state ResultConfirmed as "RESULT_CONFIRMED"
+state Completed as "COMPLETED"
+state Cancelled as "CANCELLED"
+
+[*] --> Draft : Beginning\nAdmin prepares race/heat
+Draft --> AssignmentConflict : referee schedule conflict
+AssignmentConflict --> Draft : Admin selects another referee
+Draft --> Scheduled : referee assigned,\ngates assigned,\nparticipants valid
+Scheduled --> CheckInOpen : referee opens check-in
+CheckInOpen --> NotReady : minimum check-in\nnot met
+NotReady --> CheckInOpen : update check-in
+CheckInOpen --> Ready : start conditions met
+Ready --> Ongoing : referee starts race
+Ongoing --> PendingResult : submit draft result\nand report
+PendingResult --> ChangeRequested : Admin requests changes
+ChangeRequested --> PendingResult : referee updates report/result
+PendingResult --> ResultConfirmed : Admin approves result
+ResultConfirmed --> Completed : update leaderboard\nand advancement/final ranking
+
+Draft --> Cancelled : cancel
+Scheduled --> Cancelled : cancel
+CheckInOpen --> Cancelled : cancel
+NotReady --> Cancelled : cancel
+Ready --> Cancelled : cancel
+Ongoing --> Cancelled : cancel
+PendingResult --> Cancelled : cancel
+
+Completed --> [*] : Ending\nofficial result completed
+Cancelled --> [*] : Ending\nrace cancelled
+@enduml

@@ -236,6 +236,7 @@ class RaceDayGateAssignmentTest {
     void startRaceRequiresAssignedGates() {
         User referee = user(1L, UserRole.REFEREE);
         Race race = race(referee, RaceStatus.SCHEDULED);
+        race.getTournament().setStatus(TournamentStatus.ONGOING);
         RaceParticipant participant = participant(race, null);
         participant.setStatus(RaceParticipantStatus.CHECKED_IN);
         when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
@@ -312,6 +313,38 @@ class RaceDayGateAssignmentTest {
         assertThrows(BadRequestException.class,
                 () -> service.createRaceViolation(referee.getId(), race.getId(), request, evidence));
         verify(raceViolationRepository, never()).save(any());
+    }
+
+    @Test
+    void startRaceRequiresOngoingTournament() {
+        User referee = user(1L, UserRole.REFEREE);
+        Race race = race(referee, RaceStatus.SCHEDULED);
+        when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+
+        assertThrows(BadRequestException.class, () -> service.startRace(referee.getId(), race.getId()));
+        assertEquals(RaceStatus.SCHEDULED, race.getStatus());
+    }
+
+    @Test
+    void startRaceChangesOnlyTheSelectedRaceToOngoing() {
+        User referee = user(1L, UserRole.REFEREE);
+        Race selectedRace = race(referee, RaceStatus.SCHEDULED);
+        selectedRace.getTournament().setStatus(TournamentStatus.ONGOING);
+        Race otherRace = race(referee, RaceStatus.SCHEDULED);
+        RaceParticipant participant = participant(selectedRace, 1);
+        participant.setStatus(RaceParticipantStatus.CHECKED_IN);
+        when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
+        when(raceRepository.findById(selectedRace.getId())).thenReturn(Optional.of(selectedRace));
+        when(raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(selectedRace.getId()))
+                .thenReturn(List.of(participant));
+        when(raceRepository.save(selectedRace)).thenReturn(selectedRace);
+
+        service.startRace(referee.getId(), selectedRace.getId());
+
+        assertEquals(RaceStatus.ONGOING, selectedRace.getStatus());
+        assertEquals(RaceStatus.SCHEDULED, otherRace.getStatus());
+        verify(bettingService).lockRaceBets(selectedRace.getId());
     }
 
     private RaceRegistration registration() {

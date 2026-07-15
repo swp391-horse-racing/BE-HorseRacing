@@ -553,23 +553,32 @@ class Phase6TournamentServiceTest {
     @Test
     void statusTransitionAllowsRegistrationClosedToScheduled() {
         Tournament tournament = tournament(TournamentStatus.REGISTRATION_CLOSED);
+        Race registrationClosedRace = race(
+                10L, tournament, RaceStatus.REGISTRATION_CLOSED, "Registration closed race");
+        tournament.getRaces().add(registrationClosedRace);
         when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
 
         TournamentResponse response = service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.SCHEDULED);
 
         assertEquals(TournamentStatus.SCHEDULED, tournament.getStatus());
         assertEquals(TournamentStatus.SCHEDULED, response.getStatus());
+        assertEquals(RaceStatus.SCHEDULED, registrationClosedRace.getStatus());
+        assertEquals(RaceStatus.SCHEDULED, response.getRaces().get(0).getStatus());
     }
 
     @Test
     void statusTransitionAllowsScheduledToOngoing() {
         Tournament tournament = tournament(TournamentStatus.SCHEDULED);
+        Race scheduledRace = race(10L, tournament, RaceStatus.SCHEDULED, "Scheduled race");
+        tournament.getRaces().add(scheduledRace);
         when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
 
         TournamentResponse response = service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.ONGOING);
 
         assertEquals(TournamentStatus.ONGOING, tournament.getStatus());
         assertEquals(TournamentStatus.ONGOING, response.getStatus());
+        assertEquals(RaceStatus.SCHEDULED, scheduledRace.getStatus());
+        assertEquals(RaceStatus.SCHEDULED, response.getRaces().get(0).getStatus());
     }
 
     @Test

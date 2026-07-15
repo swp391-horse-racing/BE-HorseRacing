@@ -1,0 +1,249 @@
+@startuml
+title Flow 1 - Admin Creates and Configures a Tournament
+
+|Admin|
+start
+:Log in as Admin;
+:Create a new tournament;
+
+|System|
+:Create tournament with DRAFT status;
+
+|Admin|
+:Enter basic tournament information;
+note right
+Name, description, venue,
+registration period,
+competition period
+end note
+:Configure entry fee,
+min/max participants,
+and check-in deadline;
+:Configure rounds and races;
+note right
+Qualifier, semifinal,
+final, and race count per round
+end note
+:Configure advancement rules
+and prizes;
+
+|System|
+:Validate tournament configuration;
+if (Is configuration valid?) then (No)
+  :Return missing/invalid data errors;
+
+  |Admin|
+  :Update tournament configuration;
+
+  |System|
+  :Validate configuration again;
+else (Yes)
+endif
+
+if (Is configuration valid?) then (Yes)
+  |Admin|
+  :Publish / Open registration;
+
+  |System|
+  :Move tournament
+DRAFT -> OPEN_REGISTRATION;
+  :Send tournament registration
+opening notification;
+  stop
+else (No)
+  |System|
+  :Keep tournament in DRAFT;
+  stop
+endif
+@enduml
+
+@startuml
+title Flow 2 - Owner Invites Jockey and Registers for Tournament
+
+|Owner|
+start
+:View tournaments with
+OPEN_REGISTRATION status;
+:Select an approved horse;
+:Select an eligible Jockey;
+:Send Jockey invitation;
+
+|System|
+:Validate Owner, Horse, Jockey,
+Tournament/Race, and schedule conflicts;
+if (Is invitation valid?) then (No)
+  :Return error to Owner;
+
+  |Owner|
+  :Choose another horse/Jockey
+or update invitation details;
+  stop
+else (Yes)
+  :Create invitation with PENDING status;
+  :Send notification to Jockey;
+endif
+
+|Jockey|
+:View invitation details;
+if (Does Jockey accept?) then (No)
+  :Reject invitation;
+
+  |System|
+  :Update invitation = REJECTED;
+  :Notify Owner;
+
+  |Owner|
+  :Receive rejection result;
+  stop
+else (Yes)
+  :Accept invitation;
+
+  |System|
+  :Revalidate eligibility;
+  if (Are Jockey/Horse still eligible?) then (No)
+    :Return error to Jockey;
+    :Keep invitation in PENDING status;
+    stop
+  else (Yes)
+    :Update invitation = ACCEPTED;
+    :Notify Owner;
+  endif
+endif
+
+|Owner|
+:Submit tournament/race registration
+with horse + accepted jockey;
+
+|System|
+:Check tournament status,
+capacity limits,
+wallet/fee, and duplicate registration;
+if (Is registration valid?) then (No)
+  :Return error to Owner;
+
+  |Owner|
+  :Update registration details;
+  stop
+else (Yes)
+  :Create registration = PENDING;
+  :Process entry fee;
+  :Notify Admin about new registration;
+endif
+
+|Admin|
+:Review PENDING registration;
+if (Does Admin approve?) then (Yes)
+  :Approve registration;
+
+  |System|
+  :Update registration = APPROVED;
+  :Create race participant;
+  :Notify Owner/Jockey;
+  stop
+else (No)
+  :Reject registration;
+
+  |System|
+  :Update registration = REJECTED;
+  :Refund fee if applicable;
+  :Notify Owner/Jockey;
+  stop
+endif
+@enduml
+
+@startuml
+title Flow 3 - Admin Assigns Referee and Records Race Results
+
+|Admin|
+start
+:Close registration or select
+APPROVED registrations;
+
+|System|
+:Check minimum participant requirement;
+if (Is scheduling allowed?) then (No)
+  :Return insufficient participant error;
+
+  |Admin|
+  :Wait for more registrations
+or adjust configuration;
+  stop
+else (Yes)
+endif
+
+|Admin|
+:Generate / arrange races and heats
+based on round configuration;
+:Assign gate numbers to participants;
+:Assign Referee to each race;
+
+|System|
+:Check Referee schedule conflicts;
+if (Does Referee have conflict?) then (Yes)
+  :Return error so Admin can reassign;
+
+  |Admin|
+  :Select another Referee;
+  stop
+else (No)
+  :Update race = SCHEDULED;
+  :Send notification to Referee;
+endif
+
+|Referee|
+:On race day;
+:Open check-in;
+:Check in participants;
+note right
+PASSED, ABSENT,
+DISQUALIFIED, or FAILED
+end note
+
+|System|
+:Check race start conditions;
+if (Can race start?) then (No)
+  :Report race is not ready;
+
+  |Referee|
+  :Update check-in or report issue;
+  stop
+else (Yes)
+endif
+
+|Referee|
+:Start race;
+:Record violations if any;
+:Enter draft result;
+note right
+Rank, finish time,
+and notes
+end note
+:Submit report;
+
+|System|
+:Update race = PENDING_RESULT;
+
+|Admin|
+:Review draft result and report;
+if (Does Admin request changes?) then (Yes)
+  :Send change request to Referee;
+
+  |Referee|
+  :Update draft result/report;
+
+  |System|
+  :Keep race = PENDING_RESULT;
+  stop
+else (No, approve)
+  :Approve result;
+
+  |System|
+  :Update race =
+RESULT_CONFIRMED or COMPLETED;
+  :Update leaderboard;
+  :Process advancement to next round
+or final ranking;
+  :Notify related users about result;
+  stop
+endif
+@enduml
