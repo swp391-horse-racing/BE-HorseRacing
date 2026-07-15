@@ -1,6 +1,6 @@
 package com.minhthien.hoser_backend.service.kyc;
 
-import com.minhthien.hoser_backend.dto.kyc.FptFaceMatchResult;
+import com.minhthien.hoser_backend.dto.kyc.VnptFaceMatchResult;
 import com.minhthien.hoser_backend.entity.KycVerification;
 import com.minhthien.hoser_backend.entity.SpectatorProfile;
 import com.minhthien.hoser_backend.entity.User;
@@ -68,7 +68,7 @@ class KycCompletionServiceTest {
         when(spectatorProfileRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         Long profileId = service.complete(20L, 1L, "selfie-url",
-                new FptFaceMatchResult(true, new BigDecimal("92.5"), "{}", null));
+                new VnptFaceMatchResult(true, new BigDecimal("92.5"), "{}", null));
 
         assertEquals(30L, profileId);
         assertEquals(KycStatus.PASSED, verification.getStatus());

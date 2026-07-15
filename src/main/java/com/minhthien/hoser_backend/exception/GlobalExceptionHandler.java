@@ -34,6 +34,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(VnptEkycException.class)
+    public ResponseEntity<ApiResponse<Void>> handleVnptEkyc(VnptEkycException ex) {
+        return ResponseEntity.status(ex.getStatus())
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleInvalidRequestBody(HttpMessageNotReadableException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

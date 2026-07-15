@@ -1,6 +1,6 @@
 package com.minhthien.hoser_backend.service.kyc;
 
-import com.minhthien.hoser_backend.dto.kyc.FptFaceMatchResult;
+import com.minhthien.hoser_backend.dto.kyc.VnptFaceMatchResult;
 import com.minhthien.hoser_backend.entity.*;
 import com.minhthien.hoser_backend.enums.JockeyStatus;
 import com.minhthien.hoser_backend.enums.KycStatus;
@@ -23,7 +23,7 @@ public class KycCompletionService {
     private final UserRepository userRepository;
 
     @Transactional
-    public Long complete(Long verificationId, Long userId, String selfieUrl, FptFaceMatchResult result) {
+    public Long complete(Long verificationId, Long userId, String selfieUrl, VnptFaceMatchResult result) {
         KycVerification verification = kycVerificationRepository.findByIdAndUserId(verificationId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("KycVerification", "id", verificationId));
         if (verification.getStatus() != KycStatus.OCR_PASSED) {

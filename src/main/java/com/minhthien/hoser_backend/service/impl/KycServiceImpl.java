@@ -1,17 +1,18 @@
 package com.minhthien.hoser_backend.service.impl;
 
-import com.minhthien.hoser_backend.dto.kyc.FptFaceMatchResult;
-import com.minhthien.hoser_backend.dto.kyc.FptOcrResult;
+import com.minhthien.hoser_backend.dto.kyc.VnptFaceMatchResult;
+import com.minhthien.hoser_backend.dto.kyc.VnptOcrResult;
 import com.minhthien.hoser_backend.dto.response.KycFaceMatchResponse;
 import com.minhthien.hoser_backend.dto.response.KycOcrResponse;
 import com.minhthien.hoser_backend.entity.*;
 import com.minhthien.hoser_backend.enums.*;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
+import com.minhthien.hoser_backend.exception.VnptEkycException;
 import com.minhthien.hoser_backend.repository.*;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import com.minhthien.hoser_backend.service.KycService;
-import com.minhthien.hoser_backend.service.kyc.FptAiClient;
+import com.minhthien.hoser_backend.service.kyc.VnptEkycClient;
 import com.minhthien.hoser_backend.service.kyc.KycFailurePersistenceService;
 import com.minhthien.hoser_backend.service.kyc.KycCompletionService;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +49,7 @@ public class KycServiceImpl implements KycService {
     private final SpectatorProfileRepository spectatorProfileRepository;
     private final KycVerificationRepository kycVerificationRepository;
     private final CloudinaryUploadService cloudinaryUploadService;
-    private final FptAiClient fptAiClient;
+    private final VnptEkycClient vnptEkycClient;
     private final KycFailurePersistenceService failurePersistenceService;
     private final KycCompletionService completionService;
 
@@ -63,14 +64,30 @@ public class KycServiceImpl implements KycService {
         String folder = "hoser/kyc/" + userId;
         String frontUrl = cloudinaryUploadService.uploadImage(cccdFront, folder);
         String backUrl = cloudinaryUploadService.uploadImage(cccdBack, folder);
-        FptOcrResult result = fptAiClient.callOcr(cccdFront);
+        VnptOcrResult result;
+        try {
+            result = vnptEkycClient.callOcr(cccdFront, cccdBack);
+        } catch (VnptEkycException ex) {
+            failurePersistenceService.save(KycVerification.builder()
+                    .user(user)
+                    .requestedRole(requestedRole)
+                    .provider("VNPT_EKYC")
+                    .status(KycStatus.FAILED)
+                    .frontImageUrl(frontUrl)
+                    .backImageUrl(backUrl)
+                    .rejectReason(ex.getMessage())
+                    .build());
+            throw ex;
+        }
         KycVerification verification = KycVerification.builder()
                 .user(user)
                 .requestedRole(requestedRole)
+                .provider("VNPT_EKYC")
                 .status(result.passed() ? KycStatus.OCR_PASSED : KycStatus.FAILED)
                 .frontOcrPassed(result.passed())
                 .frontImageUrl(frontUrl)
                 .backImageUrl(backUrl)
+                .vnptFrontImageHash(result.frontImageHash())
                 .rawFrontResponse(result.rawResponse())
                 .rejectReason(result.rejectReason())
                 .build();
@@ -114,13 +131,22 @@ public class KycServiceImpl implements KycService {
         }
         requireDraft(userId, verification.getRequestedRole());
 
+        if (verification.getVnptFrontImageHash() == null
+                || verification.getVnptFrontImageHash().isBlank()) {
+            throw new BadRequestException(
+                    "Lần xác minh KYC này chưa có dữ liệu VNPT eKYC. Vui lòng xác minh lại CCCD.");
+        }
         String selfieUrl = cloudinaryUploadService.uploadImage(selfie, "hoser/kyc/" + userId);
-        FptFaceMatchResult result;
+
+        VnptFaceMatchResult result;
         try {
-            byte[] frontBytes = fptAiClient.download(verification.getFrontImageUrl());
-            result = fptAiClient.callFaceMatch(frontBytes, "cccd-front.jpg", selfie);
-        } catch (IllegalStateException ex) {
-            result = new FptFaceMatchResult(false, null, null, ex.getMessage());
+            result = vnptEkycClient.callFaceCompare(verification.getVnptFrontImageHash(), selfie);
+        } catch (VnptEkycException ex) {
+            verification.setSelfieImageUrl(selfieUrl);
+            verification.setStatus(KycStatus.FAILED);
+            verification.setRejectReason(ex.getMessage());
+            failurePersistenceService.save(verification);
+            throw ex;
         }
 
         verification.setSelfieImageUrl(selfieUrl);
@@ -237,7 +263,7 @@ public class KycServiceImpl implements KycService {
         return idNumber.replaceAll("\\s+", "");
     }
 
-    private void validateFullNameMatchesCccd(User user, FptOcrResult result, KycVerification verification) {
+    private void validateFullNameMatchesCccd(User user, VnptOcrResult result, KycVerification verification) {
         if (user.getFullName() == null || user.getFullName().isBlank()) {
             verification.setStatus(KycStatus.FAILED);
             verification.setRejectReason("Vui lòng cập nhật họ và tên tài khoản trước khi KYC");

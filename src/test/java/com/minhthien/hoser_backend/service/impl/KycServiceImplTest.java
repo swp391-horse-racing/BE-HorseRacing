@@ -1,7 +1,7 @@
 package com.minhthien.hoser_backend.service.impl;
 
-import com.minhthien.hoser_backend.dto.kyc.FptFaceMatchResult;
-import com.minhthien.hoser_backend.dto.kyc.FptOcrResult;
+import com.minhthien.hoser_backend.dto.kyc.VnptFaceMatchResult;
+import com.minhthien.hoser_backend.dto.kyc.VnptOcrResult;
 import com.minhthien.hoser_backend.entity.KycVerification;
 import com.minhthien.hoser_backend.entity.OwnerProfile;
 import com.minhthien.hoser_backend.entity.SpectatorProfile;
@@ -12,7 +12,7 @@ import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.repository.*;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
-import com.minhthien.hoser_backend.service.kyc.FptAiClient;
+import com.minhthien.hoser_backend.service.kyc.VnptEkycClient;
 import com.minhthien.hoser_backend.service.kyc.KycCompletionService;
 import com.minhthien.hoser_backend.service.kyc.KycFailurePersistenceService;
 import org.junit.jupiter.api.Test;
@@ -40,7 +40,7 @@ class KycServiceImplTest {
     @Mock private SpectatorProfileRepository spectatorProfileRepository;
     @Mock private KycVerificationRepository kycVerificationRepository;
     @Mock private CloudinaryUploadService cloudinaryUploadService;
-    @Mock private FptAiClient fptAiClient;
+    @Mock private VnptEkycClient vnptEkycClient;
     @Mock private KycFailurePersistenceService failurePersistenceService;
     @Mock private KycCompletionService completionService;
 
@@ -57,8 +57,8 @@ class KycServiceImplTest {
         when(ownerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(draft));
         when(cloudinaryUploadService.uploadImage(any(), anyString()))
                 .thenReturn("front-url", "back-url");
-        when(fptAiClient.callOcr(any())).thenReturn(new FptOcrResult(
-                true, "012345678901", "NGUYEN VAN A", "01/01/2000",
+        when(vnptEkycClient.callOcr(any(), any())).thenReturn(new VnptOcrResult(
+                true, "front-hash", "012345678901", "NGUYEN VAN A", "01/01/2000",
                 "Nam", "HCM", "01/01/2020", "{}", null));
         when(kycVerificationRepository.save(any())).thenAnswer(invocation -> {
             KycVerification value = invocation.getArgument(0);
@@ -85,8 +85,8 @@ class KycServiceImplTest {
                         .status(RoleApprovalStatus.DRAFT).build()));
         when(cloudinaryUploadService.uploadImage(any(), anyString()))
                 .thenReturn("front-url", "back-url");
-        when(fptAiClient.callOcr(any())).thenReturn(new FptOcrResult(
-                true, "012345678901", "NGO DINH MINH THIEN", "01/01/2000",
+        when(vnptEkycClient.callOcr(any(), any())).thenReturn(new VnptOcrResult(
+                true, "front-hash", "012345678901", "NGO DINH MINH THIEN", "01/01/2000",
                 "Nam", "HCM", "01/01/2020", "{}", null));
         when(kycVerificationRepository.save(any())).thenAnswer(invocation -> {
             KycVerification value = invocation.getArgument(0);
@@ -102,6 +102,32 @@ class KycServiceImplTest {
     }
 
     @Test
+    void successfulOcrAllowsAccentedNameAgainstUnaccentedAccountName() {
+        User user = user();
+        user.setFullName("NGUYEN VAN A");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(ownerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(
+                OwnerProfile.builder().user(user).stableName("Stable").address("Address")
+                        .status(RoleApprovalStatus.DRAFT).build()));
+        when(cloudinaryUploadService.uploadImage(any(), anyString()))
+                .thenReturn("front-url", "back-url");
+        when(vnptEkycClient.callOcr(any(), any())).thenReturn(new VnptOcrResult(
+                true, "front-hash", "012345678901", "NGUYỄN VĂN A", "01/01/2000",
+                "Nam", "HCM", "01/01/2020", "{}", null));
+        when(kycVerificationRepository.save(any())).thenAnswer(invocation -> {
+            KycVerification value = invocation.getArgument(0);
+            value.setId(20L);
+            return value;
+        });
+
+        var response = service.verifyCccd(
+                1L, UserRole.OWNER, image("front"), image("back"));
+
+        assertEquals(KycStatus.OCR_PASSED, response.getKycStatus());
+        assertEquals("NGUYỄN VĂN A", response.getFullName());
+    }
+
+    @Test
     void rejectsOcrWhenCccdFullNameDoesNotMatchAccountFullName() {
         User user = user();
         user.setFullName("NGO DINH MINH THIEN");
@@ -111,8 +137,8 @@ class KycServiceImplTest {
                         .status(RoleApprovalStatus.DRAFT).build()));
         when(cloudinaryUploadService.uploadImage(any(), anyString()))
                 .thenReturn("front-url", "back-url");
-        when(fptAiClient.callOcr(any())).thenReturn(new FptOcrResult(
-                true, "012345678901", "CHÂU THÀNH", "01/01/2000",
+        when(vnptEkycClient.callOcr(any(), any())).thenReturn(new VnptOcrResult(
+                true, "front-hash", "012345678901", "CHÂU THÀNH", "01/01/2000",
                 "Nam", "HCM", "01/01/2020", "{}", null));
         when(failurePersistenceService.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -136,8 +162,8 @@ class KycServiceImplTest {
                         .status(RoleApprovalStatus.DRAFT).build()));
         when(cloudinaryUploadService.uploadImage(any(), anyString()))
                 .thenReturn("front-url", "back-url");
-        when(fptAiClient.callOcr(any())).thenReturn(new FptOcrResult(
-                true, "012345678901", "NGO DINH MINH THIEN", "01/01/2000",
+        when(vnptEkycClient.callOcr(any(), any())).thenReturn(new VnptOcrResult(
+                true, "front-hash", "012345678901", "NGO DINH MINH THIEN", "01/01/2000",
                 "Nam", "HCM", "01/01/2020", "{}", null));
         when(failurePersistenceService.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -160,8 +186,8 @@ class KycServiceImplTest {
                         .status(RoleApprovalStatus.DRAFT).build()));
         when(cloudinaryUploadService.uploadImage(any(), anyString()))
                 .thenReturn("front-url", "back-url");
-        when(fptAiClient.callOcr(any())).thenReturn(new FptOcrResult(
-                false, null, null, null, null, null, null, "{}", "Không đọc được CCCD mặt trước"));
+        when(vnptEkycClient.callOcr(any(), any())).thenReturn(new VnptOcrResult(
+                false, "front-hash", null, null, null, null, null, null, "{}", "Không đọc được CCCD mặt trước"));
         when(failurePersistenceService.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         BadRequestException error = assertThrows(BadRequestException.class,
@@ -176,16 +202,16 @@ class KycServiceImplTest {
         User user = user();
         KycVerification verification = KycVerification.builder()
                 .id(20L).user(user).requestedRole(UserRole.OWNER)
-                .status(KycStatus.OCR_PASSED).frontImageUrl("front-url").build();
+                .status(KycStatus.OCR_PASSED).frontImageUrl("front-url")
+                .vnptFrontImageHash("front-hash").build();
         when(kycVerificationRepository.findByIdAndUserId(20L, 1L))
                 .thenReturn(Optional.of(verification));
         when(ownerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(
                 OwnerProfile.builder().user(user).stableName("Stable").address("Address")
                         .status(RoleApprovalStatus.DRAFT).build()));
         when(cloudinaryUploadService.uploadImage(any(), anyString())).thenReturn("selfie-url");
-        when(fptAiClient.download("front-url")).thenReturn(new byte[]{1});
-        when(fptAiClient.callFaceMatch(any(), anyString(), any())).thenReturn(
-                new FptFaceMatchResult(false, new BigDecimal("65"), "{}", "Điểm khớp khuôn mặt quá thấp"));
+        when(vnptEkycClient.callFaceCompare(anyString(), any())).thenReturn(
+                new VnptFaceMatchResult(false, new BigDecimal("65"), "{}", "Khuôn mặt không khớp với ảnh trên CCCD."));
         when(failurePersistenceService.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         assertThrows(BadRequestException.class,
@@ -209,7 +235,7 @@ class KycServiceImplTest {
         assertThrows(BadRequestException.class,
                 () -> service.verifyCccd(1L, UserRole.OWNER, file, image("back")));
 
-        verifyNoInteractions(fptAiClient, cloudinaryUploadService);
+        verifyNoInteractions(vnptEkycClient, cloudinaryUploadService);
     }
 
     @Test
@@ -223,8 +249,8 @@ class KycServiceImplTest {
                         .status(RoleApprovalStatus.DRAFT).build()));
         when(cloudinaryUploadService.uploadImage(any(), anyString()))
                 .thenReturn("front-url", "back-url");
-        when(fptAiClient.callOcr(any())).thenReturn(new FptOcrResult(
-                true, "012345678901", "NGUYEN VAN A", underageDob,
+        when(vnptEkycClient.callOcr(any(), any())).thenReturn(new VnptOcrResult(
+                true, "front-hash", "012345678901", "NGUYEN VAN A", underageDob,
                 "Nam", "HCM", "01/01/2020", "{}", null));
         when(failurePersistenceService.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -247,8 +273,8 @@ class KycServiceImplTest {
                         .status(RoleApprovalStatus.DRAFT).build()));
         when(cloudinaryUploadService.uploadImage(any(), anyString()))
                 .thenReturn("front-url", "back-url");
-        when(fptAiClient.callOcr(any())).thenReturn(new FptOcrResult(
-                true, "012345678901", "NGUYEN VAN A", adultDob,
+        when(vnptEkycClient.callOcr(any(), any())).thenReturn(new VnptOcrResult(
+                true, "front-hash", "012345678901", "NGUYEN VAN A", adultDob,
                 "Nam", "HCM", "01/01/2020", "{}", null));
         when(kycVerificationRepository.save(any())).thenAnswer(invocation -> {
             KycVerification value = invocation.getArgument(0);
@@ -268,16 +294,16 @@ class KycServiceImplTest {
         User user = user();
         KycVerification verification = KycVerification.builder()
                 .id(20L).user(user).requestedRole(UserRole.SPECTATOR)
-                .status(KycStatus.OCR_PASSED).frontImageUrl("front-url").build();
+                .status(KycStatus.OCR_PASSED).frontImageUrl("front-url")
+                .vnptFrontImageHash("front-hash").build();
         when(kycVerificationRepository.findByIdAndUserId(20L, 1L))
                 .thenReturn(Optional.of(verification));
         when(spectatorProfileRepository.findByUserId(1L)).thenReturn(Optional.of(
                 SpectatorProfile.builder().id(30L).user(user).displayName("Fan")
                         .status(RoleApprovalStatus.DRAFT).build()));
         when(cloudinaryUploadService.uploadImage(any(), anyString())).thenReturn("selfie-url");
-        when(fptAiClient.download("front-url")).thenReturn(new byte[]{1});
-        when(fptAiClient.callFaceMatch(any(), anyString(), any())).thenReturn(
-                new FptFaceMatchResult(true, new BigDecimal("90"), "{}", null));
+        when(vnptEkycClient.callFaceCompare(anyString(), any())).thenReturn(
+                new VnptFaceMatchResult(true, new BigDecimal("90"), "{}", null));
         when(completionService.complete(eq(20L), eq(1L), eq("selfie-url"), any()))
                 .thenReturn(30L);
 

@@ -34,7 +34,7 @@ public class KycVerification {
 
     @Column(nullable = false, length = 50)
     @Builder.Default
-    private String provider = "FPT_AI";
+    private String provider = "VNPT_EKYC";
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -78,6 +78,9 @@ public class KycVerification {
     @Column(name = "back_image_url", columnDefinition = "TEXT")
     private String backImageUrl;
 
+    @Column(name = "vnpt_front_image_hash", length = 255)
+    private String vnptFrontImageHash;
+
     @Column(name = "selfie_image_url", columnDefinition = "TEXT")
     private String selfieImageUrl;
 
@@ -103,7 +106,7 @@ public class KycVerification {
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;
-        if (provider == null || provider.isBlank()) provider = "FPT_AI";
+        if (provider == null || provider.isBlank()) provider = "VNPT_EKYC";
     }
 
     @PreUpdate

@@ -1,7 +1,8 @@
 package com.minhthien.hoser_backend.dto.kyc;
 
-public record FptOcrResult(
+public record VnptOcrResult(
         boolean passed,
+        String frontImageHash,
         String idNumber,
         String fullName,
         String dateOfBirth,

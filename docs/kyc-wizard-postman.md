@@ -1,7 +1,24 @@
 # KYC wizard test flow
 
-Set `FPT_AI_API_KEY` before starting the backend. All calls below use
+Set the required `VNPT_EKYC_*` environment variables before starting the backend. All calls below use
 `Authorization: Bearer <user-token>`.
+
+Backend environment variables:
+
+```text
+VNPT_EKYC_BASE_URL=https://api.idg.vnpt.vn
+VNPT_EKYC_TOKEN_ID=<provided-by-VNPT>
+VNPT_EKYC_TOKEN_KEY=<provided-by-VNPT>
+VNPT_EKYC_ACCESS_TOKEN=<jwt-only-without-bearer-prefix>
+VNPT_EKYC_MAC_ADDRESS=TEST1
+VNPT_EKYC_DOCUMENT_TYPE=-1
+VNPT_EKYC_CROP_PARAM=0.14,0.3
+VNPT_EKYC_VALIDATE_POSTCODE=true
+VNPT_EKYC_FACE_MATCH_THRESHOLD=80
+```
+
+Do not put these credentials in frontend files or GitHub Actions. On Oracle,
+store them in `/etc/horse-backend.env` and restart `horse-backend` after updating it.
 
 ## 1. Save a role draft
 
@@ -31,7 +48,7 @@ cccdBack=<back.jpg>
 ```
 
 Successful OCR returns an `OCR_PASSED` verification, masked ID number, name,
-date of birth, gender, address and issue date. The full ID number and raw FPT
+date of birth, gender, address and issue date. The full ID number and raw VNPT eKYC
 response are never returned.
 
 For `requestedRole=SPECTATOR`, OCR must read a date of birth proving the user
