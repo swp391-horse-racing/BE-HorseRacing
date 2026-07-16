@@ -18,6 +18,8 @@ public interface BettingService {
 
     List<BetResponse> getAdminMarketBets(Long adminId, Long marketId);
 
+    List<BetResponse> getAdminBets(Long adminId, Long raceId);
+
     BetMarketResponse getPublicOpenBetMarket(Long raceId);
 
     List<BetMarketResponse> getBettableRaceMarkets(Long userId);

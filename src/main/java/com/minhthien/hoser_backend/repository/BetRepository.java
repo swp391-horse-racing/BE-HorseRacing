@@ -16,7 +16,15 @@ import java.util.List;
 public interface BetRepository extends JpaRepository<Bet, Long> {
     @EntityGraph(attributePaths = {"market", "race", "race.tournament", "participant", "participant.horse",
             "participant.jockey", "user"})
+    List<Bet> findAllByOrderByPlacedAtDesc();
+
+    @EntityGraph(attributePaths = {"market", "race", "race.tournament", "participant", "participant.horse",
+            "participant.jockey", "user"})
     List<Bet> findByMarketIdOrderByPlacedAtDesc(Long marketId);
+
+    @EntityGraph(attributePaths = {"market", "race", "race.tournament", "participant", "participant.horse",
+            "participant.jockey", "user"})
+    List<Bet> findByRaceIdOrderByPlacedAtDesc(Long raceId);
 
     @EntityGraph(attributePaths = {"market", "race", "race.tournament", "participant", "participant.horse",
             "participant.jockey", "user"})

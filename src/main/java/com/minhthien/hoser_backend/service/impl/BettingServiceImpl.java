@@ -130,6 +130,18 @@ public class BettingServiceImpl implements BettingService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<BetResponse> getAdminBets(Long adminId, Long raceId) {
+        requireRole(requireUser(adminId), UserRole.ADMIN, "Only admins can view bets");
+        List<Bet> bets = raceId == null
+                ? betRepository.findAllByOrderByPlacedAtDesc()
+                : betRepository.findByRaceIdOrderByPlacedAtDesc(raceId);
+        return bets.stream()
+                .map(this::mapBet)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public BetMarketResponse getPublicOpenBetMarket(Long raceId) {
         requireBettingEnabled();
         BetMarket market = betMarketRepository.findByRaceIdAndStatus(raceId, BetMarketStatus.OPEN)

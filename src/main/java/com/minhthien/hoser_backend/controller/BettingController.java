@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -74,6 +75,14 @@ public class BettingController {
             @PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(
                 bettingService.getAdminMarketBets(currentUser.getId(), id)));
+    }
+
+    @GetMapping("/admin/bets")
+    public ResponseEntity<ApiResponse<List<BetResponse>>> getAdminBets(
+            @AuthenticationPrincipal User currentUser,
+            @RequestParam(required = false) Long raceId) {
+        return ResponseEntity.ok(ApiResponse.success(
+                bettingService.getAdminBets(currentUser.getId(), raceId)));
     }
 
     @GetMapping("/races/{raceId}/bet-market")
