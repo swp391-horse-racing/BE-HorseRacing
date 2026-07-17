@@ -16,6 +16,12 @@ import java.util.List;
 @RequestMapping("/api/v1")
 @SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
+@CrossOrigin(origins = {
+        "http://localhost:5173",
+        "http://localhost:51093",
+        "https://horseracing.id.vn",
+        "https://www.horseracing.id.vn"
+})
 public class HorseTeamController {
     private final HorseTeamService horseTeamService;
 

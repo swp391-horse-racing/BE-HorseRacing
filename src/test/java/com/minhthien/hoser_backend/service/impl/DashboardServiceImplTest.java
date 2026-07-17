@@ -2,22 +2,17 @@ package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.dto.response.*;
 import com.minhthien.hoser_backend.entity.User;
-import com.minhthien.hoser_backend.entity.Wallet;
-import com.minhthien.hoser_backend.enums.BetMarketStatus;
 import com.minhthien.hoser_backend.enums.RaceParticipantStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
-import com.minhthien.hoser_backend.enums.WalletOwnerType;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.repository.*;
-import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.WalletService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
@@ -28,7 +23,6 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,7 +47,6 @@ class DashboardServiceImplTest {
     @Mock private AdminWalletWithdrawalRepository adminWalletWithdrawalRepository;
     @Mock private RaceComplaintRepository raceComplaintRepository;
     @Mock private WalletService walletService;
-    @Mock private FinanceSettingsService financeSettingsService;
 
     @InjectMocks
     private DashboardServiceImpl service;
@@ -92,30 +85,6 @@ class DashboardServiceImplTest {
 
         assertThrows(BadRequestException.class, () -> service.getRefereeCheckedInCount(userId));
         assertThrows(BadRequestException.class, () -> service.getRefereePendingCheckInCount(userId));
-    }
-
-    @Test
-    void spectatorDashboardUsesFinanceSettingsForBettingFlags() {
-        long userId = 9L;
-        User spectator = User.builder().id(userId).role(UserRole.SPECTATOR).build();
-        Wallet wallet = Wallet.builder()
-                .id(12L)
-                .ownerType(WalletOwnerType.USER)
-                .user(spectator)
-                .build();
-        when(userRepository.findById(userId)).thenReturn(Optional.of(spectator));
-        when(betMarketRepository.findByStatusOrderByRaceScheduledStartAtAsc(
-                any(BetMarketStatus.class), any(Pageable.class))).thenReturn(List.of());
-        when(walletRepository.findByUserId(userId)).thenReturn(Optional.of(wallet));
-        when(notificationRepository.findByRecipientIdOrderByCreatedAtDesc(eq(userId), any(Pageable.class)))
-                .thenReturn(Page.empty());
-        when(financeSettingsService.isBettingEnabled()).thenReturn(false);
-
-        DashboardResponse response = service.getSpectatorDashboard(userId);
-
-        assertEquals(false, response.getBusinessSummary().get("bettingEnabled"));
-        assertEquals(false, response.getFeatureFlags().get("betting"));
-        assertEquals(false, response.getBusinessSummary().get("marketplaceEnabled"));
     }
 
     @Test

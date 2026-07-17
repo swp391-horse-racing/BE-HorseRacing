@@ -18,7 +18,6 @@ import com.minhthien.hoser_backend.enums.RaceStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
 import com.minhthien.hoser_backend.enums.WalletTransactionType;
 import com.minhthien.hoser_backend.exception.BadRequestException;
-import com.minhthien.hoser_backend.exception.FeatureDisabledException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.BetMarketRepository;
@@ -556,7 +555,7 @@ public class BettingServiceImpl implements BettingService {
 
     private void requireBettingEnabled() {
         if (!financeSettingsService.isBettingEnabled()) {
-            throw new FeatureDisabledException("Betting feature is disabled");
+            throw new BadRequestException("Betting feature is disabled");
         }
     }
 
