@@ -65,7 +65,8 @@ public class SecurityConfig {
                 "http://127.0.0.1:[*]",
                 "http://localhost:5173",
                 "https://horseracing.id.vn",
-                "https://www.horseracing.id.vn"
+                "https://www.horseracing.id.vn",
+                "https://api.horseracing.id.vn"
         ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
@@ -136,4 +137,3 @@ public class SecurityConfig {
         return http.build();
     }
 }
-

@@ -29,7 +29,8 @@ import org.springframework.web.multipart.MultipartFile;
         "http://localhost:5173",
         "http://localhost:51093",
         "https://horseracing.id.vn",
-        "https://www.horseracing.id.vn"
+        "https://www.horseracing.id.vn",
+        "https://api.horseracing.id.vn"
 })
 public class RoleApplicationController {
     private final RoleApplicationService roleApplicationService;

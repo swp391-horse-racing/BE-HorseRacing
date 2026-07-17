@@ -18,7 +18,8 @@ import java.util.stream.Collectors;
         "http://localhost:5173",
         "http://localhost:51093",
         "https://horseracing.id.vn",
-        "https://www.horseracing.id.vn"
+        "https://www.horseracing.id.vn",
+        "https://api.horseracing.id.vn"
 })
 public class MultipartJsonParser {
     private final ObjectMapper objectMapper;

@@ -14,7 +14,8 @@ import java.util.Map;
         "http://localhost:5173",
         "http://localhost:51093",
         "https://horseracing.id.vn",
-        "https://www.horseracing.id.vn"
+        "https://www.horseracing.id.vn",
+        "https://api.horseracing.id.vn"
 })
 public class ZaloPayController {
 
