@@ -20,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -31,6 +32,8 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class NotificationCampaignServiceImplTest {
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+
     @Mock private NotificationCampaignRepository campaignRepository;
     @Mock private NotificationDeliveryRepository deliveryRepository;
     @Mock private UserRepository userRepository;
@@ -162,7 +165,7 @@ class NotificationCampaignServiceImplTest {
     void futureAndAlreadyFinishedCampaignsDoNotSend() {
         NotificationCampaign future = campaign(
                 30L, NotificationCampaignStatus.SCHEDULED, Set.of(NotificationChannel.PUSH));
-        future.setScheduledAt(LocalDateTime.now().plusHours(1));
+        future.setScheduledAt(now().plusHours(1));
         NotificationCampaign finished = campaign(
                 31L, NotificationCampaignStatus.COMPLETED, Set.of(NotificationChannel.PUSH));
         when(campaignRepository.findByIdForUpdate(30L)).thenReturn(Optional.of(future));
@@ -209,11 +212,15 @@ class NotificationCampaignServiceImplTest {
                 .content("Please check in on time.")
                 .audienceType(NotificationAudienceType.ALL)
                 .channels(new LinkedHashSet<>(channels))
-                .scheduledAt(LocalDateTime.now().minusMinutes(1))
+                .scheduledAt(now().minusMinutes(1))
                 .status(status)
                 .createdBy(user(1L, UserRole.ADMIN, "admin@example.com"))
                 .recipientCount(1)
                 .build();
+    }
+
+    private LocalDateTime now() {
+        return LocalDateTime.now(BUSINESS_ZONE);
     }
 
     private NotificationDelivery delivery(
