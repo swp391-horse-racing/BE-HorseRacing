@@ -88,15 +88,15 @@ public class SystemSettings {
     private String primaryColor;
 
     @Lob
-    @Column(name = "race_distances_meters_json", nullable = false)
+    @Column(name = "race_distances_meters_json", nullable = false, columnDefinition = "LONGTEXT")
     private String raceDistancesMetersJson;
 
     @Lob
-    @Column(name = "violation_penalty_rules_json", nullable = false)
+    @Column(name = "violation_penalty_rules_json", columnDefinition = "LONGTEXT")
     private String violationPenaltyRulesJson;
 
     @Lob
-    @Column(name = "violation_type_options_json", nullable = false)
+    @Column(name = "violation_type_options_json", columnDefinition = "LONGTEXT")
     private String violationTypeOptionsJson;
 
     @Column(name = "created_at", nullable = false)

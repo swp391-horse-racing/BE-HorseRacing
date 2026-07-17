@@ -13,6 +13,7 @@ import com.minhthien.hoser_backend.repository.FinanceSettingsRepository;
 import com.minhthien.hoser_backend.repository.RacePrizeShareSettingRepository;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,12 +25,31 @@ import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class FinanceSettingsServiceImpl implements FinanceSettingsService {
     private static final BigDecimal MIN_PERCENT = new BigDecimal("0.00");
     private static final BigDecimal MAX_PERCENT = new BigDecimal("100.00");
 
     private final FinanceSettingsRepository financeSettingsRepository;
     private final RacePrizeShareSettingRepository racePrizeShareSettingRepository;
+
+    @Override
+    @Transactional
+    public FinanceSettings getOrCreateSettings() {
+        return financeSettingsRepository.findById(FinanceSettings.SINGLETON_ID)
+                .map(this::ensureSettingDefaults)
+                .orElseGet(() -> {
+                    int insertedRows = financeSettingsRepository.insertDefaultIfAbsent();
+                    if (insertedRows > 0) {
+                        log.info("Created default finance settings with id={}", FinanceSettings.SINGLETON_ID);
+                    }
+                    return financeSettingsRepository.findById(FinanceSettings.SINGLETON_ID)
+                            .map(this::ensureSettingDefaults)
+                            .orElseThrow(() -> new IllegalStateException(
+                                    "Unable to initialize finance settings with id="
+                                            + FinanceSettings.SINGLETON_ID));
+                });
+    }
 
     @Override
     @Transactional
@@ -116,16 +136,6 @@ public class FinanceSettingsServiceImpl implements FinanceSettingsService {
         return racePrizeShareSettingRepository.findByRank(rank)
                 .map(RacePrizeShareSetting::getJockeyPercent)
                 .orElse(BigDecimal.ZERO);
-    }
-
-    private FinanceSettings getOrCreateSettings() {
-        return financeSettingsRepository.findById(FinanceSettings.SINGLETON_ID)
-                .map(this::ensureSettingDefaults)
-                .orElseGet(() -> financeSettingsRepository.save(FinanceSettings.builder()
-                        .id(FinanceSettings.SINGLETON_ID)
-                        .betWinningTaxPercent(FinanceSettings.DEFAULT_BET_WINNING_TAX_PERCENT)
-                        .bettingEnabled(FinanceSettings.DEFAULT_BETTING_ENABLED)
-                        .build()));
     }
 
     private FinanceSettings ensureSettingDefaults(FinanceSettings settings) {

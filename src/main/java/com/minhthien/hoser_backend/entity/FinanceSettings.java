@@ -23,33 +23,34 @@ import java.time.LocalDateTime;
 public class FinanceSettings {
     public static final Long SINGLETON_ID = 1L;
     public static final BigDecimal DEFAULT_BET_WINNING_TAX_PERCENT = new BigDecimal("0.00");
-    public static final boolean DEFAULT_BETTING_ENABLED = false;
+    public static final boolean DEFAULT_BETTING_ENABLED = true;
+    public static final String DEFAULT_AUDIT_USER = "system";
 
     @Id
     private Long id;
 
-    @Column(nullable = false, precision = 5, scale = 2)
+    @Column(name = "bet_winning_tax_percent", nullable = false, precision = 5, scale = 2)
     private BigDecimal betWinningTaxPercent;
 
-    @Column(nullable = false)
+    @Column(name = "betting_enabled", nullable = false)
     @Builder.Default
     private Boolean bettingEnabled = DEFAULT_BETTING_ENABLED;
 
-    @Column(nullable = false)
+    @Column(name = "created_at", nullable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    @Column(nullable = false)
+    @Column(name = "updated_at", nullable = false)
     @Builder.Default
     private LocalDateTime updatedAt = LocalDateTime.now();
 
-    @Column(length = 100)
+    @Column(name = "created_by", length = 100)
     @Builder.Default
-    private String createdBy = "SYSTEM";
+    private String createdBy = DEFAULT_AUDIT_USER;
 
-    @Column(length = 100)
+    @Column(name = "updated_by", length = 100)
     @Builder.Default
-    private String updatedBy = "SYSTEM";
+    private String updatedBy = DEFAULT_AUDIT_USER;
 
     @PrePersist
     void onCreate() {
@@ -68,7 +69,7 @@ public class FinanceSettings {
         }
         updatedAt = now;
         if (createdBy == null || createdBy.isBlank()) {
-            createdBy = "SYSTEM";
+            createdBy = DEFAULT_AUDIT_USER;
         }
         if (updatedBy == null || updatedBy.isBlank()) {
             updatedBy = createdBy;
@@ -79,7 +80,7 @@ public class FinanceSettings {
     void onUpdate() {
         updatedAt = LocalDateTime.now();
         if (updatedBy == null || updatedBy.isBlank()) {
-            updatedBy = "SYSTEM";
+            updatedBy = DEFAULT_AUDIT_USER;
         }
     }
 }
