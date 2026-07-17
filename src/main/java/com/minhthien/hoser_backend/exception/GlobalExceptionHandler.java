@@ -34,6 +34,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(FeatureDisabledException.class)
+    public ResponseEntity<ApiResponse<Void>> handleFeatureDisabled(FeatureDisabledException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(VnptEkycException.class)
     public ResponseEntity<ApiResponse<Void>> handleVnptEkyc(VnptEkycException ex) {
         return ResponseEntity.status(ex.getStatus())

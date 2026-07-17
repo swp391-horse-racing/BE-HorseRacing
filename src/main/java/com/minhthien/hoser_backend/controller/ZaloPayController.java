@@ -10,12 +10,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/zalopay")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {
-        "http://localhost:5173",
-        "http://localhost:51093",
-        "https://horseracing.id.vn",
-        "https://www.horseracing.id.vn"
-})
 public class ZaloPayController {
 
     private final PaymentService paymentService;

@@ -7,6 +7,7 @@ import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.repository.*;
 import com.minhthien.hoser_backend.service.DashboardService;
+import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -53,6 +54,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final AdminWalletWithdrawalRepository adminWalletWithdrawalRepository;
     private final RaceComplaintRepository raceComplaintRepository;
     private final WalletService walletService;
+    private final FinanceSettingsService financeSettingsService;
 
     @Override
     @Transactional
@@ -183,6 +185,7 @@ public class DashboardServiceImpl implements DashboardService {
         summary.put("betsByStatus", countRowsByEnumName(betRepository.countByStatusGroupForUser(userId)));
         summary.put("totalBetStake", zero(betRepository.sumStakeAmountByUserId(userId)));
         summary.put("totalBetPayout", zero(betRepository.sumNetProfitAmountByUserId(userId)));
+        summary.put("bettingEnabled", financeSettingsService.isBettingEnabled());
         summary.put("predictionEnabled", false);
         summary.put("marketplaceEnabled", false);
 
@@ -987,7 +990,7 @@ public class DashboardServiceImpl implements DashboardService {
 
     private Map<String, Boolean> featureFlags() {
         Map<String, Boolean> flags = new LinkedHashMap<>();
-        flags.put("betting", true);
+        flags.put("betting", financeSettingsService.isBettingEnabled());
         flags.put("prediction", false);
         flags.put("marketplace", false);
         flags.put("refereeReports", false);

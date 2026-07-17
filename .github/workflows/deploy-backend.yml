@@ -20,10 +20,10 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Build backend
+      - name: Verify and build backend
         run: |
           chmod +x mvnw
-          ./mvnw clean package -DskipTests
+          ./mvnw clean verify
 
       - name: Setup SSH
         run: |
@@ -35,17 +35,106 @@ jobs:
       - name: Upload jar to Oracle
         run: |
           scp -P 22 -i ~/.ssh/oracle_key target/*.jar \
-          ${{ secrets.ORACLE_USER }}@${{ secrets.ORACLE_HOST }}:/tmp/horse_backend.jar
+          ${{ secrets.ORACLE_USER }}@${{ secrets.ORACLE_HOST }}:/tmp/horse_backend-${{ github.sha }}.jar
 
       - name: Restart backend
+        id: deploy
         run: |
           ssh -p 22 -i ~/.ssh/oracle_key \
           ${{ secrets.ORACLE_USER }}@${{ secrets.ORACLE_HOST }} \
-          "sudo mv /tmp/horse_backend.jar /opt/horse-racing/backend/horse_backend.jar && \
-          echo 'REPO=${{ github.repository }}' | sudo tee /opt/horse-racing/backend/deploy-info.txt && \
-          echo 'BRANCH=${{ github.ref_name }}' | sudo tee -a /opt/horse-racing/backend/deploy-info.txt && \
-          echo 'COMMIT=${{ github.sha }}' | sudo tee -a /opt/horse-racing/backend/deploy-info.txt && \
-          echo 'RUN_ID=${{ github.run_id }}' | sudo tee -a /opt/horse-racing/backend/deploy-info.txt && \
+          "set -e && \
+          APP_DIR=/opt/horse-racing/backend && \
+          CANDIDATE=/tmp/horse_backend-${{ github.sha }}.jar && \
+          sudo test -f \$CANDIDATE && \
+          if sudo test -f \$APP_DIR/horse_backend.jar; then \
+            sudo cp \$APP_DIR/horse_backend.jar \$APP_DIR/horse_backend.previous.jar; \
+          fi && \
+          sudo mv \$CANDIDATE \$APP_DIR/horse_backend.jar && \
           sudo systemctl daemon-reload && \
           sudo systemctl restart horse-backend && \
           sudo systemctl status horse-backend --no-pager"
+
+      - name: Roll back failed restart
+        if: failure() && steps.deploy.outcome == 'failure'
+        run: |
+          ssh -p 22 -i ~/.ssh/oracle_key \
+          ${{ secrets.ORACLE_USER }}@${{ secrets.ORACLE_HOST }} \
+          "set -e && \
+          APP_DIR=/opt/horse-racing/backend && \
+          sudo test -f \$APP_DIR/horse_backend.previous.jar && \
+          sudo cp \$APP_DIR/horse_backend.previous.jar \$APP_DIR/horse_backend.jar && \
+          sudo systemctl restart horse-backend && \
+          sudo systemctl status horse-backend --no-pager"
+
+      - name: Smoke test API and CORS
+        id: smoke
+        continue-on-error: true
+        env:
+          API_BASE_URL: https://api.horseracing.id.vn/api/v1
+          FRONTEND_ORIGIN: https://horseracing.id.vn
+        run: |
+          set -euo pipefail
+
+          ready=false
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --output /dev/null \
+              --header "Origin: ${FRONTEND_ORIGIN}" \
+              "${API_BASE_URL}/tournaments"; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          test "${ready}" = "true"
+
+          check_get() {
+            local path="$1"
+            local headers
+            headers=$(mktemp)
+            curl --fail --silent --show-error --dump-header "${headers}" --output /dev/null \
+              --header "Origin: ${FRONTEND_ORIGIN}" \
+              "${API_BASE_URL}${path}"
+            tr -d '\r' < "${headers}" | grep -Fxi "access-control-allow-origin: ${FRONTEND_ORIGIN}"
+            rm -f "${headers}"
+          }
+
+          check_get "/tournaments"
+          check_get "/news/all"
+          check_get "/rankings?limit=5"
+
+          preflight_headers=$(mktemp)
+          curl --fail --silent --show-error --dump-header "${preflight_headers}" --output /dev/null \
+            --request OPTIONS \
+            --header "Origin: ${FRONTEND_ORIGIN}" \
+            --header "Access-Control-Request-Method: GET" \
+            --header "Access-Control-Request-Headers: authorization" \
+            "${API_BASE_URL}/users/me/bettable-races"
+          tr -d '\r' < "${preflight_headers}" | grep -Fxi "access-control-allow-origin: ${FRONTEND_ORIGIN}"
+          tr -d '\r' < "${preflight_headers}" | grep -Eqi '^access-control-allow-methods:.*GET'
+          tr -d '\r' < "${preflight_headers}" | grep -Eqi '^access-control-allow-headers:.*authorization'
+          rm -f "${preflight_headers}"
+
+      - name: Roll back failed smoke test
+        if: steps.smoke.outcome == 'failure'
+        run: |
+          ssh -p 22 -i ~/.ssh/oracle_key \
+          ${{ secrets.ORACLE_USER }}@${{ secrets.ORACLE_HOST }} \
+          "set -e && \
+          APP_DIR=/opt/horse-racing/backend && \
+          sudo test -f \$APP_DIR/horse_backend.previous.jar && \
+          sudo cp \$APP_DIR/horse_backend.previous.jar \$APP_DIR/horse_backend.jar && \
+          sudo systemctl restart horse-backend && \
+          sudo systemctl status horse-backend --no-pager"
+
+      - name: Fail deployment after rollback
+        if: steps.smoke.outcome == 'failure'
+        run: exit 1
+
+      - name: Record successful deployment
+        run: |
+          ssh -p 22 -i ~/.ssh/oracle_key \
+          ${{ secrets.ORACLE_USER }}@${{ secrets.ORACLE_HOST }} \
+          "echo 'REPO=${{ github.repository }}' | sudo tee /opt/horse-racing/backend/deploy-info.txt && \
+          echo 'BRANCH=${{ github.ref_name }}' | sudo tee -a /opt/horse-racing/backend/deploy-info.txt && \
+          echo 'COMMIT=${{ github.sha }}' | sudo tee -a /opt/horse-racing/backend/deploy-info.txt && \
+          echo 'RUN_ID=${{ github.run_id }}' | sudo tee -a /opt/horse-racing/backend/deploy-info.txt"

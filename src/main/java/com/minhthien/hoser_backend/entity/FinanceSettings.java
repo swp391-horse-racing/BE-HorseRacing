@@ -23,7 +23,7 @@ import java.time.LocalDateTime;
 public class FinanceSettings {
     public static final Long SINGLETON_ID = 1L;
     public static final BigDecimal DEFAULT_BET_WINNING_TAX_PERCENT = new BigDecimal("0.00");
-    public static final boolean DEFAULT_BETTING_ENABLED = false;
+    public static final boolean DEFAULT_BETTING_ENABLED = true;
 
     @Id
     private Long id;

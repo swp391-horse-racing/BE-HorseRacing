@@ -19,12 +19,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {
-        "http://localhost:5173",
-        "http://localhost:51093",
-        "https://horseracing.id.vn",
-        "https://www.horseracing.id.vn"
-})
 public class PaymentController {
 
     private final PaymentService paymentService;
