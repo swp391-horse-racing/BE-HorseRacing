@@ -34,6 +34,8 @@ public interface RaceParticipantRepository extends JpaRepository<RaceParticipant
 
     long countByRaceTournamentId(Long tournamentId);
 
+    long countByRaceId(Long raceId);
+
     long countByRaceRefereeIdAndStatus(Long refereeId, RaceParticipantStatus status);
 
     @Query("""

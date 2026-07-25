@@ -3,6 +3,7 @@ package com.minhthien.hoser_backend.service;
 import com.minhthien.hoser_backend.dto.request.RaceRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentUpdateRequest;
+import com.minhthien.hoser_backend.dto.response.CloseRegistrationResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.RaceVenueResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
@@ -38,7 +39,7 @@ public interface TournamentService {
 
     TournamentResponse openRegistration(Long adminId, Long tournamentId);
 
-    TournamentResponse closeRegistration(Long adminId, Long tournamentId);
+    CloseRegistrationResponse closeRegistration(Long adminId, Long tournamentId, boolean force);
 
     TournamentResponse updateTournamentStatus(Long adminId, Long tournamentId, TournamentStatus status);
 

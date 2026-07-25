@@ -4,6 +4,7 @@ import com.minhthien.hoser_backend.dto.request.RaceRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentRequest;
 import com.minhthien.hoser_backend.dto.request.TournamentUpdateRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
+import com.minhthien.hoser_backend.dto.response.CloseRegistrationResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.RaceVenueResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentBannerUploadResponse;
@@ -139,11 +140,12 @@ public class TournamentController {
     }
 
     @PutMapping("/admin/tournaments/{id}/close-registration")
-    public ResponseEntity<ApiResponse<TournamentResponse>> closeRegistration(
+    public ResponseEntity<ApiResponse<CloseRegistrationResponse>> closeRegistration(
             @AuthenticationPrincipal User currentUser,
-            @PathVariable Long id) {
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "false") boolean force) {
         return ResponseEntity.ok(ApiResponse.success("Tournament registration closed",
-                tournamentService.closeRegistration(currentUser.getId(), id)));
+                tournamentService.closeRegistration(currentUser.getId(), id, force)));
     }
 
     @PutMapping("/admin/tournaments/{id}/finalize")
