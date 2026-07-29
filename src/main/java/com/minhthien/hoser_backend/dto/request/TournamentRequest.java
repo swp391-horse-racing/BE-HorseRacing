@@ -2,6 +2,7 @@ package com.minhthien.hoser_backend.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -49,7 +50,7 @@ public class TournamentRequest {
     private String rules;
 
     @NotNull(message = "Minimum teams is required")
-    @Positive(message = "Minimum teams must be greater than zero")
+    @Min(value = 2, message = "Minimum teams must be at least 2")
     private Integer minTeams;
 
     @NotNull(message = "Maximum teams is required")

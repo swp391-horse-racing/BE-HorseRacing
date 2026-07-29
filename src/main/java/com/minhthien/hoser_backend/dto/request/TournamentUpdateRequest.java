@@ -1,6 +1,7 @@
 package com.minhthien.hoser_backend.dto.request;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -37,7 +38,7 @@ public class TournamentUpdateRequest {
     @Size(max = 10000, message = "Tournament rules must not exceed 10000 characters")
     private String rules;
 
-    @Positive(message = "Minimum teams must be greater than zero")
+    @Min(value = 2, message = "Minimum teams must be at least 2")
     private Integer minTeams;
 
     @Positive(message = "Maximum teams must be greater than zero")

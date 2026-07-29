@@ -356,7 +356,7 @@ Ví dụ cấu hình giải đấu 40 ngựa:
 ### Trạng thái và điều kiện chặn
 
 - Tournament chưa đủ basic info, round config, race/heat config, `minTeams`/`maxTeams` hoặc prize config bắt buộc thì không publish/open.
-- `minTeams` phải lớn hơn 0.
+- `minTeams` phải từ 2 đội trở lên.
 - `minTeams` không được vượt `maxTeams`.
 - Sức chứa race/heat và advancement rule phải tạo được đường đi hợp lệ từ vòng đầu đến chung kết.
 - Entry fee/deposit và prize amount không được âm.

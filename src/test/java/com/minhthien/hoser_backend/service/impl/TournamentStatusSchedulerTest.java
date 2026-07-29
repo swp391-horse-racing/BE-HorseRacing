@@ -4,6 +4,8 @@ import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.enums.RaceStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
+import com.minhthien.hoser_backend.repository.RaceParticipantRepository;
+import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.service.RegistrationOpenBroadcastService;
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,10 @@ import static org.mockito.Mockito.when;
 class TournamentStatusSchedulerTest {
     @Mock
     private TournamentRepository tournamentRepository;
+    @Mock
+    private RaceRepository raceRepository;
+    @Mock
+    private RaceParticipantRepository raceParticipantRepository;
     @Mock
     private RegistrationOpenBroadcastService registrationOpenBroadcastService;
 
@@ -62,6 +68,9 @@ class TournamentStatusSchedulerTest {
                 eq(TournamentStatus.PUBLISHED), any(LocalDateTime.class))).thenReturn(List.of());
         when(tournamentRepository.findByStatusAndRegistrationCloseAtLessThanEqualOrderByRegistrationCloseAtAsc(
                 eq(TournamentStatus.OPEN_REGISTRATION), any(LocalDateTime.class))).thenReturn(List.of(tournament));
+        when(raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(tournament.getId()))
+                .thenReturn(List.of(race));
+        when(raceParticipantRepository.countByRaceId(race.getId())).thenReturn(1L);
 
         scheduler.updateRegistrationStatuses();
 
@@ -130,7 +139,7 @@ class TournamentStatusSchedulerTest {
                 .registrationCloseAt(LocalDateTime.now().minusHours(1))
                 .startAt(LocalDateTime.now().plusDays(5))
                 .endAt(LocalDateTime.now().plusDays(6))
-                .minTeams(1)
+                .minTeams(2)
                 .maxTeams(20)
                 .status(status)
                 .build();

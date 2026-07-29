@@ -108,7 +108,7 @@ class RegistrationOpenBroadcastServiceImplTest {
                 .registrationCloseAt(LocalDateTime.now().plusDays(1))
                 .startAt(LocalDateTime.now().plusDays(5))
                 .endAt(LocalDateTime.now().plusDays(6))
-                .minTeams(1)
+                .minTeams(2)
                 .maxTeams(20)
                 .status(TournamentStatus.OPEN_REGISTRATION)
                 .build();

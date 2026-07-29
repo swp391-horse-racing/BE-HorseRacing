@@ -968,8 +968,8 @@ public class TournamentServiceImpl implements TournamentService {
         if (minTeams == null || maxTeams == null) {
             throw new BadRequestException("Tournament team limits are required");
         }
-        if (minTeams <= 0) {
-            throw new BadRequestException("Minimum teams must be greater than zero");
+        if (minTeams < 2) {
+            throw new BadRequestException("Minimum teams must be at least 2");
         }
         if (maxTeams <= 0) {
             throw new BadRequestException("Maximum teams must be greater than zero");

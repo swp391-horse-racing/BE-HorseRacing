@@ -629,6 +629,53 @@ class Phase6TournamentServiceTest {
     }
 
     @Test
+    void createTournamentAcceptsMinimumTeamBoundary() {
+        TournamentRequest request = tournamentRequest();
+
+        TournamentResponse response = service.createTournament(ADMIN_ID, request);
+
+        assertEquals(2, response.getMinTeams());
+    }
+
+    @Test
+    void createTournamentRejectsMinimumTeamsBelowTwo() {
+        TournamentRequest request = tournamentRequest();
+        request.setMinTeams(1);
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.createTournament(ADMIN_ID, request));
+
+        assertEquals("Minimum teams must be at least 2", exception.getMessage());
+        verify(tournamentRepository, never()).save(any(Tournament.class));
+    }
+
+    @Test
+    void updateTournamentAcceptsMinimumTeamBoundary() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        TournamentUpdateRequest request = new TournamentUpdateRequest();
+        request.setMinTeams(2);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        TournamentResponse response = service.updateTournament(ADMIN_ID, 3L, request);
+
+        assertEquals(2, response.getMinTeams());
+    }
+
+    @Test
+    void updateTournamentRejectsMinimumTeamsBelowTwo() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        TournamentUpdateRequest request = new TournamentUpdateRequest();
+        request.setMinTeams(1);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.updateTournament(ADMIN_ID, 3L, request));
+
+        assertEquals("Minimum teams must be at least 2", exception.getMessage());
+        verify(tournamentRepository, never()).save(any(Tournament.class));
+    }
+
+    @Test
     void createTournamentAcceptsOwnerHorseLimitOneToFive() {
         TournamentRequest request = tournamentRequest();
         request.setMinHorsesPerOwner(1);
@@ -937,7 +984,7 @@ class Phase6TournamentServiceTest {
                 .registrationCloseAt(LocalDateTime.of(2026, 7, 5, 17, 0))
                 .startAt(LocalDateTime.of(2026, 7, 10, 9, 0))
                 .endAt(LocalDateTime.of(2026, 7, 10, 18, 0))
-                .minTeams(1)
+                .minTeams(2)
                 .maxTeams(20)
                 .minHorsesPerOwner(4)
                 .maxHorsesPerOwner(10)
@@ -1038,7 +1085,7 @@ class Phase6TournamentServiceTest {
         request.setRegistrationCloseAt(LocalDateTime.of(2026, 7, 5, 17, 0));
         request.setStartAt(LocalDateTime.of(2026, 7, 10, 9, 0));
         request.setEndAt(LocalDateTime.of(2026, 7, 10, 18, 0));
-        request.setMinTeams(1);
+        request.setMinTeams(2);
         request.setMaxTeams(20);
         request.setMinHorsesPerOwner(4);
         request.setMaxHorsesPerOwner(10);

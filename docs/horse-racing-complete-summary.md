@@ -419,7 +419,7 @@ Các enum khác cần có: `WalletOwnerType`, `WalletStatus`, `WalletTransaction
 - “Đội tham gia” = `horse team = horse + owner + jockey accepted`.
 - `minTeams` và `maxTeams` tính theo số horse team.
 - Tournament không open nếu thiếu thông tin cơ bản, round config, min/max team hoặc prize config bắt buộc.
-- `minTeams > 0` và không vượt `maxTeams`.
+- `minTeams >= 2` và không vượt `maxTeams`.
 - Entry fee/prize amount không âm.
 - Duplicate registration cùng horse/tournament bị chặn.
 - Tournament đóng đăng ký hoặc vượt `maxTeams` thì không tạo registration mới.

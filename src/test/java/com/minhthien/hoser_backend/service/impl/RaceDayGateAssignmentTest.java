@@ -219,7 +219,7 @@ class RaceDayGateAssignmentTest {
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         when(tournamentRepository.findById(tournament.getId())).thenReturn(Optional.of(tournament));
         when(raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(tournament.getId())).thenReturn(List.of(race));
-        when(raceParticipantRepository.countByRaceTournamentId(tournament.getId())).thenReturn(1L);
+        when(raceParticipantRepository.countByRaceTournamentId(tournament.getId())).thenReturn(2L);
         when(raceRegistrationRepository.countByOwnerForTournament(eq(tournament.getId()), anyCollection()))
                 .thenReturn(List.<Object[]>of(new Object[]{3L, "owner", 1L}));
         when(raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(race.getId())).thenReturn(List.of(participant));
@@ -410,7 +410,7 @@ class RaceDayGateAssignmentTest {
         return Tournament.builder()
                 .id(5L)
                 .name("Cup")
-                .minTeams(1)
+                .minTeams(2)
                 .maxTeams(10)
                 .minHorsesPerOwner(1)
                 .maxHorsesPerOwner(10)

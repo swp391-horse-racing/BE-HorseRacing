@@ -154,7 +154,7 @@ class RaceDayOwnerHorseLimitTest {
                 .id(5L)
                 .name("Cup")
                 .status(TournamentStatus.REGISTRATION_CLOSED)
-                .minTeams(1)
+                .minTeams(2)
                 .maxTeams(20)
                 .minHorsesPerOwner(4)
                 .maxHorsesPerOwner(10)

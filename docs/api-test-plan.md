@@ -182,7 +182,7 @@ Tournament:
   "startAt": "2026-06-03T08:00:00",
   "endAt": "2026-06-03T18:00:00",
   "checkInDeadlineAt": "2026-06-03T07:30:00",
-  "minTeams": 1,
+  "minTeams": 2,
   "maxTeams": 8,
   "jockeyChallengeEnabled": true,
   "jockeyChallengeFirstPoints": 3,
