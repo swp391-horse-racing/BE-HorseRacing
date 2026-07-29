@@ -371,6 +371,9 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (!participant.getRace().getId().equals(raceId)) {
             throw new BadRequestException("Participant does not belong to this race");
         }
+        if (participant.getStatus() != RaceParticipantStatus.CHECKED_IN) {
+            throw new BadRequestException("Only checked-in participants can be assigned a gate");
+        }
         if (raceParticipantRepository.existsByRaceIdAndGateNumberAndIdNot(
                 raceId, request.getGateNumber(), participantId)) {
             throw new BadRequestException("Gate number already exists in this race");
@@ -401,6 +404,9 @@ public class RaceDayServiceImpl implements RaceDayService {
         }
         LocalDateTime checkedInAt = LocalDateTime.now();
         participant.setStatus(request.getStatus());
+        if (request.getStatus() != RaceParticipantStatus.CHECKED_IN) {
+            participant.setGateNumber(null);
+        }
         participant.setCheckInNote(request.getNote());
         participant.setCheckedInAt(checkedInAt);
         participant.setCheckedInBy(refereeId);
@@ -971,6 +977,9 @@ public class RaceDayServiceImpl implements RaceDayService {
     private void validateRaceGatesReady(List<RaceParticipant> participants) {
         Set<Integer> gates = new HashSet<>();
         for (RaceParticipant participant : participants) {
+            if (participant.getStatus() != RaceParticipantStatus.CHECKED_IN) {
+                continue;
+            }
             Integer gateNumber = participant.getGateNumber();
             if (gateNumber == null || gateNumber <= 0) {
                 throw new BadRequestException("Gate number must be assigned before race starts");

@@ -114,6 +114,7 @@ class RaceDayGateAssignmentTest {
         User referee = user(1L, UserRole.REFEREE);
         Race race = race(referee, RaceStatus.SCHEDULED);
         RaceParticipant participant = participant(race, null);
+        participant.setStatus(RaceParticipantStatus.CHECKED_IN);
         RaceGateUpdateRequest request = gateRequest(4);
         when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
         when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
@@ -190,6 +191,7 @@ class RaceDayGateAssignmentTest {
         User referee = user(1L, UserRole.REFEREE);
         Race race = race(referee, RaceStatus.SCHEDULED);
         RaceParticipant participant = participant(race, null);
+        participant.setStatus(RaceParticipantStatus.CHECKED_IN);
         when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
         when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
         when(raceResultRepository.existsByRaceId(race.getId())).thenReturn(false);
@@ -210,6 +212,22 @@ class RaceDayGateAssignmentTest {
 
         assertThrows(BadRequestException.class,
                 () -> service.updateRefereeParticipantGate(referee.getId(), race.getId(), 10L, gateRequest(1)));
+    }
+
+    @Test
+    void gateCannotBeAssignedBeforeParticipantChecksIn() {
+        User referee = user(1L, UserRole.REFEREE);
+        Race race = race(referee, RaceStatus.SCHEDULED);
+        RaceParticipant participant = participant(race, null);
+        when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(raceResultRepository.existsByRaceId(race.getId())).thenReturn(false);
+        when(raceParticipantRepository.findById(participant.getId())).thenReturn(Optional.of(participant));
+
+        assertThrows(BadRequestException.class,
+                () -> service.updateRefereeParticipantGate(
+                        referee.getId(), race.getId(), participant.getId(), gateRequest(1)));
+        verify(raceParticipantRepository, never()).save(any());
     }
 
     @Test
@@ -248,6 +266,30 @@ class RaceDayGateAssignmentTest {
         when(raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(race.getId())).thenReturn(List.of(participant));
 
         assertThrows(BadRequestException.class, () -> service.startRace(referee.getId(), race.getId()));
+    }
+
+    @Test
+    void startRaceDoesNotRequireGateForAbsentParticipant() {
+        User referee = user(1L, UserRole.REFEREE);
+        Race race = race(referee, RaceStatus.SCHEDULED);
+        race.getTournament().setStatus(TournamentStatus.ONGOING);
+        RaceParticipant firstParticipant = participant(race, 1);
+        firstParticipant.setStatus(RaceParticipantStatus.CHECKED_IN);
+        RaceParticipant secondParticipant = participant(race, 2);
+        secondParticipant.setId(11L);
+        secondParticipant.setStatus(RaceParticipantStatus.CHECKED_IN);
+        RaceParticipant absentParticipant = participant(race, null);
+        absentParticipant.setId(12L);
+        absentParticipant.setStatus(RaceParticipantStatus.ABSENT);
+        when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(race.getId()))
+                .thenReturn(List.of(absentParticipant, firstParticipant, secondParticipant));
+        when(raceRepository.save(race)).thenReturn(race);
+
+        service.startRace(referee.getId(), race.getId());
+
+        assertEquals(RaceStatus.ONGOING, race.getStatus());
     }
 
     @Test

@@ -33,6 +33,7 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -94,6 +95,42 @@ class RaceDayCheckInTest {
 
         assertEquals(RaceParticipantStatus.CHECKED_IN, response.getStatus());
         verifyNoInteractions(walletService);
+    }
+
+    @Test
+    void markingParticipantAbsentClearsAssignedGate() {
+        User referee = user(1L, UserRole.REFEREE);
+        User owner = user(2L, UserRole.OWNER);
+        User jockey = user(3L, UserRole.JOCKEY);
+        Race race = Race.builder()
+                .id(7L)
+                .name("Race")
+                .tournament(Tournament.builder().id(5L).name("Cup").build())
+                .referee(referee)
+                .status(RaceStatus.SCHEDULED)
+                .build();
+        RaceParticipant participant = RaceParticipant.builder()
+                .id(10L)
+                .race(race)
+                .registration(RaceRegistration.builder().id(8L).build())
+                .owner(owner)
+                .horse(Horse.builder().id(9L).name("Thunder").build())
+                .jockey(jockey)
+                .gateNumber(3)
+                .status(RaceParticipantStatus.CHECKED_IN)
+                .build();
+        when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
+        when(raceRepository.findById(race.getId())).thenReturn(Optional.of(race));
+        when(raceParticipantRepository.findById(participant.getId())).thenReturn(Optional.of(participant));
+        when(raceParticipantRepository.save(participant)).thenReturn(participant);
+        RaceParticipantCheckInRequest request = new RaceParticipantCheckInRequest();
+        request.setStatus(RaceParticipantStatus.ABSENT);
+
+        var response = service.checkInRaceParticipant(
+                referee.getId(), race.getId(), participant.getId(), request);
+
+        assertEquals(RaceParticipantStatus.ABSENT, response.getStatus());
+        assertNull(response.getGateNumber());
     }
 
     private User user(Long id, UserRole role) {
