@@ -22,7 +22,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class FinanceSettings {
     public static final Long SINGLETON_ID = 1L;
-    public static final BigDecimal DEFAULT_BET_WINNING_TAX_PERCENT = new BigDecimal("0.00");
+    public static final BigDecimal DEFAULT_BET_WINNING_TAX_PERCENT = new BigDecimal("10.00");
     public static final boolean DEFAULT_BETTING_ENABLED = true;
     public static final String DEFAULT_AUDIT_USER = "system";
 

@@ -162,6 +162,31 @@ class RefereeInvitationServiceImplTest {
         assertNotNull(response.getRespondedAt());
     }
 
+    @Test
+    void raceCancellationCancelsPendingAndAcceptedRefereeInvitations() {
+        User admin = admin();
+        User firstReferee = referee(2L, "pending-referee");
+        User secondReferee = referee(3L, "accepted-referee");
+        Race race = race();
+        RefereeSalaryConfig config = salaryConfig("500000");
+        RefereeInvitation pending = invitation(100L, admin, firstReferee, race, config);
+        RefereeInvitation accepted = invitation(101L, admin, secondReferee, race, config);
+        accepted.setStatus(AssignmentStatus.ACCEPTED);
+        when(invitationRepository.findByRaceIdAndStatusInOrderByCreatedAtDesc(
+                race.getId(), List.of(AssignmentStatus.PENDING, AssignmentStatus.ACCEPTED)))
+                .thenReturn(List.of(pending, accepted));
+
+        List<User> affected = service.cancelActiveInvitationsForRace(
+                race.getId(), "Race cancelled", "SYSTEM");
+
+        assertEquals(List.of(firstReferee, secondReferee), affected);
+        assertEquals(AssignmentStatus.CANCELLED, pending.getStatus());
+        assertEquals(AssignmentStatus.CANCELLED, accepted.getStatus());
+        assertEquals("Race cancelled", accepted.getResponseNote());
+        assertNotNull(accepted.getCancelledAt());
+        verify(invitationRepository).saveAll(List.of(pending, accepted));
+    }
+
     private RefereeInvitationRequest request(Long raceId, Long refereeId, Long salaryConfigId) {
         RefereeInvitationRequest request = new RefereeInvitationRequest();
         request.setRaceId(raceId);

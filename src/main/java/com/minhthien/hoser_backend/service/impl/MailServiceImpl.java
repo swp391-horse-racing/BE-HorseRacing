@@ -188,6 +188,30 @@ public class MailServiceImpl implements MailService {
     }
 
     @Override
+    public void sendRegistrationCancelled(User recipient, String raceName, String reason,
+                                          String referenceType, String referenceId) {
+        sendSimpleStatusEmail(recipient, "HORSE - Race registration cancelled", "REGISTRATION_CANCELLED",
+                "Your registration for " + raceName + " was cancelled. " + reason,
+                referenceType, referenceId);
+    }
+
+    @Override
+    public void sendRaceCancelled(User recipient, String raceName, String reason,
+                                  String referenceType, String referenceId) {
+        sendSimpleStatusEmail(recipient, "HORSE - Race cancelled", "RACE_CANCELLED",
+                "Race " + raceName + " was cancelled. " + reason,
+                referenceType, referenceId);
+    }
+
+    @Override
+    public void sendTournamentCancelled(User recipient, String tournamentName, String reason,
+                                        String referenceType, String referenceId) {
+        sendSimpleStatusEmail(recipient, "HORSE - Tournament cancelled", "TOURNAMENT_CANCELLED",
+                "Tournament " + tournamentName + " was cancelled. " + reason,
+                referenceType, referenceId);
+    }
+
+    @Override
     public void sendPrizePayout(User recipient, String subject, String message, String referenceType, String referenceId) {
         sendSimpleStatusEmail(recipient, subject, "PRIZE_PAYOUT", message, referenceType, referenceId);
     }

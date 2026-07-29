@@ -82,7 +82,6 @@ class SettingsPersistenceIntegrationTest {
         SystemSettings settings = SystemSettings.builder()
                 .id(SystemSettings.SINGLETON_ID)
                 .defaultRegistrationFee(SystemSettings.DEFAULT_REGISTRATION_FEE)
-                .lateCheckInFee(SystemSettings.DEFAULT_LATE_CHECK_IN_FEE)
                 .defaultTournamentRules(SystemSettings.DEFAULT_RULES)
                 .registrationOpenEmailSubject(SystemSettings.DEFAULT_REGISTRATION_OPEN_SUBJECT)
                 .checkInReminderEmailSubject(SystemSettings.DEFAULT_CHECK_IN_REMINDER_SUBJECT)

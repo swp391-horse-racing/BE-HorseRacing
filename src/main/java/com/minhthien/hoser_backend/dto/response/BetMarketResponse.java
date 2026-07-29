@@ -19,6 +19,7 @@ public class BetMarketResponse {
     private BetMarketStatus status;
     private BigDecimal minStake;
     private BigDecimal maxStake;
+    private BigDecimal winningTaxPercent;
     private String note;
     private Long createdByAdminId;
     private String createdByAdminUsername;

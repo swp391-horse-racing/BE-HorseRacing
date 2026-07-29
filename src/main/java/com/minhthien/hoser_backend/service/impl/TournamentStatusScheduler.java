@@ -1,26 +1,16 @@
 package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.entity.Race;
-import com.minhthien.hoser_backend.entity.RaceRegistration;
 import com.minhthien.hoser_backend.entity.Tournament;
-import com.minhthien.hoser_backend.enums.NotificationType;
-import com.minhthien.hoser_backend.enums.RaceRegistrationStatus;
+import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.RaceStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
-import com.minhthien.hoser_backend.enums.WalletTransactionType;
 import com.minhthien.hoser_backend.repository.RaceParticipantRepository;
-import com.minhthien.hoser_backend.repository.RaceRegistrationRepository;
 import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
-import com.minhthien.hoser_backend.service.BettingService;
-import com.minhthien.hoser_backend.service.NotificationService;
-import com.minhthien.hoser_backend.service.RefereeInvitationService;
-import com.minhthien.hoser_backend.service.RefereePaymentService;
 import com.minhthien.hoser_backend.service.RegistrationOpenBroadcastService;
-import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -28,9 +18,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -41,19 +34,8 @@ public class TournamentStatusScheduler {
     private final TournamentRepository tournamentRepository;
     private final RaceRepository raceRepository;
     private final RaceParticipantRepository raceParticipantRepository;
-    private final RaceRegistrationRepository raceRegistrationRepository;
     private final RegistrationOpenBroadcastService registrationOpenBroadcastService;
-    private final WalletService walletService;
-    private final BettingService bettingService;
-    private final RefereeInvitationService refereeInvitationService;
-    private final RefereePaymentService refereePaymentService;
-
-    private NotificationService notificationService;
-
-    @Autowired(required = false)
-    void setNotificationService(NotificationService notificationService) {
-        this.notificationService = notificationService;
-    }
+    private final RaceCancellationService raceCancellationService;
 
     @Scheduled(
             initialDelayString = "${app.tournament-status.initial-delay-ms:30000}",
@@ -127,25 +109,55 @@ public class TournamentStatusScheduler {
                     .filter(r -> r.getStatus() != RaceStatus.CANCELLED)
                     .toList();
 
-            int cancelledCount = 0;
-            for (Race race : activeRaces) {
-                long participantCount = raceParticipantRepository.countByRaceId(race.getId());
-                if (participantCount < race.getMinParticipants()) {
-                    cancelIneligibleRace(race);
-                    cancelledCount++;
+            Map<Long, Long> participantCounts = activeRaces.stream()
+                    .collect(Collectors.toMap(Race::getId,
+                            race -> raceParticipantRepository.countByRaceId(race.getId())));
+            Set<Long> ineligibleRaceIds = activeRaces.stream()
+                    .filter(race -> participantCounts.getOrDefault(race.getId(), 0L)
+                            < race.getMinParticipants())
+                    .map(Race::getId)
+                    .collect(Collectors.toSet());
+            long approvedParticipantsInEligibleRaces = activeRaces.stream()
+                    .filter(race -> !ineligibleRaceIds.contains(race.getId()))
+                    .mapToLong(race -> participantCounts.getOrDefault(race.getId(), 0L))
+                    .sum();
+
+            if (approvedParticipantsInEligibleRaces < tournament.getMinTeams()) {
+                Map<Long, User> affectedUsers = new LinkedHashMap<>();
+                String reason = "Tournament auto-cancelled due to insufficient approved teams (%d/%d)"
+                        .formatted(approvedParticipantsInEligibleRaces, tournament.getMinTeams());
+                for (Race race : activeRaces) {
+                    RaceCancellationService.RaceCancellationResult result =
+                            raceCancellationService.cancelRace(
+                                    race.getId(), null, reason, SYSTEM_USER, false);
+                    if (result != null && result.affectedUsers() != null) {
+                        result.affectedUsers().forEach(user -> {
+                            if (user != null && user.getId() != null) {
+                                affectedUsers.putIfAbsent(user.getId(), user);
+                            }
+                        });
+                    }
                 }
-            }
-
-            long remainingActiveRaces = activeRaces.stream()
-                    .filter(r -> r.getStatus() != RaceStatus.CANCELLED)
-                    .count();
-
-            if (remainingActiveRaces == 0) {
                 tournament.setStatus(TournamentStatus.CANCELLED);
                 tournament.setUpdatedBy(SYSTEM_USER);
                 tournamentRepository.save(tournament);
-                log.info("Tournament {} cancelled by scheduler - all races ineligible", tournament.getId());
+                raceCancellationService.notifyTournamentCancelledAfterCommit(
+                        tournament, affectedUsers.values(),
+                        approvedParticipantsInEligibleRaces, tournament.getMinTeams());
+                log.info("Tournament {} cancelled by scheduler - approved teams {}/{}",
+                        tournament.getId(), approvedParticipantsInEligibleRaces, tournament.getMinTeams());
             } else {
+                int cancelledCount = 0;
+                for (Race race : activeRaces) {
+                    if (ineligibleRaceIds.contains(race.getId())) {
+                        String reason = "Race auto-cancelled due to insufficient approved participants (%d/%d)"
+                                .formatted(participantCounts.getOrDefault(race.getId(), 0L),
+                                        race.getMinParticipants());
+                        raceCancellationService.cancelRace(
+                                race.getId(), null, reason, SYSTEM_USER, true);
+                        cancelledCount++;
+                    }
+                }
                 tournament.setStatus(TournamentStatus.REGISTRATION_CLOSED);
                 tournament.setUpdatedBy(SYSTEM_USER);
                 TournamentStatusSync.syncPreRaceStatuses(tournament, TournamentStatus.REGISTRATION_CLOSED);
@@ -158,61 +170,5 @@ public class TournamentStatusScheduler {
             updated++;
         }
         return updated;
-    }
-
-    private void cancelIneligibleRace(Race race) {
-        String cancelNote = "Race auto-cancelled by system due to insufficient participants (required: "
-                + race.getMinParticipants() + ")";
-
-        raceRegistrationRepository.findByRaceIdOrderByCreatedAtDesc(race.getId()).stream()
-                .filter(reg -> reg.getStatus() == RaceRegistrationStatus.PENDING
-                        || reg.getStatus() == RaceRegistrationStatus.APPROVED)
-                .forEach(registration -> {
-                    refundRegistrationFee(registration,
-                            "Race entry fee refunded - race auto-cancelled due to insufficient participants");
-                    registration.setStatus(RaceRegistrationStatus.CANCELLED);
-                    registration.setReviewedAt(LocalDateTime.now());
-                    registration.setReviewNote(cancelNote);
-                    raceRegistrationRepository.save(registration);
-                    if (notificationService != null) {
-                        try {
-                            notificationService.notify(
-                                    registration.getOwner(),
-                                    NotificationType.REGISTRATION_CANCELLED,
-                                    "Race registration cancelled",
-                                    "Your registration for race " + registration.getRace().getName()
-                                            + " was auto-cancelled due to insufficient participants. "
-                                            + "Your entry fee has been refunded.",
-                                    "RACE_REGISTRATION",
-                                    String.valueOf(registration.getId()),
-                                    null);
-                        } catch (RuntimeException ex) {
-                            log.warn("Failed to send auto-cancellation notification for registration {}",
-                                    registration.getId(), ex);
-                        }
-                    }
-                });
-
-        bettingService.cancelRaceBets(race.getId());
-        refereeInvitationService.cancelPendingInvitationsForRace(race.getId(), cancelNote);
-        refereePaymentService.releaseForCancelledRace(null, race);
-        race.setStatus(RaceStatus.CANCELLED);
-        raceRepository.save(race);
-        log.info("Scheduler cancelled ineligible race: id={}, name={}", race.getId(), race.getName());
-    }
-
-    private void refundRegistrationFee(RaceRegistration registration, String note) {
-        BigDecimal entryFee = registration.getEntryFeeAmount() == null
-                ? BigDecimal.ZERO : registration.getEntryFeeAmount();
-        if (entryFee.compareTo(BigDecimal.ZERO) > 0) {
-            String key = "race-registration:%d:entry-refund".formatted(registration.getId());
-            walletService.debitAdmin(entryFee, WalletTransactionType.REFUND,
-                    "RACE_REGISTRATION", String.valueOf(registration.getId()),
-                    "race-registration:%d:entry-admin-refund".formatted(registration.getId()),
-                    null, note);
-            walletService.refund(registration.getOwner().getId(), entryFee,
-                    "RACE_REGISTRATION", String.valueOf(registration.getId()), key, null, note);
-            registration.setEntryFeeRefundKey(key);
-        }
     }
 }

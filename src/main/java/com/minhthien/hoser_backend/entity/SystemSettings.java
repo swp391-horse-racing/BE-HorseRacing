@@ -19,7 +19,6 @@ import java.time.LocalDateTime;
 public class SystemSettings {
     public static final Long SINGLETON_ID = 1L;
     public static final BigDecimal DEFAULT_REGISTRATION_FEE = new BigDecimal("5000000");
-    public static final BigDecimal DEFAULT_LATE_CHECK_IN_FEE = new BigDecimal("500000");
     public static final String DEFAULT_RULES = """
             1. Ngua phai co giay chung nhan suc khoe hop le.
             2. Jockey phai co chung chi FIA.
@@ -57,9 +56,6 @@ public class SystemSettings {
 
     @Column(name = "default_registration_fee", nullable = false, precision = 19, scale = 2)
     private BigDecimal defaultRegistrationFee;
-
-    @Column(name = "late_check_in_fee", nullable = false, precision = 19, scale = 2)
-    private BigDecimal lateCheckInFee;
 
     @Lob
     @Column(name = "default_tournament_rules", nullable = false)
@@ -130,7 +126,6 @@ public class SystemSettings {
 
     private void applyDefaults() {
         if (defaultRegistrationFee == null) defaultRegistrationFee = DEFAULT_REGISTRATION_FEE;
-        if (lateCheckInFee == null) lateCheckInFee = DEFAULT_LATE_CHECK_IN_FEE;
         if (defaultTournamentRules == null) defaultTournamentRules = DEFAULT_RULES;
         if (registrationOpenEmailSubject == null) registrationOpenEmailSubject = DEFAULT_REGISTRATION_OPEN_SUBJECT;
         if (checkInReminderEmailSubject == null) checkInReminderEmailSubject = DEFAULT_CHECK_IN_REMINDER_SUBJECT;

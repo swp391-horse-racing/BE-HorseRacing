@@ -80,7 +80,6 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         User admin = requireAdmin(adminId);
         SystemSettings settings = getOrCreate();
         settings.setDefaultRegistrationFee(normalizeMoney(request.getDefaultRegistrationFee(), "Default registration fee"));
-        settings.setLateCheckInFee(normalizePositiveMoney(request.getLateCheckInFee(), "Late check-in fee"));
         return save(admin, settings, "SYSTEM_FEES_UPDATED");
     }
 
@@ -248,7 +247,6 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         return SystemSettings.builder()
                 .id(SystemSettings.SINGLETON_ID)
                 .defaultRegistrationFee(SystemSettings.DEFAULT_REGISTRATION_FEE)
-                .lateCheckInFee(SystemSettings.DEFAULT_LATE_CHECK_IN_FEE)
                 .defaultTournamentRules(SystemSettings.DEFAULT_RULES)
                 .registrationOpenEmailSubject(SystemSettings.DEFAULT_REGISTRATION_OPEN_SUBJECT)
                 .checkInReminderEmailSubject(SystemSettings.DEFAULT_CHECK_IN_REMINDER_SUBJECT)
@@ -289,13 +287,6 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
     private BigDecimal normalizeMoney(BigDecimal amount, String label) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) < 0) {
             throw new BadRequestException(label + " must not be negative");
-        }
-        return amount.setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal normalizePositiveMoney(BigDecimal amount, String label) {
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BadRequestException(label + " must be greater than zero");
         }
         return amount.setScale(2, RoundingMode.HALF_UP);
     }
@@ -533,7 +524,6 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
     private SystemSettingsResponse map(SystemSettings settings) {
         return SystemSettingsResponse.builder()
                 .defaultRegistrationFee(settings.getDefaultRegistrationFee())
-                .lateCheckInFee(settings.getLateCheckInFee())
                 .defaultTournamentRules(settings.getDefaultTournamentRules())
                 .registrationOpenEmailSubject(settings.getRegistrationOpenEmailSubject())
                 .checkInReminderEmailSubject(settings.getCheckInReminderEmailSubject())

@@ -113,7 +113,6 @@ class Phase6TournamentServiceTest {
         lenient().when(raceRegistrationRepository.countByOwnerForTournament(any(), anyCollection())).thenReturn(List.of());
         lenient().when(systemSettingsService.getCurrent()).thenReturn(SystemSettings.builder()
                 .defaultRegistrationFee(new BigDecimal("5000000"))
-                .lateCheckInFee(new BigDecimal("500000"))
                 .build());
         lenient().when(systemSettingsService.normalizeRaceDistance(anyString()))
                 .thenAnswer(invocation -> normalizeRaceDistance(invocation.getArgument(0)));
@@ -163,6 +162,19 @@ class Phase6TournamentServiceTest {
     }
 
     @Test
+    void addRaceRejectsMinimumParticipantsBelowTwo() {
+        Tournament tournament = tournament(TournamentStatus.DRAFT);
+        RaceRequest request = raceRequest("Invalid minimum participants");
+        request.setMinParticipants(1);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
+
+        assertEquals("Race minimum participants must be at least 2", exception.getMessage());
+    }
+
+    @Test
     void addRaceUsesDefaultFeeOnlyWhenEntryFeeIsOmitted() {
         Tournament tournament = tournament(TournamentStatus.DRAFT);
         RaceRequest request = raceRequest("Default fee race");
@@ -172,73 +184,6 @@ class Phase6TournamentServiceTest {
         service.addTournamentRace(ADMIN_ID, 3L, request);
 
         assertEquals(new BigDecimal("5000000"), tournament.getRaces().get(0).getEntryFee());
-    }
-
-    @Test
-    void addRaceUsesDefaultLateCheckInFeeWhenOmitted() {
-        Tournament tournament = tournament(TournamentStatus.DRAFT);
-        RaceRequest request = raceRequest("Default late fee race");
-        request.setLateCheckInFee(null);
-        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
-
-        TournamentResponse response = service.addTournamentRace(ADMIN_ID, 3L, request);
-
-        assertEquals(new BigDecimal("500000"), tournament.getRaces().get(0).getLateCheckInFee());
-        assertEquals(new BigDecimal("500000"), response.getRaces().get(0).getLateCheckInFee());
-    }
-
-    @Test
-    void addRaceUsesRequestLateCheckInFeeWhenProvided() {
-        Tournament tournament = tournament(TournamentStatus.DRAFT);
-        RaceRequest request = raceRequest("Override late fee race");
-        request.setLateCheckInFee(new BigDecimal("125000"));
-        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
-
-        TournamentResponse response = service.addTournamentRace(ADMIN_ID, 3L, request);
-
-        assertEquals(new BigDecimal("125000"), tournament.getRaces().get(0).getLateCheckInFee());
-        assertEquals(new BigDecimal("125000"), response.getRaces().get(0).getLateCheckInFee());
-    }
-
-    @Test
-    void addRaceRejectsZeroLateCheckInFee() {
-        Tournament tournament = tournament(TournamentStatus.DRAFT);
-        RaceRequest request = raceRequest("Zero late fee race");
-        request.setLateCheckInFee(BigDecimal.ZERO);
-        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
-
-        BadRequestException exception = assertThrows(BadRequestException.class,
-                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
-
-        assertEquals("Race late check-in fee must be greater than zero", exception.getMessage());
-    }
-
-    @Test
-    void addRaceRejectsNegativeLateCheckInFee() {
-        Tournament tournament = tournament(TournamentStatus.DRAFT);
-        RaceRequest request = raceRequest("Negative late fee race");
-        request.setLateCheckInFee(new BigDecimal("-1"));
-        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
-
-        BadRequestException exception = assertThrows(BadRequestException.class,
-                () -> service.addTournamentRace(ADMIN_ID, 3L, request));
-
-        assertEquals("Race late check-in fee must be greater than zero", exception.getMessage());
-    }
-
-    @Test
-    void updateRaceRejectsZeroLateCheckInFee() {
-        Tournament tournament = tournament(TournamentStatus.DRAFT);
-        Race race = race(10L, tournament, RaceStatus.DRAFT, "Before");
-        RaceRequest request = raceRequest("After");
-        request.setLateCheckInFee(BigDecimal.ZERO);
-        tournament.getRaces().add(race);
-        when(raceRepository.findById(10L)).thenReturn(Optional.of(race));
-
-        BadRequestException exception = assertThrows(BadRequestException.class,
-                () -> service.updateTournamentRace(ADMIN_ID, 10L, request));
-
-        assertEquals("Race late check-in fee must be greater than zero", exception.getMessage());
     }
 
     @Test
@@ -457,11 +402,13 @@ class Phase6TournamentServiceTest {
         Race race = race(10L, tournament, RaceStatus.PUBLISHED, "Race");
         tournament.getRaces().add(race);
         when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+        when(raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(3L)).thenReturn(List.of(race));
+        when(raceParticipantRepository.countByRaceId(10L)).thenReturn(2L);
 
         TournamentResponse openResponse = service.updateTournamentStatus(
                 ADMIN_ID, 3L, TournamentStatus.OPEN_REGISTRATION);
-        TournamentResponse closedResponse = service.updateTournamentStatus(
-                ADMIN_ID, 3L, TournamentStatus.REGISTRATION_CLOSED);
+        TournamentResponse closedResponse = service.closeRegistration(
+                ADMIN_ID, 3L, false).getTournament();
 
         assertEquals(RaceStatus.REGISTRATION_CLOSED, race.getStatus());
         assertEquals(RaceStatus.OPEN_REGISTRATION, openResponse.getRaces().get(0).getStatus());
@@ -783,7 +730,47 @@ class Phase6TournamentServiceTest {
                 .thenReturn(List.<Object[]>of(new Object[]{2L, "owner", 3L}));
 
         assertThrows(BadRequestException.class,
-                () -> service.updateTournamentStatus(ADMIN_ID, 3L, TournamentStatus.REGISTRATION_CLOSED));
+                () -> service.closeRegistration(ADMIN_ID, 3L, false));
+    }
+
+    @Test
+    void closeRegistrationRejectsRaceBelowApprovedParticipantMinimumEvenWhenForced() {
+        Tournament tournament = tournament(TournamentStatus.OPEN_REGISTRATION);
+        Race race = race(10L, tournament, RaceStatus.OPEN_REGISTRATION, "Qualifier");
+        tournament.getRaces().add(race);
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+        when(raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(3L)).thenReturn(List.of(race));
+        when(raceParticipantRepository.countByRaceId(10L)).thenReturn(1L);
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.closeRegistration(ADMIN_ID, 3L, true));
+
+        assertEquals("Không thể đóng đăng ký: Qualifier có 1/2 người đã duyệt; "
+                + "giải có 0/2 đội đã duyệt", exception.getMessage());
+        assertEquals(TournamentStatus.OPEN_REGISTRATION, tournament.getStatus());
+        verify(tournamentRepository, never()).save(tournament);
+    }
+
+    @Test
+    void closeRegistrationRejectsTournamentBelowApprovedTeamMinimum() {
+        Tournament tournament = tournament(TournamentStatus.OPEN_REGISTRATION);
+        tournament.setMinTeams(5);
+        Race first = race(10L, tournament, RaceStatus.OPEN_REGISTRATION, "Qualifier A");
+        Race second = race(11L, tournament, RaceStatus.OPEN_REGISTRATION, "Qualifier B");
+        tournament.getRaces().addAll(List.of(first, second));
+        when(tournamentRepository.findById(3L)).thenReturn(Optional.of(tournament));
+        when(raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(3L))
+                .thenReturn(List.of(first, second));
+        when(raceParticipantRepository.countByRaceId(10L)).thenReturn(2L);
+        when(raceParticipantRepository.countByRaceId(11L)).thenReturn(2L);
+
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> service.closeRegistration(ADMIN_ID, 3L, false));
+
+        assertEquals("Không thể đóng đăng ký: giải có 4/5 đội đã duyệt",
+                exception.getMessage());
+        assertEquals(TournamentStatus.OPEN_REGISTRATION, tournament.getStatus());
+        verify(tournamentRepository, never()).save(tournament);
     }
 
     @Test
@@ -1002,10 +989,9 @@ class Phase6TournamentServiceTest {
                 .venue(venue())
                 .scheduledStartAt(LocalDateTime.of(2026, 7, 10, 10, id.intValue() % 10))
                 .scheduledEndAt(LocalDateTime.of(2026, 7, 10, 11, id.intValue() % 10))
-                .minParticipants(1)
+                .minParticipants(2)
                 .maxParticipants(8)
                 .entryFee(BigDecimal.ZERO)
-                .lateCheckInFee(new BigDecimal("500000"))
                 .status(status)
                 .build();
         race.replacePrizes(List.of(RacePrize.builder()
@@ -1035,10 +1021,9 @@ class Phase6TournamentServiceTest {
         request.setVenueId(VENUE_ID);
         request.setScheduledStartAt(LocalDateTime.of(2026, 7, 10, 10, 0));
         request.setScheduledEndAt(LocalDateTime.of(2026, 7, 10, 11, 0));
-        request.setMinParticipants(1);
+        request.setMinParticipants(2);
         request.setMaxParticipants(8);
         request.setEntryFee(BigDecimal.ZERO);
-        request.setLateCheckInFee(new BigDecimal("500000"));
         request.setPrizes(List.of(prizeRequest()));
         return request;
     }

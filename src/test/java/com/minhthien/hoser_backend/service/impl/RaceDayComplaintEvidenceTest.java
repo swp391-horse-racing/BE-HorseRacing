@@ -167,7 +167,6 @@ class RaceDayComplaintEvidenceTest {
                 .jockey(jockey)
                 .gateNumber(id.intValue())
                 .status(RaceParticipantStatus.CHECKED_IN)
-                .lateCheckInFeeAmount(BigDecimal.ZERO)
                 .build();
     }
 

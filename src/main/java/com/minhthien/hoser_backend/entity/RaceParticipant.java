@@ -8,7 +8,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.math.BigDecimal;
 
 @Entity
 @Table(
@@ -65,13 +64,6 @@ public class RaceParticipant {
 
     private Long checkedInBy;
 
-    @Column(name = "late_check_in_fee_amount", nullable = false, precision = 19, scale = 2)
-    @Builder.Default
-    private BigDecimal lateCheckInFeeAmount = BigDecimal.ZERO;
-
-    @Column(name = "late_check_in_fee_debit_key", length = 150)
-    private String lateCheckInFeeDebitKey;
-
     @Column(nullable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
@@ -83,9 +75,6 @@ public class RaceParticipant {
         }
         if (status == null) {
             status = RaceParticipantStatus.REGISTERED;
-        }
-        if (lateCheckInFeeAmount == null) {
-            lateCheckInFeeAmount = BigDecimal.ZERO;
         }
     }
 }

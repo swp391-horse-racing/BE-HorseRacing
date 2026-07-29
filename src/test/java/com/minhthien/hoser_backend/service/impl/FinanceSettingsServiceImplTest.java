@@ -4,7 +4,6 @@ import com.minhthien.hoser_backend.dto.request.FinanceSettingsRequest;
 import com.minhthien.hoser_backend.entity.FinanceSettings;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.repository.FinanceSettingsRepository;
-import com.minhthien.hoser_backend.repository.RacePrizeShareSettingRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -29,9 +28,6 @@ class FinanceSettingsServiceImplTest {
     @Mock
     private FinanceSettingsRepository financeSettingsRepository;
 
-    @Mock
-    private RacePrizeShareSettingRepository racePrizeShareSettingRepository;
-
     @InjectMocks
     private FinanceSettingsServiceImpl service;
 
@@ -46,7 +42,7 @@ class FinanceSettingsServiceImplTest {
         FinanceSettings result = service.getOrCreateSettings();
 
         assertEquals(FinanceSettings.SINGLETON_ID, result.getId());
-        assertEquals(new BigDecimal("0.00"), result.getBetWinningTaxPercent());
+        assertEquals(new BigDecimal("10.00"), result.getBetWinningTaxPercent());
         assertTrue(result.getBettingEnabled());
         assertEquals("system", result.getCreatedBy());
         assertEquals("system", result.getUpdatedBy());

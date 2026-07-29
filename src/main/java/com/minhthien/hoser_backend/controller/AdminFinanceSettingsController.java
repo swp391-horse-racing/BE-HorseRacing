@@ -1,10 +1,8 @@
 package com.minhthien.hoser_backend.controller;
 
 import com.minhthien.hoser_backend.dto.request.FinanceSettingsRequest;
-import com.minhthien.hoser_backend.dto.request.RacePrizeShareSettingsRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
 import com.minhthien.hoser_backend.dto.response.FinanceSettingsResponse;
-import com.minhthien.hoser_backend.dto.response.RacePrizeShareSettingsResponse;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -39,18 +37,5 @@ public class AdminFinanceSettingsController {
             @Valid @RequestBody FinanceSettingsRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Finance settings updated",
                 financeSettingsService.updateFinanceSettings(request, currentUser.getUsername())));
-    }
-
-    @GetMapping("/race-prize-shares")
-    public ResponseEntity<ApiResponse<RacePrizeShareSettingsResponse>> getRacePrizeShareSettings() {
-        return ResponseEntity.ok(ApiResponse.success(financeSettingsService.getRacePrizeShareSettings()));
-    }
-
-    @PutMapping("/race-prize-shares")
-    public ResponseEntity<ApiResponse<RacePrizeShareSettingsResponse>> updateRacePrizeShareSettings(
-            @AuthenticationPrincipal User currentUser,
-            @Valid @RequestBody RacePrizeShareSettingsRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Race prize share settings updated",
-                financeSettingsService.updateRacePrizeShareSettings(request, currentUser.getUsername())));
     }
 }

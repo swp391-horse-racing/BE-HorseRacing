@@ -23,6 +23,8 @@ public class BetResponse {
     private BigDecimal potentialPayoutAmount;
     private BigDecimal winningTaxPercent;
     private BigDecimal winningTaxAmount;
+    private BigDecimal estimatedWinningTaxAmount;
+    private BigDecimal estimatedNetPayoutAmount;
     private BigDecimal grossProfitAmount;
     private BigDecimal netProfitAmount;
     private BetStatus status;

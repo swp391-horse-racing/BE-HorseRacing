@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Collection;
 
 @Repository
 public interface RefereeInvitationRepository extends JpaRepository<RefereeInvitation, Long> {
@@ -35,4 +36,10 @@ public interface RefereeInvitationRepository extends JpaRepository<RefereeInvita
             Long raceId, AssignmentStatus status, Long id);
 
     List<RefereeInvitation> findByRaceIdAndStatusOrderByCreatedAtDesc(Long raceId, AssignmentStatus status);
+
+    @EntityGraph(attributePaths = {"admin", "referee", "race", "race.tournament", "salaryConfig"})
+    List<RefereeInvitation> findByRaceIdAndStatusInOrderByCreatedAtDesc(
+            Long raceId,
+            Collection<AssignmentStatus> statuses
+    );
 }

@@ -242,6 +242,31 @@ public class RefereeInvitationServiceImpl implements RefereeInvitationService {
                 "The invitation for race " + invitation.getRace().getName() + " was cancelled", invitation));
     }
 
+    @Override
+    @Transactional
+    public List<User> cancelActiveInvitationsForRace(Long raceId, String reason, String updatedBy) {
+        List<RefereeInvitation> active = invitationRepository
+                .findByRaceIdAndStatusInOrderByCreatedAtDesc(
+                        raceId, List.of(AssignmentStatus.PENDING, AssignmentStatus.ACCEPTED));
+        if (active.isEmpty()) {
+            return List.of();
+        }
+        LocalDateTime now = LocalDateTime.now();
+        String actor = updatedBy == null || updatedBy.isBlank() ? "SYSTEM" : updatedBy;
+        for (RefereeInvitation invitation : active) {
+            invitation.setStatus(AssignmentStatus.CANCELLED);
+            invitation.setResponseNote(reason);
+            invitation.setCancelledAt(now);
+            invitation.setUpdatedBy(actor);
+        }
+        invitationRepository.saveAll(active);
+        return active.stream()
+                .map(RefereeInvitation::getReferee)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
     private void cancelOtherPendingInvitations(RefereeInvitation accepted, User acceptedBy) {
         List<RefereeInvitation> pending = invitationRepository
                 .findByRaceIdAndStatusAndIdNotOrderByCreatedAtDesc(

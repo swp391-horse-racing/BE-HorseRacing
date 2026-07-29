@@ -11,7 +11,7 @@ INSERT INTO finance_settings (
     updated_by
 ) VALUES (
     1,
-    0.00,
+    10.00,
     TRUE,
     CURRENT_TIMESTAMP(6),
     CURRENT_TIMESTAMP(6),

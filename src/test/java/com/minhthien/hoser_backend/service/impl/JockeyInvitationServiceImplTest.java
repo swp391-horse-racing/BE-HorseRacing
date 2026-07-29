@@ -99,6 +99,30 @@ class JockeyInvitationServiceImplTest {
     }
 
     @Test
+    void raceCancellationCancelsPendingAndAcceptedJockeyInvitations() {
+        User owner = owner();
+        User jockey = jockey();
+        Race race = race();
+        JockeyInvitation pending = pendingInvitation(owner, jockey, race);
+        JockeyInvitation accepted = pendingInvitation(owner, jockey, race);
+        accepted.setId(11L);
+        accepted.setStatus(AssignmentStatus.ACCEPTED);
+        when(jockeyInvitationRepository.findByRaceIdAndStatusInOrderByCreatedAtDesc(
+                eq(race.getId()), anyCollection()))
+                .thenReturn(List.of(pending, accepted));
+
+        List<User> affected = service.cancelActiveInvitationsForRace(
+                race.getId(), "Race cancelled", "SYSTEM");
+
+        assertEquals(List.of(jockey), affected);
+        assertEquals(AssignmentStatus.CANCELLED, pending.getStatus());
+        assertEquals(AssignmentStatus.CANCELLED, accepted.getStatus());
+        assertEquals("Race cancelled", accepted.getResponseNote());
+        assertNotNull(accepted.getCancelledAt());
+        verify(jockeyInvitationRepository).saveAll(List.of(pending, accepted));
+    }
+
+    @Test
     void acceptInvitationMarksSelectedAcceptedAndCancelsOtherPendingInvitations() {
         User jockey = jockey();
         JockeyInvitation invitation = pendingInvitation(owner(), jockey);

@@ -2,6 +2,7 @@ package com.minhthien.hoser_backend.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -34,7 +35,7 @@ public class RaceRequest {
     private LocalDateTime scheduledEndAt;
 
     @NotNull(message = "Minimum participants is required")
-    @Positive(message = "Minimum participants must be greater than zero")
+    @Min(value = 2, message = "Minimum participants must be at least 2")
     private Integer minParticipants;
 
     @NotNull(message = "Maximum participants is required")
@@ -44,10 +45,6 @@ public class RaceRequest {
     @PositiveOrZero(message = "Entry fee must not be negative")
     @Schema(description = "Fee charged for this specific race only", example = "0", defaultValue = "0")
     private BigDecimal entryFee;
-
-    @Positive(message = "Late check-in fee must be greater than zero")
-    @Schema(description = "Late check-in fee charged for this race only", example = "500000")
-    private BigDecimal lateCheckInFee;
 
     @Size(max = 1000, message = "Race note must be at most 1000 characters")
     private String note;

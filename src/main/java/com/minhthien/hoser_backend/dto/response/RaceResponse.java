@@ -25,7 +25,6 @@ public class RaceResponse {
     private Integer minParticipants;
     private Integer maxParticipants;
     private BigDecimal entryFee;
-    private BigDecimal lateCheckInFee;
     private Long refereeId;
     private String refereeUsername;
     private RaceStatus status;

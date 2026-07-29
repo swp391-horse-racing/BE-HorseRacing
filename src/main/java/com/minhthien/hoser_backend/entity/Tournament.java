@@ -76,7 +76,7 @@ public class Tournament {
 
     @Column(nullable = false)
     @Builder.Default
-    private Integer minHorsesPerOwner = 4;
+    private Integer minHorsesPerOwner = 1;
 
     @Column(nullable = false)
     @Builder.Default
@@ -159,7 +159,7 @@ public class Tournament {
             entryFee = BigDecimal.ZERO;
         }
         if (minHorsesPerOwner == null) {
-            minHorsesPerOwner = 4;
+            minHorsesPerOwner = 1;
         }
         if (maxHorsesPerOwner == null) {
             maxHorsesPerOwner = 10;

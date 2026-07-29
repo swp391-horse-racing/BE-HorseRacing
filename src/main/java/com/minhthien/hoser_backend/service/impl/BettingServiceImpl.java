@@ -73,6 +73,8 @@ public class BettingServiceImpl implements BettingService {
                 .createdByAdmin(admin)
                 .minStake(request.getMinStake())
                 .maxStake(request.getMaxStake())
+                .winningTaxPercent(financeSettingsService.getBetWinningTaxPercent()
+                        .setScale(2, RoundingMode.HALF_UP))
                 .note(request.getNote())
                 .status(BetMarketStatus.DRAFT)
                 .build();
@@ -197,6 +199,7 @@ public class BettingServiceImpl implements BettingService {
                 .user(user)
                 .stakeAmount(request.getStakeAmount())
                 .potentialPayoutAmount(request.getStakeAmount().multiply(FIXED_PAYOUT_MULTIPLIER))
+                .winningTaxPercent(resolveMarketTaxPercent(market))
                 .status(BetStatus.PLACED)
                 .placedAt(LocalDateTime.now())
                 .build();
@@ -392,9 +395,8 @@ public class BettingServiceImpl implements BettingService {
                 && bet.getNetProfitAmount() != null) {
             return;
         }
-        BigDecimal grossProfitAmount = bet.getStakeAmount().setScale(2, RoundingMode.HALF_UP);
-        BigDecimal taxPercent = financeSettingsService.getBetWinningTaxPercent()
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal grossProfitAmount = potentialGrossProfit(bet);
+        BigDecimal taxPercent = resolveBetTaxPercent(bet);
         BigDecimal taxAmount = calculatePercentAmount(grossProfitAmount, taxPercent);
         BigDecimal netProfitAmount = grossProfitAmount.subtract(taxAmount).setScale(2, RoundingMode.HALF_UP);
         bet.setGrossProfitAmount(grossProfitAmount);
@@ -475,6 +477,7 @@ public class BettingServiceImpl implements BettingService {
                 .status(market.getStatus())
                 .minStake(market.getMinStake())
                 .maxStake(market.getMaxStake())
+                .winningTaxPercent(resolveMarketTaxPercent(market))
                 .note(market.getNote())
                 .createdByAdminId(market.getCreatedByAdmin().getId())
                 .createdByAdminUsername(market.getCreatedByAdmin().getUsername())
@@ -504,6 +507,11 @@ public class BettingServiceImpl implements BettingService {
     }
 
     private BetResponse mapBet(Bet bet) {
+        BigDecimal taxPercent = resolveBetTaxPercent(bet);
+        BigDecimal estimatedTaxAmount = calculatePercentAmount(potentialGrossProfit(bet), taxPercent);
+        BigDecimal estimatedNetPayoutAmount = defaultZero(bet.getPotentialPayoutAmount())
+                .subtract(estimatedTaxAmount)
+                .setScale(2, RoundingMode.HALF_UP);
         return BetResponse.builder()
                 .id(bet.getId())
                 .marketId(bet.getMarket().getId())
@@ -516,8 +524,10 @@ public class BettingServiceImpl implements BettingService {
                 .username(bet.getUser().getUsername())
                 .stakeAmount(bet.getStakeAmount())
                 .potentialPayoutAmount(bet.getPotentialPayoutAmount())
-                .winningTaxPercent(bet.getWinningTaxPercent())
+                .winningTaxPercent(taxPercent)
                 .winningTaxAmount(bet.getWinningTaxAmount())
+                .estimatedWinningTaxAmount(estimatedTaxAmount)
+                .estimatedNetPayoutAmount(estimatedNetPayoutAmount)
                 .grossProfitAmount(bet.getGrossProfitAmount())
                 .netProfitAmount(bet.getNetProfitAmount())
                 .status(bet.getStatus())
@@ -525,6 +535,27 @@ public class BettingServiceImpl implements BettingService {
                 .lockedAt(bet.getLockedAt())
                 .settledAt(bet.getSettledAt())
                 .build();
+    }
+
+    private BigDecimal potentialGrossProfit(Bet bet) {
+        BigDecimal grossProfit = defaultZero(bet.getPotentialPayoutAmount())
+                .subtract(defaultZero(bet.getStakeAmount()));
+        return grossProfit.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal resolveBetTaxPercent(Bet bet) {
+        if (bet.getWinningTaxPercent() != null) {
+            return bet.getWinningTaxPercent().setScale(2, RoundingMode.HALF_UP);
+        }
+        return resolveMarketTaxPercent(bet.getMarket());
+    }
+
+    private BigDecimal resolveMarketTaxPercent(BetMarket market) {
+        BigDecimal taxPercent = market.getWinningTaxPercent();
+        if (taxPercent == null) {
+            taxPercent = BetMarket.DEFAULT_WINNING_TAX_PERCENT;
+        }
+        return taxPercent.setScale(2, RoundingMode.HALF_UP);
     }
 
     private BetMarket requireMarket(Long marketId) {

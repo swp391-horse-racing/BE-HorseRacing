@@ -29,13 +29,11 @@ import com.minhthien.hoser_backend.exception.UnauthorizedException;
 import com.minhthien.hoser_backend.repository.*;
 import com.minhthien.hoser_backend.service.BettingService;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
-import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.MailService;
 import com.minhthien.hoser_backend.service.NotificationService;
 import com.minhthien.hoser_backend.service.RaceDayService;
 import com.minhthien.hoser_backend.service.RealtimeEventService;
 import com.minhthien.hoser_backend.service.RefereePaymentService;
-import com.minhthien.hoser_backend.service.RefereeInvitationService;
 import com.minhthien.hoser_backend.service.SystemSettingsService;
 import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
@@ -64,8 +62,6 @@ public class RaceDayServiceImpl implements RaceDayService {
     private static final String RACE_COMPLAINT_EVIDENCE_FOLDER = "hoser/race-complaints/evidence";
     private static final String RACE_VIOLATION_EVIDENCE_FOLDER = "hoser/race-violations/evidence";
     private static final long MAX_VIOLATION_EVIDENCE_BYTES = 100L * 1024L * 1024L;
-    private static final String LATE_CHECK_IN_REF = "RACE_PARTICIPANT";
-
     private final RaceRepository raceRepository;
     private final RaceRegistrationRepository raceRegistrationRepository;
     private final RaceParticipantRepository raceParticipantRepository;
@@ -78,13 +74,12 @@ public class RaceDayServiceImpl implements RaceDayService {
     private final UserRepository userRepository;
     private final WalletService walletService;
     private final TournamentServiceImpl tournamentService;
-    private final FinanceSettingsService financeSettingsService;
     private final MailService mailService;
     private final BettingService bettingService;
     private final CloudinaryUploadService cloudinaryUploadService;
     private final RefereePaymentService refereePaymentService;
-    private final RefereeInvitationService refereeInvitationService;
     private final SystemSettingsService systemSettingsService;
+    private final RaceCancellationService raceCancellationService;
     private NotificationService notificationService;
     private RealtimeEventService realtimeEventService;
 
@@ -312,31 +307,13 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (!canCancelRace(race.getStatus())) {
             throw new BadRequestException("Only pre-race or scheduled races can be cancelled");
         }
-        raceRegistrationRepository.findByRaceIdOrderByCreatedAtDesc(raceId).stream()
-                .filter(registration -> registration.getStatus() == RaceRegistrationStatus.PENDING
-                        || registration.getStatus() == RaceRegistrationStatus.APPROVED)
-                .forEach(registration -> {
-                    refundRegistrationFee(registration, "Race entry fee refunded after race cancellation");
-                    registration.setStatus(RaceRegistrationStatus.CANCELLED);
-                    registration.setReviewedBy(adminId);
-                    registration.setReviewedAt(LocalDateTime.now());
-                    registration.setReviewNote(request == null ? null : request.getNote());
-                    raceRegistrationRepository.save(registration);
-                    notifyRegistrationStatus(registration, NotificationType.REGISTRATION_CANCELLED,
-                            "Race registration cancelled",
-                            "Your registration for race " + registration.getRace().getName() + " was cancelled",
-                            false);
-                });
-        bettingService.cancelRaceBets(raceId);
-        refereeInvitationService.cancelPendingInvitationsForRace(
-                raceId, "Race was cancelled");
-        refereePaymentService.releaseForCancelledRace(adminId, race);
-        race.setStatus(RaceStatus.CANCELLED);
-        Race saved = raceRepository.save(race);
-        notifyRaceEvent(saved, NotificationType.RACE_CANCELLED, "Race cancelled",
-                "Race " + saved.getName() + " was cancelled");
-        publishRaceStatus(saved, "RACE_CANCELLED");
-        return tournamentService.mapRace(saved);
+        String reason = request == null || request.getNote() == null || request.getNote().isBlank()
+                ? "Race cancelled by administrator"
+                : request.getNote().trim();
+        raceCancellationService.cancelRace(raceId, adminId, reason,
+                requireUser(adminId).getUsername(), true);
+        publishRaceStatus(race, "RACE_CANCELLED");
+        return tournamentService.mapRace(race);
     }
 
     @Override
@@ -422,12 +399,7 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (!participant.getRace().getId().equals(raceId)) {
             throw new BadRequestException("Participant does not belong to this race");
         }
-        boolean firstSuccessfulCheckIn = participant.getStatus() != RaceParticipantStatus.CHECKED_IN
-                && request.getStatus() == RaceParticipantStatus.CHECKED_IN;
         LocalDateTime checkedInAt = LocalDateTime.now();
-        if (firstSuccessfulCheckIn) {
-            chargeLateCheckInFee(participant, checkedInAt);
-        }
         participant.setStatus(request.getStatus());
         participant.setCheckInNote(request.getNote());
         participant.setCheckedInAt(checkedInAt);
@@ -1237,40 +1209,6 @@ public class RaceDayServiceImpl implements RaceDayService {
         raceRegistrationRepository.save(registration);
     }
 
-    private void chargeLateCheckInFee(RaceParticipant participant, LocalDateTime checkedInAt) {
-        Tournament tournament = participant.getRace().getTournament();
-        BigDecimal fee = defaultZero(participant.getRace().getLateCheckInFee());
-        if (tournament.getCheckInDeadlineAt() == null
-                || !checkedInAt.isAfter(tournament.getCheckInDeadlineAt())
-                || fee.compareTo(BigDecimal.ZERO) <= 0
-                || participant.getLateCheckInFeeDebitKey() != null) {
-            return;
-        }
-        String referenceId = String.valueOf(participant.getId());
-        String userKey = "race-participant:%d:late-check-in-debit".formatted(participant.getId());
-        String metadata = "{\"raceId\":%d,\"tournamentId\":%d,\"deadline\":\"%s\"}".formatted(
-                participant.getRace().getId(), tournament.getId(), tournament.getCheckInDeadlineAt());
-        walletService.debitAllowNegative(
-                participant.getOwner().getId(),
-                fee,
-                WalletTransactionType.LATE_CHECK_IN_FEE,
-                LATE_CHECK_IN_REF,
-                referenceId,
-                userKey,
-                metadata,
-                "Late check-in fee");
-        walletService.creditAdmin(
-                fee,
-                WalletTransactionType.LATE_CHECK_IN_FEE,
-                LATE_CHECK_IN_REF,
-                referenceId,
-                "race-participant:%d:late-check-in-admin-credit".formatted(participant.getId()),
-                metadata,
-                "Late check-in fee received");
-        participant.setLateCheckInFeeAmount(fee);
-        participant.setLateCheckInFeeDebitKey(userKey);
-    }
-
     private void refundRegistrationFee(RaceRegistration registration, String note) {
         BigDecimal entryFee = defaultZero(registration.getEntryFeeAmount());
         if (entryFee.compareTo(BigDecimal.ZERO) > 0) {
@@ -1420,7 +1358,6 @@ public class RaceDayServiceImpl implements RaceDayService {
         participant.setStatus(entry.getStatus());
         raceParticipantRepository.save(participant);
         BigDecimal prizeAmount = prizeAmountFor(race, entry.getRank());
-        PrizeShare prizeShare = calculatePrizeShare(entry.getRank(), prizeAmount);
         RacePayoutStatus payoutStatus = prizeAmount.compareTo(BigDecimal.ZERO) > 0
                 ? RacePayoutStatus.PENDING
                 : RacePayoutStatus.NOT_ELIGIBLE;
@@ -1435,9 +1372,9 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .status(entry.getStatus())
                 .jockeyChallengePoints(challengePointsFor(race.getTournament(), entry.getRank(), entry.getStatus()))
                 .prizeAmount(prizeAmount)
-                .ownerPrizeAmount(prizeShare.ownerAmount())
-                .jockeyPrizeAmount(prizeShare.jockeyAmount())
-                .jockeyPrizePercent(prizeShare.jockeyPercent())
+                .ownerPrizeAmount(prizeAmount)
+                .jockeyPrizeAmount(BigDecimal.ZERO)
+                .jockeyPrizePercent(BigDecimal.ZERO)
                 .payoutStatus(payoutStatus)
                 .note(entry.getNote())
                 .finalizedBy(refereeId)
@@ -1570,19 +1507,6 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .orElse(BigDecimal.ZERO);
     }
 
-    private PrizeShare calculatePrizeShare(Integer rank, BigDecimal prizeAmount) {
-        BigDecimal total = defaultZero(prizeAmount).setScale(2, RoundingMode.HALF_UP);
-        if (total.compareTo(BigDecimal.ZERO) <= 0 || rank == null) {
-            return new PrizeShare(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
-        }
-        BigDecimal jockeyPercent = financeSettingsService.getRacePrizeJockeyPercent(rank)
-                .setScale(2, RoundingMode.HALF_UP);
-        BigDecimal jockeyAmount = total.multiply(jockeyPercent)
-                .divide(new BigDecimal("100.00"), 2, RoundingMode.HALF_UP);
-        BigDecimal ownerAmount = total.subtract(jockeyAmount).setScale(2, RoundingMode.HALF_UP);
-        return new PrizeShare(ownerAmount, jockeyAmount, jockeyPercent);
-    }
-
     private int challengePointsFor(Tournament tournament, Integer rank, RaceParticipantStatus status) {
         if (!Boolean.TRUE.equals(tournament.getJockeyChallengeEnabled())
                 || status != RaceParticipantStatus.FINISHED
@@ -1678,8 +1602,6 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .checkInNote(participant.getCheckInNote())
                 .checkedInAt(participant.getCheckedInAt())
                 .checkedInBy(participant.getCheckedInBy())
-                .lateCheckInFeeAmount(defaultZero(participant.getLateCheckInFeeAmount()))
-                .lateCheckInFeeCharged(participant.getLateCheckInFeeDebitKey() != null)
                 .createdAt(participant.getCreatedAt())
                 .build();
     }
@@ -1828,9 +1750,6 @@ public class RaceDayServiceImpl implements RaceDayService {
 
     private record JockeyStanding(User jockey, int totalPoints, int firstPlaces, int secondPlaces, int thirdPlaces,
                                   int rank, BigDecimal prizeAmount) {
-    }
-
-    private record PrizeShare(BigDecimal ownerAmount, BigDecimal jockeyAmount, BigDecimal jockeyPercent) {
     }
 
     private static final class JockeyStandingAccumulator {

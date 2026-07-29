@@ -1,6 +1,7 @@
 package com.minhthien.hoser_backend.service.impl;
 
 import com.minhthien.hoser_backend.dto.request.RaceGateUpdateRequest;
+import com.minhthien.hoser_backend.dto.request.RaceResultEntryRequest;
 import com.minhthien.hoser_backend.dto.request.RaceViolationRequest;
 import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
@@ -10,7 +11,9 @@ import com.minhthien.hoser_backend.entity.Horse;
 import com.minhthien.hoser_backend.entity.JockeyInvitation;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RaceParticipant;
+import com.minhthien.hoser_backend.entity.RacePrize;
 import com.minhthien.hoser_backend.entity.RaceRegistration;
+import com.minhthien.hoser_backend.entity.RaceResult;
 import com.minhthien.hoser_backend.entity.RaceViolation;
 import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
@@ -47,6 +50,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -332,12 +336,15 @@ class RaceDayGateAssignmentTest {
         Race selectedRace = race(referee, RaceStatus.SCHEDULED);
         selectedRace.getTournament().setStatus(TournamentStatus.ONGOING);
         Race otherRace = race(referee, RaceStatus.SCHEDULED);
-        RaceParticipant participant = participant(selectedRace, 1);
-        participant.setStatus(RaceParticipantStatus.CHECKED_IN);
+        RaceParticipant firstParticipant = participant(selectedRace, 1);
+        firstParticipant.setStatus(RaceParticipantStatus.CHECKED_IN);
+        RaceParticipant secondParticipant = participant(selectedRace, 2);
+        secondParticipant.setId(11L);
+        secondParticipant.setStatus(RaceParticipantStatus.CHECKED_IN);
         when(userRepository.findById(referee.getId())).thenReturn(Optional.of(referee));
         when(raceRepository.findById(selectedRace.getId())).thenReturn(Optional.of(selectedRace));
         when(raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(selectedRace.getId()))
-                .thenReturn(List.of(participant));
+                .thenReturn(List.of(firstParticipant, secondParticipant));
         when(raceRepository.save(selectedRace)).thenReturn(selectedRace);
 
         service.startRace(referee.getId(), selectedRace.getId());
@@ -345,6 +352,28 @@ class RaceDayGateAssignmentTest {
         assertEquals(RaceStatus.ONGOING, selectedRace.getStatus());
         assertEquals(RaceStatus.SCHEDULED, otherRace.getStatus());
         verify(bettingService).lockRaceBets(selectedRace.getId());
+    }
+
+    @Test
+    void newRaceResultPaysFullPrizeToOwnerAndNoneToJockey() {
+        Race race = race(user(2L, UserRole.REFEREE), RaceStatus.ONGOING);
+        race.replacePrizes(List.of(RacePrize.builder()
+                .rank(1)
+                .amount(new BigDecimal("1000000.00"))
+                .build()));
+        RaceParticipant participant = participant(race, 1);
+        RaceResultEntryRequest entry = new RaceResultEntryRequest();
+        entry.setParticipantId(participant.getId());
+        entry.setRank(1);
+        entry.setStatus(RaceParticipantStatus.FINISHED);
+        when(raceParticipantRepository.save(participant)).thenReturn(participant);
+
+        RaceResult result = ReflectionTestUtils.invokeMethod(service, "buildRaceResult",
+                race, participant, entry, 2L, LocalDateTime.now());
+
+        assertEquals(new BigDecimal("1000000.00"), result.getOwnerPrizeAmount());
+        assertEquals(BigDecimal.ZERO, result.getJockeyPrizeAmount());
+        assertEquals(BigDecimal.ZERO, result.getJockeyPrizePercent());
     }
 
     private RaceRegistration registration() {
@@ -399,7 +428,7 @@ class RaceDayGateAssignmentTest {
                 .tournament(tournament(TournamentStatus.SCHEDULED))
                 .scheduledStartAt(LocalDateTime.now().plusHours(1))
                 .scheduledEndAt(LocalDateTime.now().plusHours(2))
-                .minParticipants(1)
+                .minParticipants(2)
                 .maxParticipants(10)
                 .referee(referee)
                 .status(status)

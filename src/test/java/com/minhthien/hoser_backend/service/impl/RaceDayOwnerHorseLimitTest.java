@@ -164,7 +164,7 @@ class RaceDayOwnerHorseLimitTest {
                 .name("Race")
                 .tournament(tournament)
                 .status(RaceStatus.REGISTRATION_CLOSED)
-                .minParticipants(1)
+                .minParticipants(2)
                 .maxParticipants(10)
                 .build();
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));

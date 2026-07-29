@@ -353,8 +353,6 @@ Cot `Auth/Role` la role can dung khi test happy path. Cac API public van nen tes
 | AUD-01 | GET | `/api/v1/admin/audit-logs` | ADMIN | query `referenceType`, `referenceId` optional | List audit log |
 | FIN-01 | GET | `/api/v1/admin/finance-settings` | ADMIN | none | Tra setting hien tai, gom `betWinningTaxPercent`, `bettingEnabled` |
 | FIN-02 | PUT | `/api/v1/admin/finance-settings` | ADMIN | `{ "betWinningTaxPercent": 10.00, "bettingEnabled": true }` | Setting doi |
-| FIN-03 | GET | `/api/v1/admin/finance-settings/race-prize-shares` | ADMIN | none | Tra cau hinh chia giai |
-| FIN-04 | PUT | `/api/v1/admin/finance-settings/race-prize-shares` | ADMIN | `RacePrizeShareSettingsRequest` | Cap nhat ty le chia giai |
 
 ### Role Applications
 

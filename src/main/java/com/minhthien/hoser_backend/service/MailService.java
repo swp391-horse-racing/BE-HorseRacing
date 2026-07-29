@@ -44,6 +44,18 @@ public interface MailService {
     default void sendRaceResultPublished(Race race, User recipient, String referenceType, String referenceId) {
     }
 
+    default void sendRegistrationCancelled(User recipient, String raceName, String reason,
+                                           String referenceType, String referenceId) {
+    }
+
+    default void sendRaceCancelled(User recipient, String raceName, String reason,
+                                   String referenceType, String referenceId) {
+    }
+
+    default void sendTournamentCancelled(User recipient, String tournamentName, String reason,
+                                         String referenceType, String referenceId) {
+    }
+
     default void sendPrizePayout(User recipient, String subject, String message, String referenceType, String referenceId) {
     }
 

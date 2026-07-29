@@ -12,7 +12,6 @@ import java.util.List;
 @Builder
 public class SystemSettingsResponse {
     private BigDecimal defaultRegistrationFee;
-    private BigDecimal lateCheckInFee;
     private String defaultTournamentRules;
     private String registrationOpenEmailSubject;
     private String checkInReminderEmailSubject;

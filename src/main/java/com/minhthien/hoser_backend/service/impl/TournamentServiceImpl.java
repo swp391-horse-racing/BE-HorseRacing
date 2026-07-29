@@ -18,16 +18,13 @@ import com.minhthien.hoser_backend.entity.JockeyChallengePrize;
 import com.minhthien.hoser_backend.entity.Province;
 import com.minhthien.hoser_backend.entity.Race;
 import com.minhthien.hoser_backend.entity.RacePrize;
-import com.minhthien.hoser_backend.entity.RaceRegistration;
 import com.minhthien.hoser_backend.entity.RaceVenue;
 import com.minhthien.hoser_backend.entity.Tournament;
 import com.minhthien.hoser_backend.entity.User;
-import com.minhthien.hoser_backend.enums.NotificationType;
 import com.minhthien.hoser_backend.enums.RaceStatus;
 import com.minhthien.hoser_backend.enums.RaceRegistrationStatus;
 import com.minhthien.hoser_backend.enums.TournamentStatus;
 import com.minhthien.hoser_backend.enums.UserRole;
-import com.minhthien.hoser_backend.enums.WalletTransactionType;
 import com.minhthien.hoser_backend.exception.BadRequestException;
 import com.minhthien.hoser_backend.exception.ResourceNotFoundException;
 import com.minhthien.hoser_backend.exception.UnauthorizedException;
@@ -42,16 +39,11 @@ import com.minhthien.hoser_backend.repository.RaceRepository;
 import com.minhthien.hoser_backend.repository.RaceResultRepository;
 import com.minhthien.hoser_backend.repository.TournamentRepository;
 import com.minhthien.hoser_backend.repository.UserRepository;
-import com.minhthien.hoser_backend.service.BettingService;
 import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import com.minhthien.hoser_backend.service.LocationSettingsService;
-import com.minhthien.hoser_backend.service.NotificationService;
-import com.minhthien.hoser_backend.service.RefereeInvitationService;
-import com.minhthien.hoser_backend.service.RefereePaymentService;
 import com.minhthien.hoser_backend.service.SystemSettingsService;
 import com.minhthien.hoser_backend.service.TournamentService;
 import com.minhthien.hoser_backend.service.RegistrationOpenBroadcastService;
-import com.minhthien.hoser_backend.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -99,18 +91,6 @@ public class TournamentServiceImpl implements TournamentService {
     private final SystemSettingsService systemSettingsService;
     private final RegistrationOpenBroadcastService registrationOpenBroadcastService;
     private final LocationSettingsService locationSettingsService;
-    private final WalletService walletService;
-    private final BettingService bettingService;
-    private final RefereeInvitationService refereeInvitationService;
-    private final RefereePaymentService refereePaymentService;
-
-    private NotificationService notificationService;
-
-    @Autowired(required = false)
-    void setNotificationService(NotificationService notificationService) {
-        this.notificationService = notificationService;
-    }
-
     @Override
     @Transactional
     @CacheEvict(value = {
@@ -356,45 +336,21 @@ public class TournamentServiceImpl implements TournamentService {
                 .filter(r -> r.getStatus() != RaceStatus.CANCELLED)
                 .toList();
 
-        List<RaceEligibilityWarning> warnings = checkRaceEligibility(nonCancelledRaces);
+        Map<Long, Long> participantCounts = nonCancelledRaces.stream()
+                .collect(Collectors.toMap(Race::getId,
+                        race -> raceParticipantRepository.countByRaceId(race.getId())));
+        List<RaceEligibilityWarning> warnings = checkRaceEligibility(nonCancelledRaces, participantCounts);
+        Set<Long> ineligibleRaceIds = warnings.stream()
+                .map(RaceEligibilityWarning::getRaceId)
+                .collect(Collectors.toSet());
+        long approvedParticipantsInEligibleRaces = nonCancelledRaces.stream()
+                .filter(race -> !ineligibleRaceIds.contains(race.getId()))
+                .mapToLong(race -> participantCounts.getOrDefault(race.getId(), 0L))
+                .sum();
 
-        if (!warnings.isEmpty() && !force) {
-            return CloseRegistrationResponse.builder()
-                    .requiresConfirmation(true)
-                    .warnings(warnings)
-                    .cancelledRaceIds(Collections.emptyList())
-                    .build();
-        }
-
-        List<Long> cancelledRaceIds = new ArrayList<>();
-        if (!warnings.isEmpty()) {
-            Set<Long> ineligibleRaceIds = warnings.stream()
-                    .map(RaceEligibilityWarning::getRaceId)
-                    .collect(Collectors.toSet());
-            for (Race race : nonCancelledRaces) {
-                if (ineligibleRaceIds.contains(race.getId())) {
-                    cancelIneligibleRace(race, adminId);
-                    cancelledRaceIds.add(race.getId());
-                }
-            }
-        }
-
-        long remainingActiveRaces = nonCancelledRaces.stream()
-                .filter(r -> r.getStatus() != RaceStatus.CANCELLED)
-                .count();
-
-        if (remainingActiveRaces == 0) {
-            tournament.setStatus(TournamentStatus.CANCELLED);
-            tournament.setUpdatedBy(admin.getUsername());
-            Tournament saved = tournamentRepository.save(tournament);
-            recordAudit(admin, "TOURNAMENT_CANCELLED", saved,
-                    "Tournament cancelled because all races were ineligible (insufficient participants)");
-            return CloseRegistrationResponse.builder()
-                    .tournament(mapToResponse(saved, races, participantCountsFor(races)))
-                    .requiresConfirmation(false)
-                    .warnings(Collections.emptyList())
-                    .cancelledRaceIds(cancelledRaceIds)
-                    .build();
+        if (!warnings.isEmpty() || approvedParticipantsInEligibleRaces < tournament.getMinTeams()) {
+            throw new BadRequestException(closeRegistrationEligibilityMessage(
+                    warnings, approvedParticipantsInEligibleRaces, tournament.getMinTeams()));
         }
 
         tournament.setStatus(TournamentStatus.REGISTRATION_CLOSED);
@@ -403,12 +359,12 @@ public class TournamentServiceImpl implements TournamentService {
         Tournament saved = tournamentRepository.save(tournament);
         recordAudit(admin, "TOURNAMENT_STATUS_UPDATED", saved,
                 "Tournament status changed from " + oldStatus + " to REGISTRATION_CLOSED"
-                        + (cancelledRaceIds.isEmpty() ? "" : "; cancelled races: " + cancelledRaceIds));
+                        + "; approved teams: " + approvedParticipantsInEligibleRaces);
         return CloseRegistrationResponse.builder()
                 .tournament(mapToResponse(saved, races, participantCountsFor(races)))
                 .requiresConfirmation(false)
                 .warnings(Collections.emptyList())
-                .cancelledRaceIds(cancelledRaceIds)
+                .cancelledRaceIds(Collections.emptyList())
                 .build();
     }
 
@@ -427,14 +383,15 @@ public class TournamentServiceImpl implements TournamentService {
             throw new BadRequestException("Tournament status is required");
         }
         Tournament tournament = requireTournament(tournamentId);
+        if (status == TournamentStatus.REGISTRATION_CLOSED) {
+            throw new BadRequestException(
+                    "Vui lòng sử dụng chức năng đóng đăng ký chuyên biệt");
+        }
         TournamentStatus oldStatus = tournament.getStatus();
 
         validateStatusTransition(oldStatus, status);
         if (requiresReadySetup(status)) {
             validateReadyForPublish(tournament);
-        }
-        if (status == TournamentStatus.REGISTRATION_CLOSED) {
-            validateOwnerHorseMinimums(tournament);
         }
         tournament.setStatus(status);
         if (status == TournamentStatus.PUBLISHED && tournament.getPublishedAt() == null) {
@@ -671,7 +628,7 @@ public class TournamentServiceImpl implements TournamentService {
     }
 
     private Race mapRace(RaceRequest request, Tournament tournament) {
-        var settings = request.getEntryFee() == null || request.getLateCheckInFee() == null
+        var settings = request.getEntryFee() == null
                 ? systemSettingsService.getCurrent()
                 : null;
         RaceVenue venue = requireVenueForTournament(request.getVenueId(), tournament);
@@ -686,9 +643,6 @@ public class TournamentServiceImpl implements TournamentService {
                 .entryFee(request.getEntryFee() == null
                         ? settings.getDefaultRegistrationFee()
                         : request.getEntryFee())
-                .lateCheckInFee(request.getLateCheckInFee() == null
-                        ? settings.getLateCheckInFee()
-                        : request.getLateCheckInFee())
                 .status(RaceStatus.DRAFT)
                 .note(request.getNote())
                 .build();
@@ -706,9 +660,6 @@ public class TournamentServiceImpl implements TournamentService {
         race.setMaxParticipants(request.getMaxParticipants());
         if (request.getEntryFee() != null) {
             race.setEntryFee(request.getEntryFee());
-        }
-        if (request.getLateCheckInFee() != null) {
-            race.setLateCheckInFee(request.getLateCheckInFee());
         }
         race.setNote(request.getNote());
         race.syncPrizes(mapRacePrizes(request.getPrizes(), !requiresPrizeConfiguration(race.getTournament())));
@@ -859,15 +810,16 @@ public class TournamentServiceImpl implements TournamentService {
                 || race.getScheduledEndAt().isAfter(tournament.getEndAt())) {
             throw new BadRequestException("Race schedule must be within tournament time window");
         }
-        if (race.getMinParticipants() == null || race.getMinParticipants() <= 0
-                || race.getMaxParticipants() == null || race.getMaxParticipants() <= 0) {
-            throw new BadRequestException("Race participant limits must be greater than zero");
+        if (race.getMinParticipants() == null || race.getMinParticipants() < 2) {
+            throw new BadRequestException("Race minimum participants must be at least 2");
+        }
+        if (race.getMaxParticipants() == null || race.getMaxParticipants() <= 0) {
+            throw new BadRequestException("Race maximum participants must be greater than zero");
         }
         if (race.getMinParticipants() > race.getMaxParticipants()) {
             throw new BadRequestException("Race minimum participants must not exceed maximum participants");
         }
         requireNonNegative(defaultZero(race.getEntryFee()), "Race entry fee must not be negative");
-        requirePositive(defaultZero(race.getLateCheckInFee()), "Race late check-in fee must be greater than zero");
     }
 
     private void validateRacePrizes(Race race, boolean requirePrizes) {
@@ -1013,10 +965,10 @@ public class TournamentServiceImpl implements TournamentService {
         return List.of(RaceRegistrationStatus.PENDING, RaceRegistrationStatus.APPROVED);
     }
 
-    private List<RaceEligibilityWarning> checkRaceEligibility(List<Race> races) {
+    private List<RaceEligibilityWarning> checkRaceEligibility(List<Race> races, Map<Long, Long> participantCounts) {
         List<RaceEligibilityWarning> warnings = new ArrayList<>();
         for (Race race : races) {
-            long participantCount = raceParticipantRepository.countByRaceId(race.getId());
+            long participantCount = participantCounts.getOrDefault(race.getId(), 0L);
             if (participantCount < race.getMinParticipants()) {
                 warnings.add(RaceEligibilityWarning.builder()
                         .raceId(race.getId())
@@ -1029,59 +981,16 @@ public class TournamentServiceImpl implements TournamentService {
         return warnings;
     }
 
-    private void cancelIneligibleRace(Race race, Long adminId) {
-        String cancelNote = "Race cancelled due to insufficient participants (required: "
-                + race.getMinParticipants() + ")";
-        raceRegistrationRepository.findByRaceIdOrderByCreatedAtDesc(race.getId()).stream()
-                .filter(registration -> registration.getStatus() == RaceRegistrationStatus.PENDING
-                        || registration.getStatus() == RaceRegistrationStatus.APPROVED)
-                .forEach(registration -> {
-                    refundRegistrationFee(registration,
-                            "Race entry fee refunded - race cancelled due to insufficient participants");
-                    registration.setStatus(RaceRegistrationStatus.CANCELLED);
-                    registration.setReviewedBy(adminId);
-                    registration.setReviewedAt(LocalDateTime.now());
-                    registration.setReviewNote(cancelNote);
-                    raceRegistrationRepository.save(registration);
-                    if (notificationService != null) {
-                        try {
-                            notificationService.notify(
-                                    registration.getOwner(),
-                                    NotificationType.REGISTRATION_CANCELLED,
-                                    "Race registration cancelled",
-                                    "Your registration for race " + registration.getRace().getName()
-                                            + " was cancelled due to insufficient participants. "
-                                            + "Your entry fee has been refunded.",
-                                    "RACE_REGISTRATION",
-                                    String.valueOf(registration.getId()),
-                                    null);
-                        } catch (RuntimeException ex) {
-                            log.warn("Failed to send cancellation notification for registration {}",
-                                    registration.getId(), ex);
-                        }
-                    }
-                });
-        bettingService.cancelRaceBets(race.getId());
-        refereeInvitationService.cancelPendingInvitationsForRace(race.getId(), cancelNote);
-        refereePaymentService.releaseForCancelledRace(adminId, race);
-        race.setStatus(RaceStatus.CANCELLED);
-        raceRepository.save(race);
-        log.info("Cancelled ineligible race: id={}, name={}", race.getId(), race.getName());
-    }
-
-    private void refundRegistrationFee(RaceRegistration registration, String note) {
-        BigDecimal entryFee = registration.getEntryFeeAmount() == null
-                ? BigDecimal.ZERO : registration.getEntryFeeAmount();
-        if (entryFee.compareTo(BigDecimal.ZERO) > 0) {
-            String key = "race-registration:%d:entry-refund".formatted(registration.getId());
-            walletService.debitAdmin(entryFee, WalletTransactionType.REFUND,
-                    "RACE_REGISTRATION", String.valueOf(registration.getId()),
-                    "race-registration:%d:entry-admin-refund".formatted(registration.getId()),
-                    null, note);
-            walletService.refund(registration.getOwner().getId(), entryFee,
-                    "RACE_REGISTRATION", String.valueOf(registration.getId()), key, null, note);
-            registration.setEntryFeeRefundKey(key);
+    private String closeRegistrationEligibilityMessage(List<RaceEligibilityWarning> warnings,
+                                                       long approvedParticipants, int minimumTeams) {
+        List<String> reasons = new ArrayList<>();
+        warnings.forEach(warning -> reasons.add("%s có %d/%d người đã duyệt"
+                .formatted(warning.getRaceName(), warning.getCurrentParticipants(), warning.getMinParticipants())));
+        if (approvedParticipants < minimumTeams) {
+            reasons.add("giải có %d/%d đội đã duyệt"
+                    .formatted(approvedParticipants, minimumTeams));
         }
+        return "Không thể đóng đăng ký: " + String.join("; ", reasons);
     }
 
     private void recordAudit(User admin, String action, Tournament tournament, String reason) {
@@ -1282,7 +1191,6 @@ public class TournamentServiceImpl implements TournamentService {
                 .minParticipants(race.getMinParticipants())
                 .maxParticipants(race.getMaxParticipants())
                 .entryFee(race.getEntryFee())
-                .lateCheckInFee(race.getLateCheckInFee())
                 .refereeId(referee == null ? null : referee.getId())
                 .refereeUsername(referee == null ? null : referee.getUsername())
                 .status(race.getStatus())
@@ -1348,12 +1256,6 @@ public class TournamentServiceImpl implements TournamentService {
 
     private void requireNonNegative(BigDecimal value, String message) {
         if (value.compareTo(BigDecimal.ZERO) < 0) {
-            throw new BadRequestException(message);
-        }
-    }
-
-    private void requirePositive(BigDecimal value, String message) {
-        if (value.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException(message);
         }
     }

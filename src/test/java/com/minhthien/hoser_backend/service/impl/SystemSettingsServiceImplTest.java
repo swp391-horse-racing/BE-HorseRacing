@@ -46,7 +46,6 @@ class SystemSettingsServiceImplTest {
         SystemSettings settings = settings();
         SystemFeesSettingsRequest request = new SystemFeesSettingsRequest();
         request.setDefaultRegistrationFee(new BigDecimal("5000000"));
-        request.setLateCheckInFee(new BigDecimal("500000"));
         when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
         when(settingsRepository.findById(SystemSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
         when(settingsRepository.save(settings)).thenReturn(settings);
@@ -54,43 +53,8 @@ class SystemSettingsServiceImplTest {
         var response = service.updateFees(1L, request);
 
         assertEquals(new BigDecimal("5000000.00"), response.getDefaultRegistrationFee());
-        assertEquals(new BigDecimal("500000.00"), response.getLateCheckInFee());
         assertEquals("admin", response.getUpdatedBy());
         verify(auditLogRepository).save(any());
-    }
-
-    @Test
-    void updateFeesRejectsZeroLateCheckInFee() {
-        User admin = User.builder().id(1L).username("admin").role(UserRole.ADMIN).build();
-        SystemSettings settings = settings();
-        SystemFeesSettingsRequest request = new SystemFeesSettingsRequest();
-        request.setDefaultRegistrationFee(new BigDecimal("5000000"));
-        request.setLateCheckInFee(BigDecimal.ZERO);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
-        when(settingsRepository.findById(SystemSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
-
-        BadRequestException exception = assertThrows(BadRequestException.class,
-                () -> service.updateFees(1L, request));
-
-        assertEquals("Late check-in fee must be greater than zero", exception.getMessage());
-        verify(settingsRepository, never()).save(any());
-    }
-
-    @Test
-    void updateFeesRejectsNegativeLateCheckInFee() {
-        User admin = User.builder().id(1L).username("admin").role(UserRole.ADMIN).build();
-        SystemSettings settings = settings();
-        SystemFeesSettingsRequest request = new SystemFeesSettingsRequest();
-        request.setDefaultRegistrationFee(new BigDecimal("5000000"));
-        request.setLateCheckInFee(new BigDecimal("-1"));
-        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
-        when(settingsRepository.findById(SystemSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
-
-        BadRequestException exception = assertThrows(BadRequestException.class,
-                () -> service.updateFees(1L, request));
-
-        assertEquals("Late check-in fee must be greater than zero", exception.getMessage());
-        verify(settingsRepository, never()).save(any());
     }
 
     @Test
@@ -303,7 +267,6 @@ class SystemSettingsServiceImplTest {
         return SystemSettings.builder()
                 .id(SystemSettings.SINGLETON_ID)
                 .defaultRegistrationFee(SystemSettings.DEFAULT_REGISTRATION_FEE)
-                .lateCheckInFee(SystemSettings.DEFAULT_LATE_CHECK_IN_FEE)
                 .defaultTournamentRules(SystemSettings.DEFAULT_RULES)
                 .registrationOpenEmailSubject(SystemSettings.DEFAULT_REGISTRATION_OPEN_SUBJECT)
                 .checkInReminderEmailSubject(SystemSettings.DEFAULT_CHECK_IN_REMINDER_SUBJECT)

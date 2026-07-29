@@ -20,8 +20,13 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -35,6 +40,8 @@ class TournamentStatusSchedulerTest {
     private RaceParticipantRepository raceParticipantRepository;
     @Mock
     private RegistrationOpenBroadcastService registrationOpenBroadcastService;
+    @Mock
+    private RaceCancellationService raceCancellationService;
 
     @InjectMocks
     private TournamentStatusScheduler scheduler;
@@ -70,7 +77,7 @@ class TournamentStatusSchedulerTest {
                 eq(TournamentStatus.OPEN_REGISTRATION), any(LocalDateTime.class))).thenReturn(List.of(tournament));
         when(raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(tournament.getId()))
                 .thenReturn(List.of(race));
-        when(raceParticipantRepository.countByRaceId(race.getId())).thenReturn(1L);
+        when(raceParticipantRepository.countByRaceId(race.getId())).thenReturn(2L);
 
         scheduler.updateRegistrationStatuses();
 
@@ -78,6 +85,65 @@ class TournamentStatusSchedulerTest {
         assertEquals(RaceStatus.REGISTRATION_CLOSED, race.getStatus());
         assertEquals("SYSTEM", tournament.getUpdatedBy());
         verify(tournamentRepository).save(tournament);
+    }
+
+    @Test
+    void cancelsOnlyIneligibleRaceWhenEligibleRacesStillMeetTournamentMinimum() {
+        Tournament tournament = tournament(TournamentStatus.OPEN_REGISTRATION);
+        Race ineligible = race(RaceStatus.OPEN_REGISTRATION);
+        Race eligible = race(RaceStatus.OPEN_REGISTRATION);
+        eligible.setId(11L);
+        tournament.getRaces().addAll(List.of(ineligible, eligible));
+        when(tournamentRepository.findByStatusAndRegistrationOpenAtLessThanEqualOrderByRegistrationOpenAtAsc(
+                eq(TournamentStatus.PUBLISHED), any(LocalDateTime.class))).thenReturn(List.of());
+        when(tournamentRepository.findByStatusAndRegistrationCloseAtLessThanEqualOrderByRegistrationCloseAtAsc(
+                eq(TournamentStatus.OPEN_REGISTRATION), any(LocalDateTime.class))).thenReturn(List.of(tournament));
+        when(raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(tournament.getId()))
+                .thenReturn(List.of(ineligible, eligible));
+        when(raceParticipantRepository.countByRaceId(ineligible.getId())).thenReturn(1L);
+        when(raceParticipantRepository.countByRaceId(eligible.getId())).thenReturn(2L);
+        when(raceCancellationService.cancelRace(eq(ineligible.getId()), isNull(), anyString(),
+                eq("SYSTEM"), eq(true))).thenAnswer(invocation -> {
+                    ineligible.setStatus(RaceStatus.CANCELLED);
+                    return new RaceCancellationService.RaceCancellationResult(List.of());
+                });
+
+        scheduler.updateRegistrationStatuses();
+
+        assertEquals(TournamentStatus.REGISTRATION_CLOSED, tournament.getStatus());
+        assertEquals(RaceStatus.CANCELLED, ineligible.getStatus());
+        assertEquals(RaceStatus.REGISTRATION_CLOSED, eligible.getStatus());
+        verify(raceCancellationService).cancelRace(
+                eq(ineligible.getId()), isNull(), anyString(), eq("SYSTEM"), eq(true));
+    }
+
+    @Test
+    void cancelsTournamentAndAllRacesWhenEligibleTotalIsBelowTournamentMinimum() {
+        Tournament tournament = tournament(TournamentStatus.OPEN_REGISTRATION);
+        tournament.setMinTeams(5);
+        Race first = race(RaceStatus.OPEN_REGISTRATION);
+        Race second = race(RaceStatus.OPEN_REGISTRATION);
+        second.setId(11L);
+        tournament.getRaces().addAll(List.of(first, second));
+        when(tournamentRepository.findByStatusAndRegistrationOpenAtLessThanEqualOrderByRegistrationOpenAtAsc(
+                eq(TournamentStatus.PUBLISHED), any(LocalDateTime.class))).thenReturn(List.of());
+        when(tournamentRepository.findByStatusAndRegistrationCloseAtLessThanEqualOrderByRegistrationCloseAtAsc(
+                eq(TournamentStatus.OPEN_REGISTRATION), any(LocalDateTime.class))).thenReturn(List.of(tournament));
+        when(raceRepository.findByTournamentIdOrderByScheduledStartAtAsc(tournament.getId()))
+                .thenReturn(List.of(first, second));
+        when(raceParticipantRepository.countByRaceId(first.getId())).thenReturn(2L);
+        when(raceParticipantRepository.countByRaceId(second.getId())).thenReturn(2L);
+        when(raceCancellationService.cancelRace(anyLong(), isNull(), anyString(),
+                eq("SYSTEM"), eq(false)))
+                .thenReturn(new RaceCancellationService.RaceCancellationResult(List.of()));
+
+        scheduler.updateRegistrationStatuses();
+
+        assertEquals(TournamentStatus.CANCELLED, tournament.getStatus());
+        verify(raceCancellationService, times(2)).cancelRace(
+                anyLong(), isNull(), anyString(), eq("SYSTEM"), eq(false));
+        verify(raceCancellationService).notifyTournamentCancelledAfterCommit(
+                eq(tournament), any(), eq(4L), eq(5));
     }
 
     @Test
@@ -152,7 +218,7 @@ class TournamentStatusSchedulerTest {
                 .distance("1000m")
                 .scheduledStartAt(LocalDateTime.now().plusDays(5))
                 .scheduledEndAt(LocalDateTime.now().plusDays(5).plusHours(1))
-                .minParticipants(1)
+                .minParticipants(2)
                 .maxParticipants(8)
                 .status(status)
                 .build();

@@ -3,6 +3,7 @@ package com.minhthien.hoser_backend.service;
 import com.minhthien.hoser_backend.dto.request.InvitationDecisionRequest;
 import com.minhthien.hoser_backend.dto.request.RefereeInvitationRequest;
 import com.minhthien.hoser_backend.dto.response.RefereeInvitationResponse;
+import com.minhthien.hoser_backend.entity.User;
 
 import java.util.List;
 
@@ -24,4 +25,6 @@ public interface RefereeInvitationService {
     RefereeInvitationResponse rejectInvitation(Long refereeId, Long invitationId, InvitationDecisionRequest request);
 
     void cancelPendingInvitationsForRace(Long raceId, String reason);
+
+    List<User> cancelActiveInvitationsForRace(Long raceId, String reason, String updatedBy);
 }

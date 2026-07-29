@@ -22,7 +22,7 @@ public interface FinanceSettingsRepository extends JpaRepository<FinanceSettings
                 updated_at,
                 created_by,
                 updated_by
-            ) VALUES (1, 0.00, TRUE, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), 'system', 'system')
+            ) VALUES (1, 10.00, TRUE, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), 'system', 'system')
             """, nativeQuery = true)
     int insertDefaultIfAbsent();
 }

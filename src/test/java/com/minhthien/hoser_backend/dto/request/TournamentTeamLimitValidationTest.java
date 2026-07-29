@@ -38,9 +38,44 @@ class TournamentTeamLimitValidationTest {
         assertTrue(minTeamsMessages(request).isEmpty());
     }
 
+    @Test
+    void createRequestRequiresAtLeastOneHorsePerOwner() {
+        TournamentRequest request = new TournamentRequest();
+        request.setMinHorsesPerOwner(0);
+
+        assertEquals(
+                Set.of("Minimum horses per owner must be greater than zero"),
+                minHorsesPerOwnerMessages(request));
+
+        request.setMinHorsesPerOwner(1);
+
+        assertTrue(minHorsesPerOwnerMessages(request).isEmpty());
+    }
+
+    @Test
+    void updateRequestRequiresAtLeastOneHorsePerOwner() {
+        TournamentUpdateRequest request = new TournamentUpdateRequest();
+        request.setMinHorsesPerOwner(0);
+
+        assertEquals(
+                Set.of("Minimum horses per owner must be greater than zero"),
+                minHorsesPerOwnerMessages(request));
+
+        request.setMinHorsesPerOwner(1);
+
+        assertTrue(minHorsesPerOwnerMessages(request).isEmpty());
+    }
+
     private Set<String> minTeamsMessages(Object request) {
         return VALIDATOR.validate(request).stream()
                 .filter(violation -> "minTeams".equals(violation.getPropertyPath().toString()))
+                .map(violation -> violation.getMessage())
+                .collect(Collectors.toSet());
+    }
+
+    private Set<String> minHorsesPerOwnerMessages(Object request) {
+        return VALIDATOR.validate(request).stream()
+                .filter(violation -> "minHorsesPerOwner".equals(violation.getPropertyPath().toString()))
                 .map(violation -> violation.getMessage())
                 .collect(Collectors.toSet());
     }

@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -23,6 +24,8 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class BetMarket {
+    public static final BigDecimal DEFAULT_WINNING_TAX_PERCENT = new BigDecimal("10.00");
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -40,6 +43,11 @@ public class BetMarket {
 
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal maxStake;
+
+    @Column(name = "winning_tax_percent", nullable = false, precision = 5, scale = 2)
+    @ColumnDefault("10.00")
+    @Builder.Default
+    private BigDecimal winningTaxPercent = DEFAULT_WINNING_TAX_PERCENT;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -74,6 +82,9 @@ public class BetMarket {
         updatedAt = now;
         if (status == null) {
             status = BetMarketStatus.DRAFT;
+        }
+        if (winningTaxPercent == null) {
+            winningTaxPercent = DEFAULT_WINNING_TAX_PERCENT;
         }
     }
 

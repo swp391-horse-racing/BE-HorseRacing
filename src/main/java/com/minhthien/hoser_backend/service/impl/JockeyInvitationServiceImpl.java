@@ -255,6 +255,30 @@ public class JockeyInvitationServiceImpl implements JockeyInvitationService {
         return mapToResponse(invitation);
     }
 
+    @Override
+    @Transactional
+    public List<User> cancelActiveInvitationsForRace(Long raceId, String reason, String updatedBy) {
+        List<JockeyInvitation> active = jockeyInvitationRepository
+                .findByRaceIdAndStatusInOrderByCreatedAtDesc(raceId, ACTIVE_STATUSES);
+        if (active.isEmpty()) {
+            return List.of();
+        }
+        LocalDateTime now = LocalDateTime.now();
+        String actor = updatedBy == null || updatedBy.isBlank() ? "SYSTEM" : updatedBy;
+        for (JockeyInvitation invitation : active) {
+            invitation.setStatus(AssignmentStatus.CANCELLED);
+            invitation.setResponseNote(reason);
+            invitation.setCancelledAt(now);
+            invitation.setUpdatedBy(actor);
+        }
+        jockeyInvitationRepository.saveAll(active);
+        return active.stream()
+                .map(JockeyInvitation::getJockey)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
     private void cancelOtherPendingInvitations(JockeyInvitation acceptedInvitation, User jockey) {
         LocalDateTime now = LocalDateTime.now();
         List<JockeyInvitation> otherPendingInvitations =
