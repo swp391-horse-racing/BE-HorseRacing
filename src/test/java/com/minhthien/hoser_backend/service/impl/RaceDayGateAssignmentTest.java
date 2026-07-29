@@ -41,6 +41,7 @@ import com.minhthien.hoser_backend.service.FinanceSettingsService;
 import com.minhthien.hoser_backend.service.MailService;
 import com.minhthien.hoser_backend.service.RefereeInvitationService;
 import com.minhthien.hoser_backend.service.RefereePaymentService;
+import com.minhthien.hoser_backend.service.RaceSimulationService;
 import com.minhthien.hoser_backend.service.SystemSettingsService;
 import com.minhthien.hoser_backend.service.WalletService;
 import org.junit.jupiter.api.Test;
@@ -88,6 +89,7 @@ class RaceDayGateAssignmentTest {
     @Mock private CloudinaryUploadService cloudinaryUploadService;
     @Mock private RefereePaymentService refereePaymentService;
     @Mock private RefereeInvitationService refereeInvitationService;
+    @Mock private RaceSimulationService raceSimulationService;
     @Mock private SystemSettingsService systemSettingsService;
 
     @InjectMocks

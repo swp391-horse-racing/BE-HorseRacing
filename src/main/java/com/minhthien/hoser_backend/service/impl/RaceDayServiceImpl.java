@@ -32,6 +32,7 @@ import com.minhthien.hoser_backend.service.CloudinaryUploadService;
 import com.minhthien.hoser_backend.service.MailService;
 import com.minhthien.hoser_backend.service.NotificationService;
 import com.minhthien.hoser_backend.service.RaceDayService;
+import com.minhthien.hoser_backend.service.RaceSimulationService;
 import com.minhthien.hoser_backend.service.RealtimeEventService;
 import com.minhthien.hoser_backend.service.RefereePaymentService;
 import com.minhthien.hoser_backend.service.SystemSettingsService;
@@ -80,6 +81,7 @@ public class RaceDayServiceImpl implements RaceDayService {
     private final RefereePaymentService refereePaymentService;
     private final SystemSettingsService systemSettingsService;
     private final RaceCancellationService raceCancellationService;
+    private final RaceSimulationService raceSimulationService;
     private NotificationService notificationService;
     private RealtimeEventService realtimeEventService;
 
@@ -453,8 +455,10 @@ public class RaceDayServiceImpl implements RaceDayService {
         if (race.getStatus() == RaceStatus.RESULT_CONFIRMED || raceResultRepository.existsByRaceId(raceId)) {
             throw new BadRequestException("Race result has already been finalized");
         }
-        if (request == null || request.getResults() == null || request.getResults().isEmpty()) {
-            throw new BadRequestException("Race results are required");
+        boolean draftFinalize = request != null && request.getDraftVersion() != null;
+        boolean manualFinalize = request != null && request.getResults() != null && !request.getResults().isEmpty();
+        if (draftFinalize == manualFinalize) {
+            throw new BadRequestException("Provide either draftVersion or manual race results");
         }
         List<RaceParticipant> participants = raceParticipantRepository.findByRaceIdOrderByGateNumberAsc(raceId);
         if (participants.isEmpty()) {
@@ -462,14 +466,29 @@ public class RaceDayServiceImpl implements RaceDayService {
         }
         Map<Long, RaceParticipant> participantById = participants.stream()
                 .collect(Collectors.toMap(RaceParticipant::getId, Function.identity()));
-        List<RaceResultEntryRequest> resultEntries = completeResultEntries(request.getResults(), participants);
-        List<RaceViolation> violations = raceViolationRepository.findByRaceIdOrderByOccurredAtDesc(raceId);
-        resultEntries = applyViolationResultActions(resultEntries, violations);
+        RaceSimulationService.DraftFinalizeContext draftContext = draftFinalize
+                ? raceSimulationService.prepareDraftFinalize(refereeId, raceId, request.getDraftVersion())
+                : null;
+        if (!draftFinalize && raceSimulationService.hasSimulation(raceId)) {
+            throw new com.minhthien.hoser_backend.exception.ConflictException(
+                    "Manual results are disabled after a simulation has been generated");
+        }
+        List<RaceResultEntryRequest> resultEntries = completeResultEntries(
+                draftFinalize ? draftContext.entries() : request.getResults(), participants);
+        if (!draftFinalize) {
+            List<RaceViolation> violations = raceViolationRepository.findByRaceIdOrderByOccurredAtDesc(raceId);
+            resultEntries = applyViolationResultActions(resultEntries, violations);
+        }
         validateResultEntries(resultEntries, participantById);
 
         LocalDateTime now = LocalDateTime.now();
+        Map<Long, RaceResultDraftRow> draftRowByParticipant = draftFinalize
+                ? draftContext.draft().getRows().stream()
+                .collect(Collectors.toMap(row -> row.getParticipant().getId(), Function.identity()))
+                : Map.of();
         List<RaceResult> results = resultEntries.stream()
-                .map(entry -> buildRaceResult(race, participantById.get(entry.getParticipantId()), entry, refereeId, now))
+                .map(entry -> buildRaceResult(race, participantById.get(entry.getParticipantId()), entry,
+                        refereeId, now, draftContext, draftRowByParticipant.get(entry.getParticipantId())))
                 .toList();
         raceResultRepository.saveAll(results);
         results.forEach(this::payoutRacePrize);
@@ -477,6 +496,9 @@ public class RaceDayServiceImpl implements RaceDayService {
         race.setResultFinalizedAt(now);
         race.setResultFinalizedBy(refereeId);
         raceRepository.save(race);
+        if (draftFinalize) {
+            raceSimulationService.markPublished(draftContext.draft(), refereeId);
+        }
         try {
             refereePaymentService.payForCompletedRace(race);
         } catch (BadRequestException ex) {
@@ -553,7 +575,9 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .evidenceType(safeEvidenceType(evidence))
                 .evidenceSize(evidence.getSize())
                 .build();
-        return mapViolation(raceViolationRepository.save(violation));
+        RaceViolation saved = raceViolationRepository.save(violation);
+        raceSimulationService.recalculateDraft(refereeId, raceId);
+        return mapViolation(saved);
     }
 
     @Override
@@ -593,7 +617,27 @@ public class RaceDayServiceImpl implements RaceDayService {
             violation.setEvidenceType(safeEvidenceType(evidence));
             violation.setEvidenceSize(evidence.getSize());
         }
-        return mapViolation(raceViolationRepository.save(violation));
+        RaceViolation saved = raceViolationRepository.save(violation);
+        raceSimulationService.recalculateDraft(refereeId, raceId);
+        return mapViolation(saved);
+    }
+
+    @Override
+    @Transactional
+    public void deleteRaceViolation(Long refereeId, Long raceId, Long violationId) {
+        Race race = requireAssignedRefereeRace(refereeId, raceId);
+        validateRaceCanAcceptViolation(race);
+        RaceViolation violation = raceViolationRepository.findById(violationId)
+                .orElseThrow(() -> new ResourceNotFoundException("RaceViolation", "id", violationId));
+        if (!violation.getRace().getId().equals(raceId)) {
+            throw new BadRequestException("Violation does not belong to this race");
+        }
+        if (!violation.getReferee().getId().equals(refereeId)) {
+            throw new UnauthorizedException("Cannot delete another referee's race violation");
+        }
+        raceViolationRepository.delete(violation);
+        raceViolationRepository.flush();
+        raceSimulationService.recalculateDraft(refereeId, raceId);
     }
 
     @Override
@@ -1363,7 +1407,9 @@ public class RaceDayServiceImpl implements RaceDayService {
     }
 
     private RaceResult buildRaceResult(Race race, RaceParticipant participant, RaceResultEntryRequest entry,
-                                       Long refereeId, LocalDateTime now) {
+                                       Long refereeId, LocalDateTime now,
+                                       RaceSimulationService.DraftFinalizeContext draftContext,
+                                       RaceResultDraftRow draftRow) {
         participant.setStatus(entry.getStatus());
         raceParticipantRepository.save(participant);
         BigDecimal prizeAmount = prizeAmountFor(race, entry.getRank());
@@ -1378,6 +1424,11 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .jockey(participant.getJockey())
                 .rank(entry.getRank())
                 .finishTimeMillis(entry.getFinishTimeMillis())
+                .source(draftContext == null ? RaceResultSource.MANUAL : RaceResultSource.SIMULATION)
+                .simulationRunId(draftContext == null ? null : draftContext.simulationRunId())
+                .baseFinishTimeMillis(draftRow == null ? entry.getFinishTimeMillis()
+                        : draftRow.getBaseFinishTimeMillis())
+                .penaltyTimeMillis(draftRow == null ? 0L : draftRow.getPenaltyTimeMillis())
                 .status(entry.getStatus())
                 .jockeyChallengePoints(challengePointsFor(race.getTournament(), entry.getRank(), entry.getStatus()))
                 .prizeAmount(prizeAmount)
@@ -1389,6 +1440,11 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .finalizedBy(refereeId)
                 .finalizedAt(now)
                 .build();
+    }
+
+    private RaceResult buildRaceResult(Race race, RaceParticipant participant, RaceResultEntryRequest entry,
+                                       Long refereeId, LocalDateTime now) {
+        return buildRaceResult(race, participant, entry, refereeId, now, null, null);
     }
 
     private void payoutRacePrize(RaceResult result) {
@@ -1701,6 +1757,10 @@ public class RaceDayServiceImpl implements RaceDayService {
                 .jockeyUsername(result.getJockey().getUsername())
                 .rank(result.getRank())
                 .finishTimeMillis(result.getFinishTimeMillis())
+                .source(result.getSource())
+                .simulationRunId(result.getSimulationRunId())
+                .baseFinishTimeMillis(result.getBaseFinishTimeMillis())
+                .penaltyTimeMillis(defaultLong(result.getPenaltyTimeMillis()))
                 .status(result.getStatus())
                 .jockeyChallengePoints(result.getJockeyChallengePoints())
                 .prizeAmount(defaultZero(result.getPrizeAmount()))

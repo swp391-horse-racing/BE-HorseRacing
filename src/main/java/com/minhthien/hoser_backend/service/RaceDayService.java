@@ -72,6 +72,8 @@ public interface RaceDayService {
     RaceViolationResponse updateRaceViolation(Long refereeId, Long raceId, Long violationId,
                                               RaceViolationRequest request, MultipartFile evidence);
 
+    void deleteRaceViolation(Long refereeId, Long raceId, Long violationId);
+
     List<RaceViolationResponse> getAdminRaceViolations(Long adminId, Long raceId);
 
     RaceComplaintResponse createRaceComplaint(Long ownerId, Long raceId, RaceComplaintRequest request,

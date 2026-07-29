@@ -2,6 +2,7 @@ package com.minhthien.hoser_backend.dto.response;
 
 import com.minhthien.hoser_backend.enums.RaceParticipantStatus;
 import com.minhthien.hoser_backend.enums.RacePayoutStatus;
+import com.minhthien.hoser_backend.enums.RaceResultSource;
 import lombok.Builder;
 import lombok.Data;
 
@@ -22,6 +23,10 @@ public class RaceResultResponse {
     private String jockeyUsername;
     private Integer rank;
     private Long finishTimeMillis;
+    private RaceResultSource source;
+    private String simulationRunId;
+    private Long baseFinishTimeMillis;
+    private Long penaltyTimeMillis;
     private RaceParticipantStatus status;
     private Integer jockeyChallengePoints;
     private BigDecimal prizeAmount;

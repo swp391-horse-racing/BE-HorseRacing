@@ -87,7 +87,7 @@ public class RefereePaymentServiceImpl implements RefereePaymentService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BadRequestException.class)
     public RefereeRacePayment payForCompletedRace(Race race) {
         RefereeRacePayment payment = paymentRepository.findByRaceId(race.getId())
                 .orElseThrow(() -> new BadRequestException(

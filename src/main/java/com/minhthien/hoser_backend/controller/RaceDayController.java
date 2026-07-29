@@ -10,6 +10,7 @@ import com.minhthien.hoser_backend.dto.request.RaceRegistrationRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationReviewRequest;
 import com.minhthien.hoser_backend.dto.request.RaceRegistrationWithdrawRequest;
 import com.minhthien.hoser_backend.dto.request.RaceViolationRequest;
+import com.minhthien.hoser_backend.dto.request.RaceSimulationConfirmRequest;
 import com.minhthien.hoser_backend.dto.response.ApiResponse;
 import com.minhthien.hoser_backend.dto.response.JockeyChallengeStandingResponse;
 import com.minhthien.hoser_backend.dto.response.RaceComplaintResponse;
@@ -19,11 +20,15 @@ import com.minhthien.hoser_backend.dto.response.RaceResponse;
 import com.minhthien.hoser_backend.dto.response.RaceResultResponse;
 import com.minhthien.hoser_backend.dto.response.RaceViolationResponse;
 import com.minhthien.hoser_backend.dto.response.RefereeRacePaymentResponse;
+import com.minhthien.hoser_backend.dto.response.RaceResultDraftResponse;
+import com.minhthien.hoser_backend.dto.response.RaceSimulationConfirmResponse;
+import com.minhthien.hoser_backend.dto.response.RaceSimulationResponse;
 import com.minhthien.hoser_backend.dto.response.TournamentResponse;
 import com.minhthien.hoser_backend.entity.User;
 import com.minhthien.hoser_backend.enums.RaceComplaintStatus;
 import com.minhthien.hoser_backend.service.RaceDayService;
 import com.minhthien.hoser_backend.service.RefereePaymentService;
+import com.minhthien.hoser_backend.service.RaceSimulationService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +54,7 @@ import java.util.List;
 public class RaceDayController {
     private final RaceDayService raceDayService;
     private final RefereePaymentService refereePaymentService;
+    private final RaceSimulationService raceSimulationService;
 
     @PostMapping("/races/{id}/registrations")
     public ResponseEntity<ApiResponse<RaceRegistrationResponse>> registerForRace(
@@ -207,6 +213,15 @@ public class RaceDayController {
                 raceDayService.updateRaceViolation(currentUser.getId(), id, violationId, request, evidence)));
     }
 
+    @DeleteMapping("/referee/races/{id}/violations/{violationId}")
+    public ResponseEntity<ApiResponse<Void>> deleteRaceViolation(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @PathVariable Long violationId) {
+        raceDayService.deleteRaceViolation(currentUser.getId(), id, violationId);
+        return ResponseEntity.ok(ApiResponse.success("Race violation deleted", null));
+    }
+
     @PutMapping("/referee/races/{id}/participants/{participantId}/gate")
     public ResponseEntity<ApiResponse<RaceParticipantResponse>> updateRefereeParticipantGate(
             @AuthenticationPrincipal User currentUser,
@@ -233,6 +248,39 @@ public class RaceDayController {
             @PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success("Race started",
                 raceDayService.startRace(currentUser.getId(), id)));
+    }
+
+    @GetMapping("/referee/races/{id}/simulation")
+    public ResponseEntity<ApiResponse<RaceSimulationResponse>> getRaceSimulation(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                raceSimulationService.get(currentUser.getId(), id)));
+    }
+
+    @PostMapping("/referee/races/{id}/simulation")
+    public ResponseEntity<ApiResponse<RaceSimulationResponse>> generateRaceSimulation(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Race simulation generated",
+                raceSimulationService.generate(currentUser.getId(), id)));
+    }
+
+    @PostMapping("/referee/races/{id}/simulation/confirm")
+    public ResponseEntity<ApiResponse<RaceSimulationConfirmResponse>> confirmRaceSimulation(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id,
+            @Valid @RequestBody RaceSimulationConfirmRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Race simulation moved to result draft",
+                raceSimulationService.confirm(currentUser.getId(), id, request.getRunId())));
+    }
+
+    @GetMapping("/referee/races/{id}/results/draft")
+    public ResponseEntity<ApiResponse<RaceResultDraftResponse>> getRaceResultDraft(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                raceSimulationService.getDraft(currentUser.getId(), id)));
     }
 
     @PostMapping("/referee/races/{id}/results/finalize")

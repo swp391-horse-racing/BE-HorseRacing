@@ -2,11 +2,13 @@ package com.minhthien.hoser_backend.entity;
 
 import com.minhthien.hoser_backend.enums.RaceParticipantStatus;
 import com.minhthien.hoser_backend.enums.RacePayoutStatus;
+import com.minhthien.hoser_backend.enums.RaceResultSource;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -56,6 +58,23 @@ public class RaceResult {
     private Integer rank;
 
     private Long finishTimeMillis;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    @ColumnDefault("'MANUAL'")
+    @Builder.Default
+    private RaceResultSource source = RaceResultSource.MANUAL;
+
+    @Column(name = "simulation_run_id", length = 64)
+    private String simulationRunId;
+
+    @Column(name = "base_finish_time_millis")
+    private Long baseFinishTimeMillis;
+
+    @Column(name = "penalty_time_millis", nullable = false)
+    @ColumnDefault("0")
+    @Builder.Default
+    private Long penaltyTimeMillis = 0L;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -114,6 +133,12 @@ public class RaceResult {
         }
         if (payoutStatus == null) {
             payoutStatus = RacePayoutStatus.NOT_ELIGIBLE;
+        }
+        if (source == null) {
+            source = RaceResultSource.MANUAL;
+        }
+        if (penaltyTimeMillis == null) {
+            penaltyTimeMillis = 0L;
         }
     }
 }

@@ -54,6 +54,32 @@ public interface RaceResultRepository extends JpaRepository<RaceResult, Long> {
     boolean existsByHorseId(Long horseId);
 
     @Query("""
+            select rr.horse.id,
+                   count(rr),
+                   sum(case when rr.rank = 1 then 1 else 0 end)
+            from RaceResult rr
+            where rr.race.resultFinalizedAt is not null
+              and rr.race.id <> :excludedRaceId
+              and rr.status = com.minhthien.hoser_backend.enums.RaceParticipantStatus.FINISHED
+              and rr.rank is not null
+            group by rr.horse.id
+            """)
+    List<Object[]> findFinalizedHorseSimulationStatistics(@Param("excludedRaceId") Long excludedRaceId);
+
+    @Query("""
+            select rr.jockey.id,
+                   count(rr),
+                   sum(case when rr.rank = 1 then 1 else 0 end)
+            from RaceResult rr
+            where rr.race.resultFinalizedAt is not null
+              and rr.race.id <> :excludedRaceId
+              and rr.status = com.minhthien.hoser_backend.enums.RaceParticipantStatus.FINISHED
+              and rr.rank is not null
+            group by rr.jockey.id
+            """)
+    List<Object[]> findFinalizedJockeySimulationStatistics(@Param("excludedRaceId") Long excludedRaceId);
+
+    @Query("""
             select rr.horse.id, rr.horse.name, rr.owner.id,
                    coalesce(rr.owner.fullName, rr.owner.username),
                    sum(case when rr.rank = 1 then 1 else 0 end),
