@@ -33,6 +33,7 @@ import com.minhthien.hoser_backend.repository.UserRepository;
 import com.minhthien.hoser_backend.service.RaceDayService;
 import com.minhthien.hoser_backend.service.TournamentFinalizationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,6 +71,13 @@ public class TournamentFinalizationServiceImpl implements TournamentFinalization
 
     @Override
     @Transactional
+    @CacheEvict(value = {
+            "adminTournamentSummaries",
+            "publicTournamentSummaries",
+            "adminTournamentDetails",
+            "publicTournamentDetails",
+            "publicTournamentRaces"
+    }, allEntries = true)
     public TournamentFinalizationResponse finalizeTournament(Long adminId, Long tournamentId) {
         User admin = requireAdmin(adminId);
         Tournament tournament = requireTournament(tournamentId);
